@@ -229,9 +229,9 @@ analyze_crash_causes() {
     # 1. 检查系统崩溃记录
     echo -e "  ${C_BCYAN}━━━ 系统崩溃记录 ━━━${C_RESET}"
     if [[ -f /var/crash ]]; then
-        if [[ -d /var/crash ]] && [[ -n "$(ls -A /var/crash 2>/dev/null)" ]]; then
+        if [[ -d /var/crash ]] && [[ -n "$(find /var/crash -maxdepth 1 -mindepth 1 2>/dev/null)" ]]; then
             msg_warn "发现崩溃转储文件:"
-            ls -la /var/crash/ 2>/dev/null | tail -10
+            find /var/crash -maxdepth 1 -mindepth 1 -printf '%M %u %g %s %T+ %p\n' 2>/dev/null | tail -10
             found_issues=true
         else
             msg_ok "无崩溃转储文件"

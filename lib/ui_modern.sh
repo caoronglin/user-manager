@@ -7,132 +7,132 @@
 # ============================================================
 
 # 基本颜色
-readonly C_RESET='\033[0m'
-readonly C_BOLD='\033[1m'
+C_RESET='\033[0m'
+C_BOLD='\033[1m'
 # shellcheck disable=SC2034  # Unused color variables - available for future use
-readonly C_ITALIC='\033[3m'
-readonly C_UNDERLINE='\033[4m'
-readonly C_BLINK='\033[5m'
-readonly C_REVERSE='\033[7m'
-readonly C_HIDDEN='\033[8m'
+C_ITALIC='\033[3m'
+C_UNDERLINE='\033[4m'
+C_BLINK='\033[5m'
+C_REVERSE='\033[7m'
+C_HIDDEN='\033[8m'
 
 # 前景色
 # shellcheck disable=SC2034  # Unused color variables - available for future use
-readonly C_BLACK='\033[30m'
-readonly C_RED='\033[31m'
-readonly C_GREEN='\033[32m'
-readonly C_YELLOW='\033[33m'
-readonly C_BLUE='\033[34m'
-readonly C_MAGENTA='\033[35m'
-readonly C_CYAN='\033[36m'
-readonly C_WHITE='\033[37m'
+C_BLACK='\033[30m'
+C_RED='\033[31m'
+C_GREEN='\033[32m'
+C_YELLOW='\033[33m'
+C_BLUE='\033[34m'
+C_MAGENTA='\033[35m'
+C_CYAN='\033[36m'
+C_WHITE='\033[37m'
 
 # 亮前景色
-readonly C_LBLACK='\033[90m'
-readonly C_LRED='\033[91m'
-readonly C_LGREEN='\033[92m'
-readonly C_LYELLOW='\033[93m'
-readonly C_LBLUE='\033[94m'
-readonly C_LMAGENTA='\033[95m'
-readonly C_LCYAN='\033[96m'
-readonly C_LWHITE='\033[97m'
+C_LBLACK='\033[90m'
+C_LRED='\033[91m'
+C_LGREEN='\033[92m'
+C_LYELLOW='\033[93m'
+C_LBLUE='\033[94m'
+C_LMAGENTA='\033[95m'
+C_LCYAN='\033[96m'
+C_LWHITE='\033[97m'
 
 # 背景色
-readonly C_BG_BLACK='\033[40m'
-readonly C_BG_RED='\033[41m'
-readonly C_BG_GREEN='\033[42m'
-readonly C_BG_YELLOW='\033[43m'
-readonly C_BG_BLUE='\033[44m'
-readonly C_BG_MAGENTA='\033[45m'
-readonly C_BG_CYAN='\033[46m'
-readonly C_BG_WHITE='\033[47m'
+C_BG_BLACK='\033[40m'
+C_BG_RED='\033[41m'
+C_BG_GREEN='\033[42m'
+C_BG_YELLOW='\033[43m'
+C_BG_BLUE='\033[44m'
+C_BG_MAGENTA='\033[45m'
+C_BG_CYAN='\033[46m'
+C_BG_WHITE='\033[47m'
 
 # 玻璃拟态样式（半透明效果模拟）
-readonly C_GLASS_BG='\033[48;5;235m'     # 深色半透明背景
-readonly C_GLASS_FG='\033[38;5;250m'     # 浅色文字
-readonly C_GLASS_ACCENT='\033[38;5;81m'  # 强调色（蓝绿色）
-readonly C_GLASS_SUCCESS='\033[38;5;84m' # 成功色（绿色）
-readonly C_GLASS_WARN='\033[38;5;220m'   # 警告色（黄色）
-readonly C_GLASS_ERROR='\033[38;5;203m'  # 错误色（红色）
+C_GLASS_BG='\033[48;5;235m'     # 深色半透明背景
+C_GLASS_FG='\033[38;5;250m'     # 浅色文字
+C_GLASS_ACCENT='\033[38;5;81m'  # 强调色（蓝绿色）
+C_GLASS_SUCCESS='\033[38;5;84m' # 成功色（绿色）
+C_GLASS_WARN='\033[38;5;220m'   # 警告色（黄色）
+C_GLASS_ERROR='\033[38;5;203m'  # 错误色（红色）
 
 # ============================================================
 # 图标系统 - Unicode 符号
 # ============================================================
 
 # 导航图标
-readonly ICON_HOME='🏠'
-readonly ICON_BACK='←'
-readonly ICON_NEXT='→'
-readonly ICON_UP='↑'
-readonly ICON_DOWN='↓'
-readonly ICON_MENU='☰'
-readonly ICON_CLOSE='✕'
-readonly ICON_REFRESH='↻'
-readonly ICON_SEARCH='🔍'
-readonly ICON_FILTER='🔽'
+ICON_HOME='🏠'
+ICON_BACK='←'
+ICON_NEXT='→'
+ICON_UP='↑'
+ICON_DOWN='↓'
+ICON_MENU='☰'
+ICON_CLOSE='✕'
+ICON_REFRESH='↻'
+ICON_SEARCH='🔍'
+ICON_FILTER='🔽'
 
 # 状态图标
-readonly ICON_SUCCESS='✓'
-readonly ICON_ERROR='✗'
-readonly ICON_WARNING='⚠'
-readonly ICON_INFO='ℹ'
-readonly ICON_QUESTION='?'
-readonly ICON_PENDING='⏳'
-readonly ICON_RUNNING='▶'
-readonly ICON_PAUSED='⏸'
-readonly ICON_STOPPED='■'
+ICON_SUCCESS='✓'
+ICON_ERROR='✗'
+ICON_WARNING='⚠'
+ICON_INFO='ℹ'
+ICON_QUESTION='?'
+ICON_PENDING='⏳'
+ICON_RUNNING='▶'
+ICON_PAUSED='⏸'
+ICON_STOPPED='■'
 
 # 用户/权限图标
-readonly ICON_USER='👤'
-readonly ICON_USERS='👥'
-readonly ICON_ADMIN='👑'
-readonly ICON_GUEST='😐'
-readonly ICON_LOCK='🔒'
-readonly ICON_UNLOCK='🔓'
-readonly ICON_KEY='🔑'
-readonly ICON_SHIELD='🛡'
+ICON_USER='👤'
+ICON_USERS='👥'
+ICON_ADMIN='👑'
+ICON_GUEST='😐'
+ICON_LOCK='🔒'
+ICON_UNLOCK='🔓'
+ICON_KEY='🔑'
+ICON_SHIELD='🛡'
 
 # 文件/目录图标
 # shellcheck disable=SC2034  # Unused icons - available for future use
-readonly ICON_FILE='📄'
-readonly ICON_FOLDER='📁'
-readonly ICON_FOLDER_OPEN='📂'
+ICON_FILE='📄'
+ICON_FOLDER='📁'
+ICON_FOLDER_OPEN='📂'
 
-readonly ICON_DRIVE='💾'
-readonly ICON_DISK='💿'
-readonly ICON_CLOUD='☁'
-readonly ICON_ARCHIVE='📦'
-readonly ICON_TRASH='🗑'
+ICON_DRIVE='💾'
+ICON_DISK='💿'
+ICON_CLOUD='☁'
+ICON_ARCHIVE='📦'
+ICON_TRASH='🗑'
 
 # 操作图标
-readonly ICON_ADD='➕'
-readonly ICON_REMOVE='➖'
-readonly ICON_EDIT='✏'
-readonly ICON_DELETE='🗑'
-readonly ICON_COPY='📋'
-readonly ICON_PASTE='📌'
-readonly ICON_CUT='✂'
-readonly ICON_SAVE='💾'
-readonly ICON_DOWNLOAD='⬇'
-readonly ICON_UPLOAD='⬆'
-readonly ICON_SHARE='↗'
-readonly ICON_PRINT='🖨'
+ICON_ADD='➕'
+ICON_REMOVE='➖'
+ICON_EDIT='✏'
+ICON_DELETE='🗑'
+ICON_COPY='📋'
+ICON_PASTE='📌'
+ICON_CUT='✂'
+ICON_SAVE='💾'
+ICON_DOWNLOAD='⬇'
+ICON_UPLOAD='⬆'
+ICON_SHARE='↗'
+ICON_PRINT='🖨'
 
 # 系统图标
-readonly ICON_SETTINGS='⚙'
-readonly ICON_TOOLS='🛠'
-readonly ICON_BUG='🐛'
-readonly ICON_TERMINAL='💻'
-readonly ICON_SERVER='🖥'
-readonly ICON_NETWORK='🌐'
-readonly ICON_WIFI='📶'
-readonly ICON_BLUETOOTH='🔵'
-readonly ICON_BATTERY='🔋'
-readonly ICON_CLOCK='⏰'
-readonly ICON_CALENDAR='📅'
-readonly ICON_MAIL='✉'
-readonly ICON_PHONE='📞'
-readonly ICON_LOCATION='📍'
+ICON_SETTINGS='⚙'
+ICON_TOOLS='🛠'
+ICON_BUG='🐛'
+ICON_TERMINAL='💻'
+ICON_SERVER='🖥'
+ICON_NETWORK='🌐'
+ICON_WIFI='📶'
+ICON_BLUETOOTH='🔵'
+ICON_BATTERY='🔋'
+ICON_CLOCK='⏰'
+ICON_CALENDAR='📅'
+ICON_MAIL='✉'
+ICON_PHONE='📞'
+ICON_LOCATION='📍'
 
 # ============================================================
 # 玻璃拟态视觉效果函数
@@ -264,7 +264,7 @@ glass_separator() {
         dashed) char='╌' ;;
     esac
     
-    printf '%b%*s%b\n' "$C_GLASS_FG" "$width" '' | tr ' ' "$char"
+    printf '%b%*s%b\n' "$C_GLASS_FG" "$width" '' "$C_RESET" | tr ' ' "$char"
 }
 
 # ============================================================
@@ -286,7 +286,7 @@ glass_fade_in() {
     for ((i = 0; i < steps; i++)); do
         printf '\033[2J\033[H'
         printf '%bLoading...%b\n' "$C_DIM" "$C_RESET"
-        sleep "${delay}ms"
+        sleep "$(printf '%.3f' "$(echo "${delay} / 1000" | bc -l 2>/dev/null || echo "0.1")")"
     done
     
     printf '\033[2J\033[H'
@@ -301,7 +301,7 @@ glass_typewriter() {
     local i
     for ((i = 0; i < ${#text}; i++)); do
         printf '%s' "${text:$i:1}"
-        sleep "${delay}ms"
+        sleep "$(printf '%.3f' "$(echo "${delay} / 1000" | bc -l 2>/dev/null || echo "0.1")")"
     done
     printf '\n'
 }

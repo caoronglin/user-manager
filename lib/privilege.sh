@@ -240,7 +240,6 @@ priv_sudo() { priv_exec sudo "$@"; }
 # 硬件信息命令封装
 priv_dmidecode() { priv_exec dmidecode "$@"; }
 priv_smartctl() { priv_exec smartctl "$@"; }
-priv_sudo() { priv_exec sudo "$@"; }
 
 # ============================================================
 # 权限自检主函数

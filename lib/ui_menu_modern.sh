@@ -88,15 +88,11 @@ draw_menu_item_icon() {
     
     if [[ "$is_selected" == "true" ]]; then
         # 选中样式
-        printf "${indent}${C_SELECTED_TEXT}%s${C_RESET}${C_SELECTED_BG}◄${C_RESET} %s${C_SELECTED_BG}└─${C_SELECTED_BG}└─${C_RESET}\n" \
-            "$num" "$icon" "$label" "$desc" "C_ICON"
-        printf "${indent}${C_SELECTED_TEXT}%s${C_RESET}${C_SELECTED_BG}└─${C_SELECTED_BG}└─${C_RESET}\n" \
-            "$num" "$icon" "$label" "$desc" ""
+        printf "${indent}${C_SELECTED_TEXT}[%s]${C_RESET} ${C_SELECTED_BG}%s %s${C_RESET} ${C_DIM}%s${C_RESET}\n" \
+            "$num" "$icon" "$label" "$desc"
     else
         # 普通样式
-        printf "${indent}${C_DIM}[%s]${C_RESET}${C_ICON}%s${C_RESET} %s${C_DIM}%s${C_RESET}\n" \
-            "$num" "$icon" "$label" "$desc" "C_LABEL"
-        printf "${indent}${C_DIM}%s${C_RESET}${C_DIM}%s${C_RESET}\n" \
+        printf "${indent}${C_DIM}[%s]${C_RESET} ${C_ICON}%s${C_RESET} %s ${C_DIM}%s${C_RESET}\n" \
             "$num" "$icon" "$label" "$desc"
     fi
 }
@@ -107,7 +103,7 @@ draw_menu_submenu_icon() {
     local num="$1" 
     local label="$2"
     
-    printf "  %s${C_DIM}[%s]${C_RESET}${C_BYELLOW}%s${C_RESET} %s ${C_BYELLOW}›${C_RESET}\n" \
+    printf "  ${C_DIM}[%s]${C_RESET} ${C_BYELLOW}%s${C_RESET} ${C_BYELLOW}›${C_RESET}\n" \
         "$num" "$label"
 }
 
@@ -115,9 +111,8 @@ draw_menu_submenu_icon() {
 draw_menu_exit_icon() {
     local label="${1:-返回}"
     
-    printf "\n  %s%s\n\n" \
-        "${C_DIM}[%s]${C_RESET}${C_BYELLOW}%s${C_RESET} %s${C_BYELLOW}⏎${C_RESET}" \
-        "9" "$label"
+    printf "\n  ${C_DIM}[%s]${C_RESET} ${C_BYELLOW}%s${C_RESET} ${C_BYELLOW}⏎${C_RESET}\n\n" \
+        "0" "$label"
 }
 
 # ============================================================
@@ -351,76 +346,58 @@ main_menu_modern() {
         read -rs -n1 opt
         
         case "$opt" in
-            1|创建|用户|CR)
+            1|CR)
                 safe_run create_or_assign_user
                 ;;
-           
-            
-            2|修改|密码|PW)
+            2|PW)
                 safe_run change_user_password
                 ;;
-            
-            3|删除|用户|DEL)
+            3|DEL)
                 safe_run delete_user_account
                 ;;
-            
-            4|重命名|重命名|RN)
+            4|RN)
                 safe_run rename_user_account
                 ;;
-            
-            5|暂停|启用|SP)
+            5|SP)
                 safe_run suspend_or_enable_user
                 ;;
-            
-            6|配额|调整|QUOTA)
+            6|QUOTA)
                 safe_run modify_user_quota
                 ;;
-            
-            7|资源限制|限制|RES)
+            7|RES)
                 safe_run modify_user_resource_limits
                 ;;
-            
-            8|查看|列表|查看|列表|VW)
+            8|VW)
                 safe_run list_managed_users
                 ;;
-            
-            9|数据盘|磁盘|DISK)
+            9|DISK)
                 safe_run show_disk_overview
                 ;;
-            
-            10|备份|恢复|BK)
+            10|BK)
                 safe_run backup_menu
                 ;;
-            
-            11|防火墙|规则|FW)
+            11|FW)
                 safe_run firewall_menu
                 ;;
-            
-            12|DNS|访问|DNS)
+            12|DNS)
                 safe_run dns_menu
                 ;;
-            
-            13|软连接|链接|LK)
+            13|LK)
                 safe_run symlink_menu
                 ;;
-            
-            14|作业统计|作业|JOB)
+            14|JOB)
                 safe_run job_stats_menu
                 ;;
-            
-            15|密码轮换|密码|ROT)
+            15|ROT)
                 safe_run password_rotation_menu
                 ;;
-            
-            16|报告|查看|RPT)
+            16|RPT)
                 safe_run report_menu
                 ;;
-            
-            17|系统维护|系统|SYS)
+            17|SYS)
                 safe_run system_menu
                 ;;
-            
-            0|退出|退|Q)
+            0|Q|q)
                 msg_ok "再见！"
                 exit 0
                 ;;

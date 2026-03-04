@@ -108,7 +108,7 @@ get_user_quota_info() {
         local device quota_output
         device=$(df "$mp" 2>/dev/null | awk 'NR==2 {print $1}')
         if [[ -n "$device" ]]; then
-            quota_output=$(sudo quota -u "$username" 2>/dev/null \
+            quota_output=$(run_privileged quota -u "$username" 2>/dev/null \
                 | grep -E "^[[:space:]]*(${device}|${mp})" || true)
             if [[ -n "$quota_output" ]]; then
                 used_kb=$(echo "$quota_output" | awk '{print $2}')
@@ -301,11 +301,21 @@ show_disk_overview() {
         avail_h_sum=$(bytes_to_human "$avail_sum")
         (( total_size_sum > 0 )) && overall_pct=$((used_sum * 100 / total_size_sum))
 
-        local sum_color
+        local sum_color badge
         sum_color=$(get_usage_color "$overall_pct")
         printf "  ${C_BOLD}${C_WHITE}合计%-4s${C_RESET}  %-12s  ${sum_color}%-12s${C_RESET}  ${C_BGREEN}%-12s${C_RESET}  " \
                "" "$total_h_sum" "$used_h_sum" "$avail_h_sum"
         draw_usage_bar "$overall_pct" 16
+        # 重新计算汇总行的状态徽章
+        if (( overall_pct >= 95 )); then
+            badge="${C_BG_RED}${C_WHITE} 危险 ${C_RESET}"
+        elif (( overall_pct >= DISK_WARNING_THRESHOLD )); then
+            badge="${C_BG_YELLOW}${C_BOLD} 警告 ${C_RESET}"
+        elif (( overall_pct >= 70 )); then
+            badge="${C_BYELLOW}正常${C_RESET}"
+        else
+            badge="${C_BGREEN}良好${C_RESET}"
+        fi
         printf "  %b\n" "$badge"
     fi
 

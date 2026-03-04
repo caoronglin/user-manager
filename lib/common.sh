@@ -53,6 +53,28 @@ msg_err_ctx() {
     fi
 }
 
+# === 权限辅助函数 ===
+
+# 检查当前是否以 root 身份运行
+is_root() { [[ "$(id -u)" -eq 0 ]]; }
+
+# 通用特权命令执行（用于白名单外的命令）
+# 用法: run_privileged command [args...]
+run_privileged() {
+    if [[ $# -eq 0 ]]; then
+        msg_err "run_privileged: 未指定命令"
+        return 1
+    fi
+    if is_root; then
+        "$@"
+    elif command -v sudo &>/dev/null; then
+        sudo "$@"
+    else
+        msg_err "无法提升权限: 非 root 且 sudo 不可用"
+        return 1
+    fi
+}
+
 # === UI 组件 ===
 
 draw_line() {
@@ -145,7 +167,7 @@ draw_info_card() {
 }
 
 # === 锁机制 ===
-LOCK_FILE="/run/lock/user_manager.lock"
+LOCK_FILE="/tmp/user_manager_${USER:-unknown}.lock"
 LOCK_HELD=false
 
 acquire_lock() {
@@ -384,7 +406,8 @@ safe_run() {
     local rc=0
     "$@" || rc=$?
     if (( rc != 0 )); then
-        msg_debug "函数 '$1' 返回 $rc"
+        msg_warn "函数 '$1' 执行失败 (返回码: $rc)"
+        msg_debug "函数 '$1' 参数: ${*:2}"
     fi
     return 0   # 始终返回 0，防止主循环退出
 }

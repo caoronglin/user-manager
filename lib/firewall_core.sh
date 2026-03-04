@@ -103,7 +103,7 @@ add_port_rule() {
     record_user_event "$username" "firewall_add" "添加端口规则: $port/$protocol"
 
     # 记录到用户端口映射文件
-    mkdir -p "$(dirname "$USER_PORT_MAP_FILE")"
+    priv_mkdir -p "$(dirname "$USER_PORT_MAP_FILE")"
     echo "$username:$port:$protocol:${from_ip:-any}:$(date +%Y-%m-%d)" >> "$USER_PORT_MAP_FILE"
     return 0
 }
@@ -394,7 +394,7 @@ add_port_range() {
         record_user_event "$username" "firewall_add_range" "添加端口范围: $start_port-$end_port/$protocol"
 
         # 记录到映射文件
-        mkdir -p "$(dirname "$USER_PORT_MAP_FILE")"
+        priv_mkdir -p "$(dirname "$USER_PORT_MAP_FILE")"
         echo "$username:$start_port-$end_port:$protocol:any:$(date +%Y-%m-%d)" >> "$USER_PORT_MAP_FILE"
         return 0
     else

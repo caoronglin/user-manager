@@ -954,7 +954,7 @@ mkdir -p "\$user_backup_dir"
 
 # 查找该用户最近的备份用于增量
 LINK_DEST_OPT=""
-LAST_BACKUP=\$(find "$BACKUP_ROOT/\$username" -maxdepth 1 -type d \( -name 'inc_*' -o -name 'full_*' -o -name '2*' \) 2>/dev/null | sort -r | head -n1)
+LAST_BACKUP=\$(find "\$BACKUP_ROOT/\$username" -maxdepth 1 -type d \( -name 'inc_*' -o -name 'full_*' -o -name '2*' \) 2>/dev/null | sort -r | head -n1)
 if [[ -n "\$LAST_BACKUP" && -d "\$LAST_BACKUP" ]]; then
     LINK_DEST_OPT="--link-dest=\$LAST_BACKUP"
 fi

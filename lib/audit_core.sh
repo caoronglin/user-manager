@@ -251,17 +251,29 @@ audit_cleanup_old_logs() {
 # ============================================================
 
 # 查询审计日志
-# 参数：$1=操作类型(可选), $2=用户(可选), $3=日期范围(可选)
+# 参数：$1=操作类型(可选), $2=用户(可选), $3=日期范围(可选，格式: YYYY-MM-DD 或 YYYY-MM-DD:YYYY-MM-DD)
 audit_query() {
     local op_type="${1:-}"
     local user="${2:-}"
     local date_range="${3:-}"
-    : "$date_range"
     
     # 检查日志文件是否存在
     if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
         echo "审计日志文件不存在"
         return 1
+    fi
+    
+    # 解析日期范围
+    local date_start="" date_end=""
+    if [[ -n "$date_range" ]]; then
+        if [[ "$date_range" == *:* ]]; then
+            date_start="${date_range%%:*}"
+            date_end="${date_range##*:}"
+        else
+            # 单个日期，仅查询该天
+            date_start="$date_range"
+            date_end="$date_range"
+        fi
     fi
     
     # 构建查询条件
@@ -275,16 +287,28 @@ audit_query() {
         conditions+=("$user")
     fi
     
-    # 执行查询
-    if [[ ${#conditions[@]} -eq 0 ]]; then
-        # 无过滤条件，显示最近100条
-        tail -n 100 "$AUDIT_LOG_FILE"
-    else
-        # 有过滤条件
-        local pattern
-        pattern=$(IFS='|'; echo "${conditions[*]}")
-        grep -E "$pattern" "$AUDIT_LOG_FILE" | tail -n 100
-    fi
+    # 第一步：按操作类型和用户过滤
+    {
+        if [[ ${#conditions[@]} -gt 0 ]]; then
+            local pattern
+            pattern=$(IFS='|'; echo "${conditions[*]}")
+            grep -E "$pattern" "$AUDIT_LOG_FILE"
+        else
+            cat "$AUDIT_LOG_FILE"
+        fi
+    } | {
+        # 第二步：日期过滤
+        if [[ -n "$date_start" && -n "$date_end" ]]; then
+            while IFS='|' read -r ts rest; do
+                local log_date="${ts%% *}"
+                if [[ ! "$log_date" < "$date_start" && ! "$log_date" > "$date_end" ]]; then
+                    echo "${ts}|${rest}"
+                fi
+            done
+        else
+            cat
+        fi
+    } | tail -n 100
     
     return 0
 }
