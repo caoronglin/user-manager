@@ -1167,6 +1167,44 @@ password_rotation_menu() {
         "4:立即执行轮换"
 }
 
+# --- 查看审计日志 ---
+view_audit_log() {
+    draw_header "查看审计日志"
+    
+    if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
+        msg_warn "审计日志文件不存在"
+        return 0
+    fi
+    
+    msg_info "最近 50 条审计记录:"
+    echo ""
+    tail -50 "$AUDIT_LOG_FILE" | while IFS='|' read -r timestamp operation _ result details; do
+        printf "  ${C_DIM}%-20s${C_RESET} ${C_BOLD}%-15s${C_RESET} %-20s %s\n" \
+            "$timestamp" "$operation" "$result" "${details:0:50}"
+    done
+    echo ""
+}
+
+# --- 审计统计分析 ---
+show_audit_stats() {
+    draw_header "审计统计分析"
+    
+    if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
+        msg_warn "审计日志文件不存在"
+        return 0
+    fi
+    
+    local total_ops success_count failure_count
+    total_ops=$(wc -l < "$AUDIT_LOG_FILE")
+    success_count=$(grep -c "SUCCESS" "$AUDIT_LOG_FILE" || echo 0)
+    failure_count=$(grep -c -E "(FAILURE|ERROR|DENIED)" "$AUDIT_LOG_FILE" || echo 0)
+    
+    draw_info_card "总操作数:" "$total_ops"
+    draw_info_card "成功:" "${C_BGREEN}$success_count${C_RESET}"
+    draw_info_card "失败/拒绝:" "${C_BRED}$failure_count${C_RESET}"
+    echo ""
+}
+
 # === 报告与统计菜单 ===
 _handle_report() {
     local opt="$1"
