@@ -27,6 +27,8 @@ source "$LIB_DIR/user_core.sh"
 # shellcheck disable=SC1091
 source "$LIB_DIR/email_core.sh"
 # shellcheck disable=SC1091
+source "$LIB_DIR/audit_core.sh"
+# shellcheck disable=SC1091
 source "$LIB_DIR/resource_core.sh"
 # shellcheck disable=SC1091
 source "$LIB_DIR/backup_core.sh"
@@ -1224,6 +1226,8 @@ _handle_report() {
         17) setup_weekly_report_cron ;;
         18) remove_weekly_report_cron ;;
         19) view_weekly_report_log ;;
+        20) view_audit_log ;;
+        21) show_audit_stats ;;
         *)  msg_err "无效选项" ;;
     esac
 }
@@ -1250,7 +1254,10 @@ report_menu() {
         "16:为所有用户发送报告" \
         "17:设置每周自动报告" \
         "18:取消每周自动报告" \
-        "19:查看自动报告日志"
+        "19:查看自动报告日志" \
+        "---" \
+        "20:查看审计日志" \
+        "21:审计统计分析"
 }
 
 _handle_system() {
@@ -1354,3 +1361,45 @@ main() {
 }
 
 main "$@"
+
+# ============================================================
+# 审计日志查看
+# ============================================================
+view_audit_log() {
+    draw_header "查看审计日志"
+    
+    if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
+        msg_warn "审计日志文件不存在"
+        return 0
+    fi
+    
+    msg_info "最近 50 条审计记录:"
+    echo ""
+    tail -50 "$AUDIT_LOG_FILE" | while IFS='|' read -r timestamp _operation _target result details; do
+        printf "  ${C_DIM}%-20s${C_RESET} ${C_BOLD}%-15s${C_RESET} %-20s %s\n" \
+            "$timestamp" "$_operation" "$result"
+    done
+    echo ""
+}
+
+# ============================================================
+# 审计统计分析
+# ============================================================
+show_audit_stats() {
+    draw_header "审计统计分析"
+    
+    if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
+        msg_warn "审计日志文件不存在"
+        return 0
+    fi
+    
+    local total_ops success_count failure_count
+    total_ops=$(wc -l < "$AUDIT_LOG_FILE")
+    success_count=$(grep -c "SUCCESS" "$AUDIT_LOG_FILE" 2>/dev/null || echo 0)
+    failure_count=$(grep -c -E "(FAILURE|ERROR|DENIED)" "$AUDIT_LOG_FILE" 2>/dev/null || echo 0)
+    
+    draw_info_card "总操作数:" "$total_ops" "$C_BOLD"
+    draw_info_card "成功:" "${C_BGREEN}$success_count${C_RESET}"
+    draw_info_card "失败/拒绝:" "${C_BRED}$failure_count${C_RESET}"
+    echo ""
+}
