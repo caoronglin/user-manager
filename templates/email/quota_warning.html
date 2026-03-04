@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>磁盘配额警告</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
+            background: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            text-align: center;
+            padding: 32px 36px;
+            border-radius: 12px 12px 0;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .content {
+            padding: 32px 40px;
+        }
+        
+        .alert-box {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            border-radius: 8px;
+        }
+        
+        .alert-box p {
+            margin: 0 0 12px 0;
+            color: #991b1b;
+            font-size: 14px;
+        }
+        
+        .quota-meter {
+            background: #f3f4f6;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 24px 0;
+            text-align: center;
+        }
+        
+        .quota-percentage {
+            font-size: 48px;
+            font-weight: 700;
+            color: #ef4444;
+            margin-bottom: 8px;
+        }
+        
+        .quota-details {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .quota-item {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .quota-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+        
+        .quota-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #111827;
+        }
+        
+        .info-card {
+            background: #ffffff;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 12px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+        }
+        
+        .recommendations {
+            background: #fef3cd;
+            border-left: 4px solid #f59e0b;
+            padding: 20px 24px;
+            margin-top: 24px;
+            border-radius: 8px;
+        }
+        
+        .recommendations p {
+            margin: 0 0 12px 0;
+            color: #92400e;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .recommendations ul {
+            margin: 0;
+            padding: 0 0 0 18px;
+            color: #78350f;
+            font-size: 13px;
+            line-height: 2;
+        }
+        
+        .footer {
+            background: #fafafa;
+            border-top: 1px solid #e9ecef;
+            padding: 24px 32px;
+            text-align: center;
+            margin-top: 32px;
+        }
+        
+        .footer p {
+            margin: 0 0 8px 0;
+            color: #888;
+            font-size: 13px;
+        }
+        
+        .footer .system-name {
+            color: #555;
+            font-weight: 600;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                margin: 20px auto;
+            }
+            
+            .header {
+                padding: 24px 24px;
+            }
+            
+            .content {
+                padding: 24px 24px;
+            }
+            
+            .quota-percentage {
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>⚠️ 磁盘配额警告</h1>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+            <!-- Alert Box -->
+            <div class="alert-box">
+                <p><strong>尊敬的 ${username}</strong>，您好！</p>
+                <p>您的磁盘使用量已达到警戒线，请立即清理空间。</p>
+            </div>
+            
+            <!-- Quota Meter -->
+            <div class="quota-meter">
+                <div class="quota-percentage">${usage_percent}%</div>
+                <div>已使用配额</div>
+                
+                <div class="quota-details">
+                    <div class="quota-item">
+                        <div class="quota-label">已使用</div>
+                        <div class="quota-value" style="color: #ef4444;">${used_gb} GB</div>
+                    </div>
+                    <div class="quota-item">
+                        <div class="quota-label">配额限制</div>
+                        <div class="quota-value">${limit_gb} GB</div>
+                    </div>
+                    <div class="quota-item">
+                        <div class="quota-label">剩余</div>
+                        <div class="quota-value" style="color: #f59e0b;">${remaining_gb} GB</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recommendations -->
+            <div class="recommendations">
+                <p>💡 建议操作：</p>
+                <ul>
+                    <li>删除不必要的临时文件和日志</li>
+                    <li>清理下载目录中的旧文件</li>
+                    <li>压缩或归档不常用的数据</li>
+                    <li>检查是否有大型文件可以移至其他存储</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p class="system-name">用户管理系统</p>
+            <p>此邮件由系统自动发送，请勿回复</p>
+        </div>
+    </div>
+</body>
+</html>

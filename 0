@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>System Report</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:#f8fafc;color:#1e293b;line-height:1.7;padding:24px 16px;font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+code,pre,.mono{font-family:'JetBrains Mono','Fira Code','SF Mono','Cascadia Code',Consolas,monospace;font-size:13px}
+.container{max-width:900px;margin:0 auto}
+.header{padding:32px 0 24px;border-bottom:1px solid #e2e8f0;margin-bottom:24px}
+.header h1{font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.025em}
+.header .subtitle{font-size:13px;color:#64748b;margin-top:6px;font-weight:400}
+.section{margin-bottom:32px}
+.section-title{font-size:16px;font-weight:600;color:#0f172a;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #2563eb;letter-spacing:-0.01em}
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);padding:20px;margin-bottom:16px}
+.stat-row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.stat-card{flex:1;min-width:140px;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);padding:16px}
+.stat-card .label{font-size:12px;color:#64748b;margin-bottom:4px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em}
+.stat-card .value{font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.025em}
+.stat-card .value.blue{color:#2563eb}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{background:#f8fafc;color:#475569;font-weight:600;text-align:left;padding:10px 12px;border-bottom:2px solid #e2e8f0;font-size:13px;letter-spacing:0.02em}
+td{padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155}
+tr:hover td{background:#f8fafc}
+.progress-bar{width:100%;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden}
+.progress-fill{height:100%;border-radius:4px;transition:width 0.3s}
+.progress-success{background:#22c55e}
+.progress-warning{background:#eab308}
+.progress-danger{background:#ef4444}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:500}
+.badge-success{background:#f0fdf4;color:#16a34a}
+.badge-warning{background:#fefce8;color:#ca8a04}
+.badge-danger{background:#fef2f2;color:#dc2626}
+.tip-box{background:#eff6ff;border-left:3px solid #2563eb;border-radius:4px;padding:12px 16px;font-size:13px;color:#1e40af;margin-top:12px;line-height:1.8}
+.footer{margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;text-align:center}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="header">
+  <h1>System Report</h1>
+  <div class="subtitle">2026-03-04 13:36:10</div>
+</div>
+<div class="section">
+  <div class="section-title">System Overview</div>
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="label">Managed Users</div>
+      <div class="value blue">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Disks Online</div>
+      <div class="value">0 / 7</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Total Storage</div>
+      <div class="value">0.0 KB</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Storage Used</div>
+      <div class="value">0.0 KB</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Suspended</div>
+      <div class="value">0</div>
+    </div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-title">User Quota</div>
+  <div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>User</th>
+        <th>Mountpoint</th>
+        <th>Used</th>
+        <th>Limit</th>
+        <th>Usage</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td colspan="6" style="text-align:center;color:#94a3b8;">No managed users found</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+<div class="section">
+  <div class="section-title">Resource Limits</div>
+  <div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>User</th>
+        <th>CPU Quota</th>
+        <th>Memory Limit</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td colspan="4" style="text-align:center;color:#94a3b8;">No managed users found</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+<div class="section">
+  <div class="section-title">Real-time Resource Usage</div>
+  <div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>User</th>
+        <th>Processes</th>
+        <th>CPU %</th>
+        <th>Memory (RSS)</th>
+        <th>Disk I/O</th>
+        <th>Login Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td colspan="6" style="text-align:center;color:#94a3b8;">No managed users found</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+<div class="section">
+  <div class="section-title">Recent Operations</div>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>User</th>
+          <th>Action</th>
+          <th>Type</th>
+          <th>Mountpoint</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="font-size:13px;color:#64748b">2025-12-24 16:04:15</td>
+          <td>T25ronglin</td>
+          <td>remove_schedule</td>
+          <td>移除定时备份</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:#64748b">2025-12-24 16:03:58</td>
+          <td>T25ronglin</td>
+          <td>quota_modify</td>
+          <td>500.00GB -> 1024.00GB</td>
+          <td>/mnt/data02</td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:#64748b">2025-11-01 11:27:29</td>
+          <td>norD509HPC</td>
+          <td>schedule_backup</td>
+          <td>配置定时备份: 每天23点</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:#64748b">2025-10-29 18:28:35</td>
+          <td>T25ronglin</td>
+          <td>password_change</td>
+          <td>修改密码</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:#64748b">2025-10-29 18:13:29</td>
+          <td>T25ronglin</td>
+          <td>password_change</td>
+          <td>修改密码</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:#64748b">2025-10-29 18:11:45</td>
+          <td>T25ronglin</td>
+          <td>password_change</td>
+          <td>修改密码</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="footer">
+  Generated at 2026-03-04 13:36:11
+</div>
+</div>
+</body>
+</html>

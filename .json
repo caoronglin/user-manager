@@ -1,0 +1,128 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.2.6-3",
+    "lastTouchedAt": "2026-02-08T07:10:15.338Z"
+  },
+  "wizard": {
+    "lastRunAt": "2026-02-07T11:57:53.380Z",
+    "lastRunVersion": "2026.2.3-1",
+    "lastRunCommand": "doctor",
+    "lastRunMode": "local"
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "huoshan": {
+        "baseUrl": "https://ark.cn-beijing.volces.com/api/coding",
+        "apiKey": "c24396e7-c82d-4d78-bc69-f9147e16cbe1",
+        "api": "anthropic-messages",
+        "models": [
+          {
+            "id": "ark-code-latest",
+            "name": "ark-code-latest",
+            "reasoning": true,
+            "input": [
+              "text"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 200000,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "huoshan/ark-code-latest"
+      },
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    }
+  },
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto"
+  },
+  "channels": {
+    "qqbot": {
+      "enabled": true,
+      "allowFrom": [
+        "*"
+      ],
+      "appId": "102797570",
+      "clientSecret": "WrCXsDZvHdzLh4RoBYvIg4SqEc0PoDc1",
+      "sandbox": true,
+      "allowPrivateChat": true,
+      "allowGroupAt": true
+    }
+  },
+  "discovery": {
+    "mdns": {
+      "mode": "full"
+    }
+  },
+  "canvasHost": {
+    "enabled": true
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "lan",
+    "auth": {
+      "mode": "token",
+      "token": "2a8b19e74b9779e8345f690464743520c14b84531eeaa257"
+    }
+  },
+  "plugins": {
+    "entries": {
+      "feishu": {
+        "enabled": true
+      },
+      "qqbot": {
+        "enabled": true
+      }
+    },
+    "installs": {
+      "feishu": {
+        "source": "npm",
+        "spec": "@m1heng-clawd/feishu",
+        "installPath": "/root/.openclaw/extensions/feishu",
+        "version": "0.1.7",
+        "installedAt": "2026-02-07T12:17:03.607Z"
+      },
+      "qqbot": {
+        "source": "npm",
+        "spec": "@sliverp/qqbot@latest",
+        "installPath": "/root/.openclaw/extensions/qqbot",
+        "version": "1.4.1",
+        "installedAt": "2026-02-07T12:21:42.894Z"
+      }
+    }
+  }
+}
+
+openclaw config set channels.feishu.appId "cli_a90da59796b99bce"
+
+openclaw config set channels.feishu.appSecret "pHPYdXORlMziTzMkazSHBbOXxrRpCoDf"
+
+openclaw config set channels.feishu.enabled true
+
+openclaw config set channels.feishu.connectionMode websocket
+
+openclaw config set channels.feishu.dmPolicy pairing
+
+openclaw config set channels.feishu.groupPolicy allowlist
+
+openclaw config set channels.feishu.requireMention true
