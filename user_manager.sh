@@ -670,12 +670,11 @@ rename_user_account() {
                  'if has($old) then .[$new] = .[$old] | del(.[$old]) else . end' \
                  "$USER_CONFIG_FILE" > "$tmp_cfg" 2>/dev/null; then
                 if mv "$tmp_cfg" "$USER_CONFIG_FILE"; then
-                    :
+                    msg_ok "用户配置已迁移"
                 else
                     rm -f "$tmp_cfg"
                     msg_warn "用户配置迁移失败，请手动检查"
                 fi
-                msg_ok "用户配置已迁移"
             else
                 rm -f "$tmp_cfg"
                 msg_warn "用户配置迁移失败，请手动检查"
@@ -1327,6 +1326,110 @@ system_menu() {
         "9:显示网络信息"
 }
 
+# ============================================================
+#  用户管理子菜单
+# ============================================================
+
+_handle_user_management() {
+    local opt="$1"
+    case $opt in
+        1)  safe_run create_or_assign_user ;;
+        2)  safe_run change_user_password ;;
+        3)  safe_run delete_user_account ;;
+        4)  safe_run rename_user_account ;;
+        5)  safe_run suspend_or_enable_user ;;
+        6)  safe_run modify_user_quota ;;
+        7)  safe_run modify_user_resource_limits ;;
+        8)  safe_run list_managed_users ;;
+        *)  msg_err "无效选项" ;;
+    esac
+}
+
+user_management_menu() {
+    run_submenu "用户管理" _handle_user_management \
+        "1:创建或更新用户" \
+        "2:修改用户密码" \
+        "3:删除用户账户" \
+        "4:重命名用户账户" \
+        "5:暂停或启用用户" \
+        "6:调整用户配额" \
+        "7:设置资源限制" \
+        "8:查看受管用户"
+}
+
+# ============================================================
+#  磁盘与配额管理子菜单
+# ============================================================
+
+_handle_disk_quota() {
+    local opt="$1"
+    case $opt in
+        1)  safe_run show_disk_overview ;;
+        2)  safe_run modify_user_quota ;;
+        3)
+            read_input "请输入用户名"; local username="$REPLY_INPUT"
+            [[ -n "$username" ]] && show_single_user_resource "$username"
+            ;;
+        4)  safe_run modify_user_resource_limits ;;
+        5)
+            read_input "请输入用户名"; local username="$REPLY_INPUT"
+            [[ -n "$username" ]] && show_single_user_resource "$username"
+            ;;
+        *)  msg_err "无效选项" ;;
+    esac
+}
+
+disk_quota_menu() {
+    run_submenu "磁盘与配额管理" _handle_disk_quota \
+        "1:数据盘概览" \
+        "2:调整用户配额" \
+        "3:查看用户配额" \
+        "4:设置资源限制" \
+        "5:查看资源使用"
+}
+# ============================================================
+#  网络与安全管理子菜单
+# ============================================================
+
+_handle_network_security() {
+    local opt="$1"
+    case $opt in
+        1)  safe_run firewall_menu ;;
+        2)  safe_run dns_menu ;;
+        3)  safe_run symlink_menu ;;
+        *)  msg_err "无效选项" ;;
+    esac
+}
+
+network_security_menu() {
+    run_submenu "网络与安全管理" _handle_network_security \
+        "1:防火墙规则 ›" \
+        "2:DNS 访问控制 ›" \
+        "3:软连接与共享 ›"
+}
+
+# ============================================================
+#  报告与统计子菜单
+# ============================================================
+
+_handle_report_stats() {
+    local opt="$1"
+    case $opt in
+        1)  safe_run report_menu ;;
+        2)  safe_run job_stats_menu ;;
+        3)  safe_run password_rotation_menu ;;
+        *)  msg_err "无效选项" ;;
+    esac
+}
+
+report_stats_menu() {
+    run_submenu "报告与统计" _handle_report_stats \
+        "1:报告与分析 ›" \
+        "2:作业统计 ›" \
+        "3:密码轮换 ›"
+}
+
+
 
 # ============================================================
 #  主菜单
@@ -1341,45 +1444,23 @@ main_menu() {
         safe_run show_disk_usage_warnings
 
         echo ""
-        draw_menu_item  1 "创建或更新用户"
-        draw_menu_item  2 "修改用户密码"
-        draw_menu_item  3 "删除用户账户"
-        draw_menu_item  4 "重命名用户账户"
-        draw_menu_item  5 "暂停或启用用户"
-        draw_menu_item  6 "调整用户配额"
-        draw_menu_item  7 "设置资源限制"
-        draw_menu_item  8 "查看受管用户"
-        draw_menu_item  9 "数据盘概览"
-        draw_menu_submenu 10 "备份与恢复"
-        draw_menu_submenu 11 "防火墙规则"
-        draw_menu_submenu 12 "DNS 访问控制"
-        draw_menu_submenu 13 "软连接与共享"
-        draw_menu_submenu 14 "作业统计"
-        draw_menu_submenu 15 "密码轮换"
-        draw_menu_submenu 16 "报告与分析"
-        draw_menu_submenu 17 "系统维护"
+        draw_menu_submenu  1 "用户管理"
+        draw_menu_submenu  2 "磁盘与配额管理"
+        draw_menu_submenu  3 "网络与安全管理"
+        draw_menu_submenu  4 "备份与恢复"
+        draw_menu_submenu  5 "报告与统计"
+        draw_menu_submenu  6 "系统维护"
         draw_menu_exit "退出"
         draw_prompt
         read -r opt
 
         case $opt in
-            1)  safe_run create_or_assign_user ;;
-            2)  safe_run change_user_password ;;
-            3)  safe_run delete_user_account ;;
-            4)  safe_run rename_user_account ;;
-            5)  safe_run suspend_or_enable_user ;;
-            6)  safe_run modify_user_quota ;;
-            7)  safe_run modify_user_resource_limits ;;
-            8)  safe_run list_managed_users ;;
-            9)  safe_run show_disk_overview ;;
-            10) safe_run backup_menu ;;
-            11) safe_run firewall_menu ;;
-            12) safe_run dns_menu ;;
-            13) safe_run symlink_menu ;;
-            14) safe_run job_stats_menu ;;
-            15) safe_run password_rotation_menu ;;
-            16) safe_run report_menu ;;
-            17) safe_run system_menu ;;
+            1)  safe_run user_management_menu ;;
+            2)  safe_run disk_quota_menu ;;
+            3)  safe_run network_security_menu ;;
+            4)  safe_run backup_menu ;;
+            5)  safe_run report_stats_menu ;;
+            6)  safe_run system_menu ;;
             0)  msg_ok "再见！"; exit 0 ;;
             *)  msg_err "无效选项" ;;
         esac
@@ -1415,7 +1496,7 @@ view_audit_log() {
     echo ""
     tail -50 "$AUDIT_LOG_FILE" | while IFS='|' read -r timestamp _operation _target result details; do
         printf "  ${C_DIM}%-20s${C_RESET} ${C_BOLD}%-15s${C_RESET} %-20s %s\n" \
-            "$timestamp" "$_operation" "$result"
+            "$timestamp" "$_operation" "$result" "${details:-}"
     done
     echo ""
 }

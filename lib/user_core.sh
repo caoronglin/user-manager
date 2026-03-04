@@ -81,7 +81,8 @@ get_random_password() {
     local total_passwords
     total_passwords=$(wc -l < "$PASSWORD_POOL_FILE")
 
-    local random_line=$(( RANDOM % total_passwords + 1 ))
+    local random_line
+    random_line=$(shuf -i 1-"$total_passwords" -n 1)
     sed -n "${random_line}p" "$PASSWORD_POOL_FILE"
 }
 
@@ -112,7 +113,7 @@ update_user_config() {
     if command -v jq &>/dev/null; then
         local temp_file
         temp_file=$(mktemp) || { msg_err "无法创建临时文件"; return 1; }
-        jq --arg user "$username" \
+        if jq --arg user "$username" \
            --arg mail "$email" \
            --arg cpu "$cpu_quota" \
            --arg mem "$memory_limit" \
@@ -121,10 +122,13 @@ update_user_config() {
                "cpu_quota": $cpu,
                "memory_limit": $mem,
                "created": (now | strftime("%Y-%m-%d %H:%M:%S"))
-           }' "$USER_CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$USER_CONFIG_FILE"
-        local rc=$?
-        rm -f "$temp_file"
-        return $rc
+           }' "$USER_CONFIG_FILE" > "$temp_file"; then
+            mv "$temp_file" "$USER_CONFIG_FILE"
+            return $?
+        else
+            rm -f "$temp_file"
+            return 1
+        fi
     else
         msg_warn "建议安装 jq 以更好地管理用户配置"
     fi
@@ -527,12 +531,6 @@ configure_password_rotation() {
     # 参数验证
     if ! is_positive_int "$interval_days"; then
         msg_err "轮换间隔必须是正整数（天），当前值: ${interval_days:-<空>}"
-        return 1
-    fi
-    local interval_days="${1:-$PASSWORD_ROTATE_INTERVAL_DAYS}"
-
-    if ! [[ "$interval_days" =~ ^[0-9]+$ ]] || (( interval_days < 1 )); then
-        msg_err "轮换间隔必须是正整数（天）"
         return 1
     fi
 

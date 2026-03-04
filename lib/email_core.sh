@@ -438,13 +438,19 @@ email_queue_add() {
     local temp_file
     temp_file=$(mktemp) || { msg_err "无法创建临时文件"; return 1; }
     
-    jq --arg u "$username" \
+    if jq --arg u "$username" \
        --arg e "$email" \
        --arg t "$template" \
        --argjson d "$data" \
        --argjson now "$(date +%s)" \
        '. += [{"username": $u, "email": $e, "template": $t, "data": $d, "created": $now, "status": "pending", "attempts": 0}]' \
-       "$EMAIL_QUEUE_FILE" > "$temp_file" && mv "$temp_file" "$EMAIL_QUEUE_FILE"
+       "$EMAIL_QUEUE_FILE" > "$temp_file"; then
+        mv "$temp_file" "$EMAIL_QUEUE_FILE"
+    else
+        rm -f "$temp_file"
+        msg_err "邮件队列更新失败"
+        return 1
+    fi
     
     msg_info "邮件已添加到发送队列"
     return 0
