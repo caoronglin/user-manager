@@ -513,7 +513,22 @@ collect_all_job_stats() {
 # ============================================================
 
 # 配置定时密码轮换
+# ============================================================
+# configure_password_rotation - 配置定时密码轮换
+# ============================================================
+# Parameters:
+#   $1 - interval_days: 轮换间隔天数（可选，默认使用配置值）
+# Returns:
+#   0 on success, 1 on failure
+# ============================================================
 configure_password_rotation() {
+    local interval_days="${1:-$PASSWORD_ROTATE_INTERVAL_DAYS}"
+
+    # 参数验证
+    if ! is_positive_int "$interval_days"; then
+        msg_err "轮换间隔必须是正整数（天），当前值: ${interval_days:-<空>}"
+        return 1
+    fi
     local interval_days="${1:-$PASSWORD_ROTATE_INTERVAL_DAYS}"
 
     if ! [[ "$interval_days" =~ ^[0-9]+$ ]] || (( interval_days < 1 )); then
@@ -742,6 +757,12 @@ show_password_rotation_status() {
 }
 
 # 手动执行一次密码轮换
+# ============================================================
+# manual_password_rotation - 手动执行一次密码轮换
+# ============================================================
+# 无参数函数，为所有受管用户立即轮换密码
+# Returns: 0 成功（即使部分失败）
+# ============================================================
 manual_password_rotation() {
     draw_header "手动密码轮换"
 

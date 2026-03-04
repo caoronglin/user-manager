@@ -44,8 +44,20 @@ collect_quota_users() {
 
 # ---------------------------------------------------------------------------
 #  get_managed_usernames  —— 汇总所有磁盘上有配额的合法用户（跳过 root/dell）
+#  支持缓存机制，TTL 为 5 分钟
 # ---------------------------------------------------------------------------
 get_managed_usernames() {
+    local current_time
+    current_time=$(date +%s)
+
+    # 检查缓存是否有效
+    if [[ -n "$USERNAMES_CACHE" ]] && \
+       [[ $((current_time - USERNAMES_CACHE_TIME)) -lt $USERNAMES_CACHE_TTL ]]; then
+        echo "$USERNAMES_CACHE"
+        return 0
+    fi
+
+    # 缓存失效，重新查询
     local -A users_seen=()
     local disk_num idx mp candidate home
 
@@ -61,14 +73,23 @@ get_managed_usernames() {
         done < <(collect_quota_users "$mp")
     done
 
+    # 构建结果并更新缓存
+    local result=""
     for candidate in "${!users_seen[@]}"; do
         if getent passwd "$candidate" >/dev/null 2>&1; then
             home=$(get_user_home "$candidate")
             if [[ "$home" =~ ^${DATA_BASE}/data[0-9]{2}/ ]]; then
-                echo "$candidate"
+                [[ -n "$result" ]] && result+=" "
+                result+="$candidate"
             fi
         fi
     done
+
+    # 更新缓存
+    USERNAMES_CACHE="$result"
+    USERNAMES_CACHE_TIME=$current_time
+
+    echo "$result"
 }
 
 # ---------------------------------------------------------------------------
@@ -285,11 +306,23 @@ show_disk_overview() {
         printf "  ${C_BOLD}${C_WHITE}合计%-4s${C_RESET}  %-12s  ${sum_color}%-12s${C_RESET}  ${C_BGREEN}%-12s${C_RESET}  " \
                "" "$total_h_sum" "$used_h_sum" "$avail_h_sum"
         draw_usage_bar "$overall_pct" 16
-        printf "\n"
+        printf "  %b\n" "$badge"
     fi
 
     echo ""
-    draw_info_card "磁盘数量:" "${disk_count} / ${#ALL_DISKS[@]} 在线"
-    draw_info_card "告警阈值:" "${DISK_WARNING_THRESHOLD}%"
-    echo ""
+}
+
+# ---------------------------------------------------------------------------
+#  get_all_quota_usage  —— 获取所有用户的配额使用情况
+#  输出格式: username:used_bytes:limit_bytes (每行一个用户)
+# ---------------------------------------------------------------------------
+get_all_quota_usage() {
+    local username mp quota_info
+
+    while IFS= read -r username; do
+        [[ -z "$username" ]] && continue
+        mp=$(get_user_mountpoint "$(get_user_home "$username")") || continue
+        quota_info=$(get_user_quota_info "$username" "$mp")
+        echo "${username}:${quota_info}"
+    done < <(get_managed_usernames)
 }

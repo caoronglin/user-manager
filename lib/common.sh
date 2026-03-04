@@ -163,7 +163,17 @@ release_lock() {
     LOCK_HELD=false
 }
 
-trap 'release_lock' EXIT INT TERM
+# === 用户列表缓存机制 ===
+# shellcheck disable=SC2034
+USERNAMES_CACHE=""
+USERNAMES_CACHE_TIME=0
+USERNAMES_CACHE_TTL=300  # 5 分钟 TTL
+
+# 清除用户名缓存
+clear_usernames_cache() {
+    USERNAMES_CACHE=""
+    USERNAMES_CACHE_TIME=0
+}
 
 # === 输入验证函数 ===
 USERNAME_PATTERN='^[a-zA-Z_][a-zA-Z0-9_-]{0,30}$'

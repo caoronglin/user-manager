@@ -110,7 +110,31 @@ add_port_rule() {
 
 # 删除用户的端口访问规则
 # 参数: $1=用户名  $2=端口号  $3=协议(tcp/udp,默认tcp)
+# 删除用户的端口访问规则
 delete_port_rule() {
+    local username="$1"
+    local port="$2"
+    local protocol="${3:-tcp}"
+
+    # 参数验证
+    if [[ -z "$username" || -z "$port" ]]; then
+        msg_err "用户名和端口号不能为空"
+        return 1
+    fi
+
+    # 验证端口号范围 1-65535
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+        msg_err "无效的端口号: ${C_BOLD}$port${C_RESET} (有效范围: 1-65535)"
+        return 1
+    fi
+
+    # 验证协议
+    if [[ "$protocol" != "tcp" && "$protocol" != "udp" ]]; then
+        msg_err "无效的协议: ${C_BOLD}$protocol${C_RESET}，只支持 tcp 或 udp"
+        return 1
+    fi
+
+    check_ufw_status || return 1
     local username="$1"
     local port="$2"
     local protocol="${3:-tcp}"
@@ -239,11 +263,19 @@ list_firewall_rules() {
 
 # 列出指定用户的防火墙规则（彩色表格）
 # 参数: $1=用户名
+# 列出指定用户的防火墙规则（彩色表格）
 list_user_firewall_rules() {
     local username="$1"
 
+    # 参数验证
     if [[ -z "$username" ]]; then
         msg_err "用户名不能为空"
+        return 1
+    fi
+
+    # 检查用户是否存在
+    if ! id "$username" &>/dev/null; then
+        msg_err "用户 ${C_BOLD}$username${C_RESET} 不存在"
         return 1
     fi
 
@@ -376,18 +408,27 @@ add_port_range() {
 # ============================================================
 
 # 应用常用服务的预设规则
-# 参数: $1=用户名  $2=服务类型(web/database/ssh/jupyter)
 apply_service_template() {
     local username="$1"
     local service="$2"
 
+    # 参数验证
     if [[ -z "$username" || -z "$service" ]]; then
         msg_err "用户名和服务类型不能为空"
         return 1
     fi
 
+    # 检查用户是否存在
     if ! id "$username" &>/dev/null; then
         msg_err "用户 ${C_BOLD}$username${C_RESET} 不存在"
+        return 1
+    fi
+
+    # 验证服务类型
+    local valid_services="web|database|ssh|jupyter|ml|all"
+    if ! [[ "$service" =~ ^($valid_services)$ ]]; then
+        msg_err "无效的服务类型: ${C_BOLD}$service${C_RESET}"
+        msg_info "支持的服务类型: web, database, ssh, jupyter, ml, all"
         return 1
     fi
 
