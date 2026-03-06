@@ -1,6 +1,8 @@
 #!/bin/bash
+# shellcheck disable=SC2034
 # ui_modern.sh - 现代玻璃拟态风格 UI 组件
 # 提供命令面板、玻璃拟态视觉效果、动画和图标系统
+# 说明：本文件包含可复用的调色板与图标目录，部分变量为对外暴露的 UI 资源。
 
 # ============================================================
 # ANSI 颜色和样式代码
@@ -364,5 +366,4 @@ glass_init() {
     printf '%b%b %s%b\n' "$C_DIM" "$ICON_INFO" "Initializing glassmorphism UI..." "$C_RESET"
 }
 
-# 执行初始化
-glass_init
+# 模块已加载（不自动执行清屏和初始化输出）

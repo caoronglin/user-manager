@@ -27,8 +27,23 @@ C_BG_YELLOW='\033[43m'
 # shellcheck disable=SC2034
 Red="$C_RED"; Green="$C_GREEN"; Yellow="$C_YELLOW"; Color_Off="$C_RESET"
 
+# === 语义化配色 ===
+# 根据终端能力自动选择 256 色或标准色
+# shellcheck disable=SC2034
+if [[ "${COLORTERM:-}" =~ ^(truecolor|24bit)$ ]] || [[ "${TERM:-}" == *"256color"* ]]; then
+    C_PRIMARY='\033[38;5;75m'      # 柔和蓝 — 主交互色
+    C_ACCENT='\033[38;5;183m'      # 淡紫 — 强调
+    C_MUTED='\033[38;5;243m'       # 中灰 — 次要信息
+    C_SUBTLE='\033[38;5;239m'      # 暗灰 — 边框
+else
+    C_PRIMARY="$C_BCYAN"
+    C_ACCENT="$C_BYELLOW"
+    C_MUTED="$C_DIM"
+    C_SUBTLE="$C_DIM"
+fi
+
 # 菜单布局常量
-MENU_WIDTH=46
+MENU_WIDTH=54
 
 # === 消息函数 ===
 msg()       { echo -e "$*"; }
@@ -82,42 +97,42 @@ draw_line() {
     local line=""
     local i
     for ((i=0; i<width; i++)); do line+="─"; done
-    printf "${C_DIM}%s${C_RESET}\n" "$line"
+    printf "  ${C_SUBTLE}%s${C_RESET}\n" "$line"
 }
 
 draw_header() {
     local title="$1"
     echo ""
-    echo -e "  ${C_BOLD}${C_WHITE}${title}${C_RESET}"
     local hline=""
     local _i
     for ((_i=0; _i<MENU_WIDTH; _i++)); do hline+="─"; done
-    printf "  ${C_DIM}%s${C_RESET}\n" "$hline"
+    printf "  ${C_SUBTLE}%s${C_RESET}\n" "$hline"
+    echo -e "  ${C_PRIMARY}■${C_RESET} ${C_BOLD}${C_WHITE}${title}${C_RESET}"
+    printf "  ${C_SUBTLE}%s${C_RESET}\n" "$hline"
 }
 
 draw_menu_item() {
     local num="$1" label="$2" icon="${3:-}"
     if [[ -n "$icon" ]]; then
-        printf "  ${C_DIM}[${C_RESET}${C_BCYAN}%2s${C_RESET}${C_DIM}]${C_RESET}  %s %s\n" "$num" "$icon" "$label"
+        printf "  ${C_MUTED}[${C_RESET}${C_PRIMARY}%2s${C_RESET}${C_MUTED}]${C_RESET}  %s %s\n" "$num" "$icon" "$label"
     else
-        printf "  ${C_DIM}[${C_RESET}${C_BCYAN}%2s${C_RESET}${C_DIM}]${C_RESET}  %s\n" "$num" "$label"
+        printf "  ${C_MUTED}[${C_RESET}${C_PRIMARY}%2s${C_RESET}${C_MUTED}]${C_RESET}  %s\n" "$num" "$label"
     fi
 }
 
 draw_menu_submenu() {
     local num="$1" label="$2"
-    printf "  ${C_DIM}[${C_RESET}${C_BYELLOW}%2s${C_RESET}${C_DIM}]${C_RESET}  %s ${C_DIM}›${C_RESET}\n" "$num" "$label"
+    printf "  ${C_MUTED}[${C_RESET}${C_PRIMARY}%2s${C_RESET}${C_MUTED}]${C_RESET}  ${C_BOLD}%s${C_RESET} ${C_ACCENT}›${C_RESET}\n" "$num" "$label"
 }
 
 draw_menu_exit() {
     local label="${1:-返回}"
-    printf "\n  %s[ %s0%s%s]%s  %s%s%s\n" \
-        "$C_DIM" "$C_RED" "$C_RESET" "$C_DIM" "$C_RESET" "$C_DIM" "$label" "$C_RESET"
+    printf "\n  ${C_MUTED}[ 0]  %s${C_RESET}\n" "$label"
 }
 
 draw_prompt() {
     echo ""
-    echo -ne "  ${C_BYELLOW}❯${C_RESET} "
+    echo -ne "  ${C_PRIMARY}❯${C_RESET} "
 }
 
 pause_continue() {
@@ -152,10 +167,10 @@ draw_usage_bar() {
 
 # 确认提示
 confirm_action() {
-    local prompt="${1:-确认操作？}" default="${2:-N}"
+    local prompt="${1:-确认继续？}" default="${2:-N}"
     local hint
     [[ "$default" == "Y" ]] && hint="Y/n" || hint="y/N"
-    read -r -p "$(echo -e " ${C_BYELLOW}?${C_RESET} ${prompt} (${hint}): ")" answer
+    read -r -p "$(echo -e " ${C_ACCENT}?${C_RESET} ${prompt} ${C_MUTED}(${hint})${C_RESET}: ")" answer
     answer="${answer:-$default}"
     [[ "$answer" =~ ^[Yy]$ ]]
 }
@@ -163,7 +178,7 @@ confirm_action() {
 # 信息卡片
 draw_info_card() {
     local label="$1" value="$2" color="${3:-$C_BOLD}"
-    printf "  ${C_DIM}%-16s${C_RESET} ${color}%s${C_RESET}\n" "$label" "$value"
+    printf "  ${C_MUTED}%-16s${C_RESET} ${color}%s${C_RESET}\n" "$label" "$value"
 }
 
 # === 锁机制 ===
