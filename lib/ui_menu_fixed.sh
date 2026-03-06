@@ -111,7 +111,7 @@ show_success() {
 
 # 显示错误消息
 show_error() {
-    echo -e "  ${C_ERROR}✗${C_RESET} $1" >&2
+    msg_err "$1"
 }
 
 # 显示警告消息

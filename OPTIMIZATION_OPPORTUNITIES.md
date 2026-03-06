@@ -43,9 +43,9 @@ validate_username "$username" || return 1
 **问题**: 部分文件直接使用 `echo >&2` 而非 `msg_err`
 
 **需要替换**:
-- [ ] `lib/audit_core.sh` (3 处)
-- [ ] `lib/ui_menu_fixed.sh` (1 处)
-- [ ] `lib/ui_menu_simple.sh` (1 处)
+- [x] `lib/audit_core.sh` (3 处)
+- [x] `lib/ui_menu_fixed.sh` (1 处)
+- [x] `lib/ui_menu_simple.sh` (1 处)
 
 **改进方式**:
 ```bash

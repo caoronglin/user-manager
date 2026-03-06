@@ -53,11 +53,7 @@ audit_init() {
     # 创建日志目录
     if [[ ! -d "$AUDIT_LOG_DIR" ]]; then
         mkdir -p "$AUDIT_LOG_DIR" 2>/dev/null || {
-            if declare -F msg_err &>/dev/null; then
-                msg_err "无法创建审计日志目录: $AUDIT_LOG_DIR"
-            else
-                echo "无法创建审计日志目录: $AUDIT_LOG_DIR" >&2
-            fi
+            msg_err "无法创建审计日志目录: $AUDIT_LOG_DIR"
             return 1
         }
     fi
@@ -68,11 +64,7 @@ audit_init() {
     # 检查日志文件是否存在
     if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
         touch "$AUDIT_LOG_FILE" 2>/dev/null || {
-            if declare -F msg_err &>/dev/null; then
-                msg_err "无法创建审计日志文件: $AUDIT_LOG_FILE"
-            else
-                echo "无法创建审计日志文件: $AUDIT_LOG_FILE" >&2
-            fi
+            msg_err "无法创建审计日志文件: $AUDIT_LOG_FILE"
             return 1
         }
         chmod 640 "$AUDIT_LOG_FILE" 2>/dev/null || true
@@ -387,7 +379,7 @@ audit_stats() {
 init_audit_module() {
     # 初始化审计系统
     audit_init || {
-        echo "警告：审计系统初始化失败" >&2
+        msg_warn "审计系统初始化失败"
         return 1
     }
     

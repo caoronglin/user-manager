@@ -113,7 +113,7 @@ show_success() {
 }
 
 show_error() {
-    echo -e "  ${C_ERROR}✗${C_RESET} $1" >&2
+    msg_err "$1"
 }
 
 show_warning() {
