@@ -489,7 +489,7 @@ get_monthly_job_stats() {
     }' "$stats_file"
 }
 
-# 收集所有受管用户的作业统计
+# 收集所有托管用户的作业统计
 collect_all_job_stats() {
     mkdir -p "$JOB_STATS_DIR"
 
@@ -497,7 +497,7 @@ collect_all_job_stats() {
     mapfile -t usernames < <(get_managed_usernames)
 
     if (( ${#usernames[@]} == 0 )); then
-        msg_warn "未找到受管用户，跳过作业统计收集"
+        msg_warn "未找到托管用户，跳过作业统计收集"
         return 0
     fi
 
@@ -529,6 +529,7 @@ configure_password_rotation() {
     local interval_days="${1:-$PASSWORD_ROTATE_INTERVAL_DAYS}"
 
     # 参数验证
+    require_param "interval_days" "$interval_days" || return 1
     if ! is_positive_int "$interval_days"; then
         msg_err "轮换间隔必须是正整数（天），当前值: ${interval_days:-<空>}"
         return 1
@@ -579,12 +580,12 @@ log_msg() { echo "[\$(date '+%Y-%m-%d %H:%M:%S')] \$*" >> "\$LOG_FILE"; }
 
 log_msg "=== 开始定时密码轮换 ==="
 
-# 获取受管理的用户列表（复用 get_managed_usernames）
+# 获取托管用户列表（复用 get_managed_usernames）
 MANAGED_USERS=()
 mapfile -t MANAGED_USERS < <(get_managed_usernames)
 
 if [[ \${#MANAGED_USERS[@]} -eq 0 ]]; then
-    log_msg "未找到受管用户，退出"
+    log_msg "未找到托管用户，退出"
     exit 0
 fi
 
@@ -758,7 +759,7 @@ show_password_rotation_status() {
 # ============================================================
 # manual_password_rotation - 手动执行一次密码轮换
 # ============================================================
-# 无参数函数，为所有受管用户立即轮换密码
+# 无参数函数，为所有托管用户立即轮换密码
 # Returns: 0 成功（即使部分失败）
 # ============================================================
 manual_password_rotation() {
@@ -778,7 +779,7 @@ manual_password_rotation() {
     mapfile -t managed_users < <(get_managed_usernames)
 
     if (( ${#managed_users[@]} == 0 )); then
-        msg_warn "没有受管理的用户"
+        msg_warn "没有托管用户"
         return 0
     fi
 
