@@ -87,7 +87,8 @@ audit_init() {
 
 # 转义字段，避免破坏分隔符
 audit_escape_field() {
-    local value="$1"
+    local value="${1:-}"
+    [[ -z "$value" ]] && { echo ""; return 0; }
     value=${value//$'\n'/\\n}
     value=${value//$'\r'/}
     value=${value//|/\\|}
@@ -96,7 +97,8 @@ audit_escape_field() {
 
 # 安全写入审计日志（可选 flock）
 audit_write_line() {
-    local line="$1"
+    local line="${1:-}"
+    [[ -z "$line" ]] && { msg_err_ctx "audit_write_line" "日志行不能为空"; return 1; }
     if command -v flock &>/dev/null; then
         local fd
         if exec {fd}>>"$AUDIT_LOG_FILE" 2>/dev/null; then
@@ -117,12 +119,19 @@ audit_write_line() {
 # 记录审计日志
 # 参数：$1=操作类型, $2=目标对象, $3=结果, $4=详情(可选), $5=用户(可选)
 audit_log() {
-    local op_type="${1:-UNKNOWN}"
+    local op_type="${1:-}"
     local target="${2:-}"
     local result="${3:-$AUDIT_RESULT_SUCCESS}"
     local details="${4:-}"
     local user="${5:-${USER:-unknown}}"
     
+    # 参数验证：操作类型必须存在
+    if [[ -z "$op_type" ]]; then
+        if declare -F msg_err_ctx &>/dev/null; then
+            msg_err_ctx "audit_log" "操作类型 (op_type) 不能为空"
+        fi
+        return 1
+    fi
     # 检查日志文件大小，必要时轮转
     audit_rotate_check
     
@@ -154,29 +163,63 @@ audit_log() {
     audit_write_line "$log_entry"
     
     # 更新索引（异步，不阻塞主流程）
-    (audit_update_index "$timestamp" "$op_type" "$target" "$result" "$user") &
+    (audit_update_index "$timestamp" "$op_type" "$target" "$result" "$user" &) 2>/dev/null
     
     return 0
 }
 
 # 记录操作成功
 audit_success() {
-    audit_log "$1" "$2" "$AUDIT_RESULT_SUCCESS" "$3"
+    local op_type="${1:-}"
+    local target="${2:-}"
+    local details="${3:-}"
+    [[ -z "$op_type" ]] && { msg_err_ctx "audit_success" "操作类型不能为空"; return 1; }
+    audit_log "$op_type" "$target" "$AUDIT_RESULT_SUCCESS" "$details"
 }
 
 # 记录操作失败
 audit_failure() {
-    audit_log "$1" "$2" "$AUDIT_RESULT_FAILURE" "$3"
+    local op_type="${1:-}"
+    local target="${2:-}"
+    local details="${3:-}"
+    [[ -z "$op_type" ]] && { msg_err_ctx "audit_failure" "操作类型不能为空"; return 1; }
+    audit_log "$op_type" "$target" "$AUDIT_RESULT_FAILURE" "$details"
 }
 
 # 记录操作被拒绝
 audit_denied() {
-    audit_log "$1" "$2" "$AUDIT_RESULT_DENIED" "$3"
+    local op_type="${1:-}"
+    local target="${2:-}"
+    local details="${3:-}"
+    [[ -z "$op_type" ]] && { msg_err_ctx "audit_denied" "操作类型不能为空"; return 1; }
+    audit_log "$op_type" "$target" "$AUDIT_RESULT_DENIED" "$details"
 }
 
 # 记录错误
 audit_error() {
-    audit_log "$1" "$2" "$AUDIT_RESULT_ERROR" "$3"
+    local op_type="${1:-}"
+    local target="${2:-}"
+    local details="${3:-}"
+    [[ -z "$op_type" ]] && { msg_err_ctx "audit_error" "操作类型不能为空"; return 1; }
+    audit_log "$op_type" "$target" "$AUDIT_RESULT_ERROR" "$details"
+}
+
+# ============================================================
+# 索引更新（预留接口，当前为空操作）
+# ============================================================
+# Parameters:
+#   $1 - timestamp: 操作时间戳
+#   $2 - op_type: 操作类型
+#   $3 - target: 目标对象
+#   $4 - result: 操作结果
+#   $5 - user: 操作用户
+# Returns:
+#   0 始终成功
+# ============================================================
+audit_update_index() {
+    # TODO: 实现索引更新逻辑（如 SQLite 索引或文件索引）
+    # 当前为空操作，仅作为接口预留
+    return 0
 }
 
 # ============================================================

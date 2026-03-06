@@ -470,6 +470,12 @@ launch_btop_monitor() {
 # Returns: 0 始终成功
 # ============================================================
 check_hardware_health() {
+    # 防御性检查：确保核心 UI 函数可用
+    if ! declare -F draw_header &>/dev/null; then
+        echo "错误: draw_header 函数不可用" >&2
+        return 1
+    fi
+
     draw_header "硬件健康检查"
 
     local issues=0

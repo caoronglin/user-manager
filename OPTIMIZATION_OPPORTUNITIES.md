@@ -22,14 +22,14 @@
 **问题**: 36 个关键函数缺少参数验证
 
 **优先修复**（Top 10）:
-- [ ] `lib/report_core.sh:335` - `generate_html_resource_usage_section` (107 行)
+- [x] `lib/report_core.sh:335` - `generate_html_resource_usage_section` (107 行)
 - [ ] `lib/user_core.sh:516` - `configure_password_rotation` (170 行)
-- [ ] `lib/user_core.sh:745` - `manual_password_rotation` (79 行)
+- [x] `lib/user_core.sh:745` - `manual_password_rotation` (79 行)
 - [ ] `lib/backup_core.sh:590` - `get_bio_exclude_patterns` (74 行)
-- [ ] `lib/report_core.sh:852` - `analyze_operation_trends` (85 行)
-- [ ] `lib/report_core.sh:940` - `analyze_anomalies` (86 行)
-- [ ] `lib/system_core.sh:466` - `check_hardware_health` (95 行)
-- [ ] `lib/audit_core.sh` - 多个函数缺少验证
+- [x] `lib/report_core.sh:852` - `analyze_operation_trends` (85 行)
+- [x] `lib/report_core.sh:940` - `analyze_anomalies` (86 行)
+- [x] `lib/system_core.sh:466` - `check_hardware_health` (95 行)
+- [x] `lib/audit_core.sh` - 多个函数缺少验证
 
 **改进方式**:
 ```bash
@@ -61,9 +61,9 @@ msg_err "用户不存在"
 **问题**: `lib/audit_core.sh` 已实现但未集成到主菜单
 
 **改进**:
-- [ ] 在 `user_manager.sh` 中添加审计菜单项
-- [ ] 集成到"统计与报告"菜单
-- [ ] 添加审计日志查看功能
+- [x] 在 `user_manager.sh` 中添加审计菜单项
+- [x] 集成到"统计与报告"菜单
+- [x] 添加审计日志查看功能
 
 ### 4. 测试覆盖率提升
 

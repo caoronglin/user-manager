@@ -762,6 +762,16 @@ show_password_rotation_status() {
 # Returns: 0 成功（即使部分失败）
 # ============================================================
 manual_password_rotation() {
+    # 防御性检查：确保密码生成和用户管理函数可用
+    if ! declare -F get_random_password &>/dev/null; then
+        msg_err_ctx "manual_password_rotation" "get_random_password 函数不可用"
+        return 1
+    fi
+    if ! declare -F get_managed_usernames &>/dev/null; then
+        msg_err_ctx "manual_password_rotation" "get_managed_usernames 函数不可用"
+        return 1
+    fi
+
     draw_header "手动密码轮换"
 
     local managed_users=()

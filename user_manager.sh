@@ -1429,6 +1429,34 @@ report_stats_menu() {
         "3:密码轮换 ›"
 }
 
+# ============================================================
+# 审计与日志菜单
+# ============================================================
+
+_handle_audit() {
+    local opt="$1"
+    case $opt in
+        1)  view_audit_log ;;
+        2)
+            read_input "操作类型 (留空=全部)"; local op_type="$REPLY_INPUT"
+            read_input "用户名 (留空=全部)"; local user="$REPLY_INPUT"
+            read_input "日期范围 (YYYY-MM-DD 或 YYYY-MM-DD:YYYY-MM-DD, 留空=全部)"; local date_range="$REPLY_INPUT"
+            audit_query "$op_type" "$user" "$date_range"
+            ;;
+        3)  show_audit_stats ;;
+        4)  audit_rotate; msg_ok "日志轮转完成" ;;
+        *)  msg_err "无效选项" ;;
+    esac
+}
+
+audit_menu() {
+    run_submenu "审计与日志" _handle_audit \
+        "1:查看审计日志" \
+        "2:查询审计日志" \
+        "3:审计统计分析" \
+        "4:手动日志轮转"
+}
+
 
 
 # ============================================================
@@ -1450,6 +1478,7 @@ main_menu() {
         draw_menu_submenu  4 "备份与恢复"
         draw_menu_submenu  5 "报告与统计"
         draw_menu_submenu  6 "系统维护"
+        draw_menu_submenu  7 "审计与日志"
         draw_menu_exit "退出"
         draw_prompt
         read -r opt
@@ -1461,6 +1490,7 @@ main_menu() {
             4)  safe_run backup_menu ;;
             5)  safe_run report_stats_menu ;;
             6)  safe_run system_menu ;;
+            7)  safe_run audit_menu ;;
             0)  msg_ok "再见！"; exit 0 ;;
             *)  msg_err "无效选项" ;;
         esac
@@ -1480,45 +1510,3 @@ main() {
 }
 
 main "$@"
-
-# ============================================================
-# 审计日志查看
-# ============================================================
-view_audit_log() {
-    draw_header "查看审计日志"
-    
-    if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
-        msg_warn "审计日志文件不存在"
-        return 0
-    fi
-    
-    msg_info "最近 50 条审计记录:"
-    echo ""
-    tail -50 "$AUDIT_LOG_FILE" | while IFS='|' read -r timestamp _operation _target result details; do
-        printf "  ${C_DIM}%-20s${C_RESET} ${C_BOLD}%-15s${C_RESET} %-20s %s\n" \
-            "$timestamp" "$_operation" "$result" "${details:-}"
-    done
-    echo ""
-}
-
-# ============================================================
-# 审计统计分析
-# ============================================================
-show_audit_stats() {
-    draw_header "审计统计分析"
-    
-    if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
-        msg_warn "审计日志文件不存在"
-        return 0
-    fi
-    
-    local total_ops success_count failure_count
-    total_ops=$(wc -l < "$AUDIT_LOG_FILE")
-    success_count=$(grep -c "SUCCESS" "$AUDIT_LOG_FILE" 2>/dev/null || echo 0)
-    failure_count=$(grep -c -E "(FAILURE|ERROR|DENIED)" "$AUDIT_LOG_FILE" 2>/dev/null || echo 0)
-    
-    draw_info_card "总操作数:" "$total_ops" "$C_BOLD"
-    draw_info_card "成功:" "${C_BGREEN}$success_count${C_RESET}"
-    draw_info_card "失败/拒绝:" "${C_BRED}$failure_count${C_RESET}"
-    echo ""
-}

@@ -339,6 +339,12 @@ HTMLEOF
 # Returns: 0 始终成功
 # ============================================================
 generate_html_resource_usage_section() {
+    # 防御性检查：确保 get_managed_usernames 函数可用
+    if ! declare -F get_managed_usernames &>/dev/null; then
+        echo '<!-- get_managed_usernames function not available -->'
+        return 0
+    fi
+
     local managed_users=()
     mapfile -t managed_users < <(get_managed_usernames 2>/dev/null)
 
@@ -862,6 +868,10 @@ analyze_operation_trends() {
         msg_warn "日志文件不存在"
         return 0
     fi
+    if [[ ! -r "$USER_CREATION_LOG" ]]; then
+        msg_err_ctx "analyze_operation_trends" "日志文件不可读: $USER_CREATION_LOG"
+        return 1
+    fi
 
     local total_ops
     total_ops=$(( $(wc -l < "$USER_CREATION_LOG") - 1 ))
@@ -955,6 +965,10 @@ analyze_anomalies() {
     if [[ ! -f "$USER_CREATION_LOG" ]]; then
         msg_warn "日志文件不存在"
         return 0
+    fi
+    if [[ ! -r "$USER_CREATION_LOG" ]]; then
+        msg_err_ctx "analyze_anomalies" "日志文件不可读: $USER_CREATION_LOG"
+        return 1
     fi
 
     local anomaly_count=0
