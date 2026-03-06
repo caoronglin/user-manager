@@ -1,10 +1,10 @@
 #!/bin/bash
-# symlink_core.sh - 目录软连接管理模块 v6.0
-# 提供用户目录软连接的创建、查看、删除功能
+# symlink_core.sh - 目录符号链接管理模块 v6.0
+# 提供用户目录符号链接的创建、查看、删除功能
 # 用途：跨磁盘引用、共享目录、项目快捷方式
 
 # ============================================================
-#  1. 创建用户软连接
+#  1. 创建用户符号链接
 # ============================================================
 create_user_symlink() {
     local username="$1"
@@ -61,26 +61,26 @@ create_user_symlink() {
         fi
     done
 
-    # 如果已存在同名软连接，先移除
+    # 如果已存在同名符号链接，先移除
     if [[ -L "$link_path" ]]; then
         priv_rm "$link_path"
     fi
 
-    # 创建软连接
+    # 创建符号链接
     if run_privileged ln -s "$target_path" "$link_path"; then
-        # 设置所有权（软连接本身）
+        # 设置所有权（符号链接本身）
         run_privileged chown -h "$username:$username" "$link_path" 2>/dev/null || true
-        msg_ok "软连接已创建: ${C_BOLD}$link_name${C_RESET} → ${C_CYAN}$target_path${C_RESET}"
+        msg_ok "符号链接已创建: ${C_BOLD}$link_name${C_RESET} → ${C_CYAN}$target_path${C_RESET}"
         record_user_event "$username" "symlink_create" "$link_name -> $target_path"
         return 0
     else
-        msg_err "创建软连接失败"
+        msg_err "创建符号链接失败"
         return 1
     fi
 }
 
 # ============================================================
-#  2. 批量创建跨磁盘软连接
+#  2. 批量创建跨磁盘符号链接
 # ============================================================
 create_cross_disk_symlink() {
     local username="$1"
@@ -150,7 +150,7 @@ create_cross_disk_symlink() {
 }
 
 # ============================================================
-#  3. 查看用户所有软连接
+#  3. 查看用户所有符号链接
 # ============================================================
 list_user_symlinks() {
     local username="$1"
@@ -172,7 +172,7 @@ list_user_symlinks() {
         return 1
     fi
 
-    draw_header "用户软连接 — $username"
+    draw_header "用户符号链接 — $username"
 
     printf "  ${C_BOLD}${C_WHITE}%-24s %-40s %s${C_RESET}\n" \
         "链接名称" "目标路径" "状态"
@@ -199,12 +199,12 @@ list_user_symlinks() {
 
     echo ""
     if [[ $found -eq 0 ]]; then
-        msg_info "用户 $username 没有软连接"
+        msg_info "用户 $username 没有符号链接"
     fi
 }
 
 # ============================================================
-#  4. 删除用户软连接
+#  4. 删除用户符号链接
 # ============================================================
 delete_user_symlink() {
     local username="$1"
@@ -238,11 +238,11 @@ delete_user_symlink() {
     target=$(readlink "$link_path")
 
     if priv_rm "$link_path"; then
-        msg_ok "已删除软连接: ${C_BOLD}$link_name${C_RESET} → $target"
+        msg_ok "已删除符号链接: ${C_BOLD}$link_name${C_RESET} → $target"
         record_user_event "$username" "symlink_delete" "删除 $link_name"
         return 0
     else
-        msg_err "删除软连接失败"
+        msg_err "删除符号链接失败"
         return 1
     fi
 }
@@ -288,7 +288,7 @@ cleanup_broken_symlinks() {
 }
 
 # ============================================================
-#  6. 创建共享目录软连接
+#  6. 创建共享目录符号链接
 # ============================================================
 create_shared_symlink() {
     local username="$1"
@@ -315,7 +315,7 @@ create_shared_symlink() {
 }
 
 # ============================================================
-#  7. 批量为用户创建共享软连接
+#  7. 批量为用户创建共享符号链接
 # ============================================================
 create_shared_for_all() {
     local shared_name="$1"
@@ -340,7 +340,7 @@ create_shared_for_all() {
     mapfile -t managed_users < <(get_managed_usernames)
 
     if (( ${#managed_users[@]} == 0 )); then
-        msg_warn "没有受管理的用户"
+        msg_warn "没有托管用户"
         return 0
     fi
 
@@ -358,16 +358,16 @@ create_shared_for_all() {
 }
 
 # ============================================================
-#  8. 显示所有用户的软连接概览
+#  8. 显示所有用户的符号链接概览
 # ============================================================
 show_all_symlinks_overview() {
-    draw_header "所有用户软连接概览"
+    draw_header "所有用户符号链接概览"
 
     local managed_users=()
     mapfile -t managed_users < <(get_managed_usernames)
 
     if (( ${#managed_users[@]} == 0 )); then
-        msg_warn "没有受管理的用户"
+        msg_warn "没有托管用户"
         return 0
     fi
 
@@ -402,8 +402,8 @@ show_all_symlinks_overview() {
 
     echo ""
     if [[ $total_links -eq 0 ]]; then
-        msg_info "没有发现软连接"
+        msg_info "没有发现符号链接"
     else
-        msg_info "共 $total_links 个软连接"
+        msg_info "共 $total_links 个符号链接"
     fi
 }

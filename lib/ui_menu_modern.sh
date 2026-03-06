@@ -1,6 +1,8 @@
 #!/bin/bash
+# shellcheck disable=SC2034
 # ui_menu_modern.sh - 现代化菜单系统 v0.2.1
 # 提供彩色图标化菜单、面包屑导航、进度指示器
+# 说明：本文件保留扩展图标与主题变量，部分定义当前为预留资源。
 
 set -uo pipefail
 
@@ -15,22 +17,22 @@ ICON_GROUP="👥"
 ICON_PASSWORD="🔐"
 ICON_SETTINGS="🔓"
 ICON_BACKUP="⬆"
-ICON_FIREWALL="�"
+ICON_FIREWALL="🛡"
 ICON_DNS="🌍"
 ICON_LINK="🔗"
 ICON_STATS="🈁"
 ICON_REPORT="📋"
-ICON_LOG="�"
+ICON_LOG="📝"
 ICON_LOCK="🔣"
-ICON_UNLOCK="�"
+ICON_UNLOCK="🔓"
 ICON_ADD="➕"
-ICON_DELETE="�"
+ICON_DELETE="🗑"
 ICON_EDIT="✏"
-ICON_SEARCH="🔂"
+ICON_SEARCH="🔍"
 ICON_REFRESH="🔄"
-ICON_EXIT="🚑"
+ICON_EXIT="🚪"
 ICON_WARNING="⚠️"
-ICON_ERROR="🗗"
+ICON_ERROR="✗"
 ICON_SUCCESS="✓"
 ICON_INFO="ℹ️"
 ICON_ARROW_RIGHT="→"
@@ -38,7 +40,7 @@ ICON_ARROW_LEFT="←"
 ICON_FOLDER="📁"
 ICON_FILE="📖"
 ICON_DATABASE="💾"
-ICON_SERVER="🖳"
+ICON_SERVER="🖥"
 ICON_NETWORK="🌐"
 ICON_SECURITY="🔣"
 ICON_MAINTENANCE="🔧"
@@ -58,7 +60,7 @@ C_BORDER="${C_BLUE}"
 C_HIGHLIGHT="${C_BGREEN}"
 
 # 状态颜色
-C_SELECTED_BG="\03C[7;60m"  # 选中背景色
+C_SELECTED_BG="\033[7;36m"  # 选中背景色
 C_SELECTED_TEXT="\033[0;0;0m"   # 选中文本色
 C_DIM_TEXT="\033[0;0;0m"    # 暗淡文本色
 
@@ -200,8 +202,8 @@ draw_progress_bar() {
     else
         color="${C_CYAN}"
     fi
-    
-    echo -e "${C_ICON}${C_BOLD}$label: ${C_BOLD}${percent}%${C_RESET} ${C_CYAN}${bar_filled}${C_RESET}${C_CYAN}${bar_empty}${C_RESET}● ●"
+
+    echo -e "${C_ICON}${C_BOLD}$label: ${C_BOLD}${percent}%${C_RESET} ${color}${bar_filled}${C_RESET}${C_MUTED}${bar_empty}${C_RESET} ● ●"
 }
 
 # 绘制百分比进度（圆圈风格）
@@ -239,11 +241,8 @@ interactive_menu() {
     local -a filtered_indices=()
     
     while true; do
-        echo -e "${C_ICON}$ICON_SEARCH${C_RESET} ${C_DIM}搜索:_${C_RESET} ${search} ${C_DIM}[0]${C_RESET}${C_CYAN} | ESC$ESC || true"
-        read -rs -n 1
-        
-        # ESC 键返回
-        if [[ $? -ne 0 ]]; then
+        echo -e "${C_ICON}$ICON_SEARCH${C_RESET} ${C_DIM}搜索:_${C_RESET} ${search} ${C_DIM}[0]${C_RESET}${C_CYAN} | ESC${C_RESET}"
+        if ! read -rs -n 1; then
             break
         fi
         

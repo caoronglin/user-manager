@@ -595,6 +595,9 @@ show_backup_schedules() {
 # Returns: 0 始终成功
 # ============================================================
 get_bio_exclude_patterns() {
+    # 无参数函数 — 仅输出排除模式列表
+    # 防御性检查：确保 cat 命令可用
+    command -v cat &>/dev/null || { msg_err "cat 命令不可用"; return 1; }
     cat << 'EOF'
 *.bam
 *.bam.bai
@@ -693,7 +696,7 @@ _build_rsync_exclude_args() {
 backup_all_users() {
     draw_header "一键备份所有用户数据"
 
-    # 获取受管理的用户
+    # 获取托管用户
     local -a all_users=()
     while IFS= read -r username; do
         [[ -z "$username" ]] && continue
@@ -701,7 +704,7 @@ backup_all_users() {
     done < <(get_managed_usernames)
 
     if [[ ${#all_users[@]} -eq 0 ]]; then
-        msg_warn "没有找到受管理的用户"
+        msg_warn "没有找到托管用户"
         return 0
     fi
 
@@ -870,7 +873,7 @@ backup_all_users_parallel() {
     draw_header "并行备份所有用户数据"
     draw_info_card "并行度:" "$parallel_jobs"
 
-    # 获取受管理的用户
+    # 获取托管用户
     local -a all_users=()
     while IFS= read -r username; do
         [[ -z "$username" ]] && continue
@@ -878,7 +881,7 @@ backup_all_users_parallel() {
     done < <(get_managed_usernames)
 
     if [[ ${#all_users[@]} -eq 0 ]]; then
-        msg_warn "没有找到受管理的用户"
+        msg_warn "没有找到托管用户"
         return 0
     fi
 

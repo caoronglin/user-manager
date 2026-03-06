@@ -758,7 +758,7 @@ send_all_user_reports() {
     mapfile -t managed_users < <(get_managed_usernames 2>/dev/null)
 
     if (( ${#managed_users[@]} == 0 )); then
-        msg_warn "未找到受管用户"
+        msg_warn "未找到托管用户"
         return 0
     fi
 
@@ -1234,7 +1234,7 @@ generate_user_statistics() {
     echo ""
 
     # 用户数概览
-    draw_info_card "受管用户总数:" "$user_count" "$C_BBLUE"
+    draw_info_card "托管用户总数:" "$user_count" "$C_BBLUE"
 
     # 暂停用户统计
     local suspended_count=0
@@ -1299,7 +1299,7 @@ generate_quota_report() {
     echo ""
 
     if (( ${#managed_users[@]} == 0 )); then
-        msg_info "暂无受管用户"
+        msg_info "暂无托管用户"
         return 0
     fi
 
@@ -1347,7 +1347,7 @@ generate_resource_report() {
     echo ""
 
     if (( ${#managed_users[@]} == 0 )); then
-        msg_info "暂无受管用户"
+        msg_info "暂无托管用户"
         return 0
     fi
 
@@ -1399,7 +1399,7 @@ show_user_resource_usage() {
     echo ""
 
     if (( ${#managed_users[@]} == 0 )); then
-        msg_info "暂无受管用户"
+        msg_info "暂无托管用户"
         return 0
     fi
 
@@ -1538,7 +1538,7 @@ export_full_report() {
         echo "----------------------------------------------"
         local managed_users=()
         mapfile -t managed_users < <(get_managed_usernames 2>/dev/null)
-        echo "受管用户数: ${#managed_users[@]}"
+        echo "托管用户数: ${#managed_users[@]}"
 
         local suspended_count=0
         if [[ -f "$DISABLED_USERS_FILE" ]]; then
