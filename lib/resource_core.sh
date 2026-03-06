@@ -98,7 +98,7 @@ show_resource_overview() {
     mapfile -t managed_users < <(get_managed_usernames)
 
     if (( ${#managed_users[@]} == 0 )); then
-        msg_info "暂无受管理用户"
+        msg_info "暂无托管用户"
         return 0
     fi
 

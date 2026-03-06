@@ -60,15 +60,15 @@ format_password_display() {
     fi
 }
 
-# --- 列出所有受管理用户 ---
+# --- 列出所有托管用户 ---
 list_managed_users() {
-    draw_header "受管理用户列表"
+    draw_header "托管用户列表"
 
     local all_managed_users=()
     mapfile -t all_managed_users < <(get_managed_usernames)
 
     if (( ${#all_managed_users[@]} == 0 )); then
-        msg_warn "当前无任何受管理用户"
+        msg_warn "当前无任何托管用户"
         return 0
     fi
 
@@ -114,7 +114,7 @@ list_managed_users() {
 create_or_assign_user() {
     acquire_lock || return 1
 
-    draw_header "创建 / 更新用户"
+    draw_header "创建/更新用户"
 
     draw_prompt
     read -r username
@@ -159,7 +159,7 @@ create_or_assign_user() {
             fi
             ;;
         *)
-            msg_err "无效选项"
+            msg_err "无效的选项"
             release_lock; return 1
             ;;
     esac
@@ -217,9 +217,9 @@ create_or_assign_user() {
     done
 
     echo ""
-    read_input "选择盘编号"; local disk_num="$REPLY_INPUT"
+    read_input "选择磁盘编号"; local disk_num="$REPLY_INPUT"
     if ! [[ " ${ALL_DISKS[*]} " =~ ${disk_num} ]]; then
-        msg_err "无效的盘编号"
+        msg_err "无效的磁盘编号"
         release_lock; return 1
     fi
 
@@ -258,7 +258,7 @@ create_or_assign_user() {
 
     # 确认
     echo ""
-    draw_header "请确认操作"
+    draw_header "操作确认"
     draw_info_card "用户名:" "$username" "$C_BOLD"
     local password_display
     password_display=$(format_password_display "$password")
@@ -272,8 +272,8 @@ create_or_assign_user() {
     draw_info_card "磁盘剩余:" "$sel_avail_h (data${idx})" "$C_BCYAN"
     echo ""
 
-    if ! confirm_action "是否继续？"; then
-        msg_info "操作已取消"
+    if ! confirm_action "确认继续？"; then
+        msg_info "已取消"
         release_lock; return 1
     fi
 
@@ -347,7 +347,7 @@ change_user_password() {
     case "$mode" in
         1) _change_single_user_password ;;
         2) _change_all_users_password ;;
-        *) msg_err "无效选项" ;;
+        *) msg_err "无效的选项" ;;
     esac
     
     release_lock
@@ -389,7 +389,7 @@ _change_single_user_password() {
             fi
             ;;
         *)
-            msg_err "无效选项"; return 1
+            msg_err "无效的选项"; return 1
             ;;
     esac
 
@@ -423,7 +423,7 @@ _change_all_users_password() {
     mapfile -t managed_users < <(get_managed_usernames)
 
     if (( ${#managed_users[@]} == 0 )); then
-        msg_warn "没有受管理的用户"
+        msg_warn "没有托管用户"
         return 0
     fi
 
@@ -435,7 +435,7 @@ _change_all_users_password() {
 
     msg_warn "此操作将为所有用户随机分配新密码！"
     if ! confirm_action "确认继续？"; then
-        msg_info "操作已取消"; return 0
+        msg_info "已取消"; return 0
     fi
 
     local success=0 failed=0
@@ -575,7 +575,7 @@ delete_user_account() {
     msg_warn "警告：此操作将永久删除用户 ${C_BOLD}$username${C_RESET} 及其主目录！"
     read_input "确认删除？输入用户名以确认"; local confirm="$REPLY_INPUT"
     if [[ "$confirm" != "$username" ]]; then
-        msg_info "操作已取消"; return 0
+        msg_info "已取消"; return 0
     fi
 
     acquire_lock || return 1
@@ -632,7 +632,7 @@ rename_user_account() {
     echo ""
 
     if ! confirm_action "确认重命名？"; then
-        msg_info "操作已取消"; return 0
+        msg_info "已取消"; return 0
     fi
 
     acquire_lock || return 1
@@ -739,20 +739,20 @@ rename_user_account() {
 
 # --- 暂停/启用用户 ---
 suspend_or_enable_user() {
-    draw_header "暂停 / 启用用户"
+    draw_header "暂停/恢复用户"
 
     read_existing_username || return 1
     local username="$REPLY_INPUT"
 
     if passwd -S "$username" 2>/dev/null | grep -q "L"; then
         msg_info "用户 ${C_BOLD}$username${C_RESET} 当前状态: ${C_BRED}已暂停${C_RESET}"
-        if confirm_action "是否启用该用户？"; then
+        if confirm_action "是否恢复该用户？"; then
             priv_usermod -U "$username"
             if [[ -f "$DISABLED_USERS_FILE" ]]; then
                 remove_file_entry "$DISABLED_USERS_FILE" "^$username,"
             fi
-            msg_ok "用户 ${C_BOLD}$username${C_RESET} 已启用"
-            record_user_event "$username" "enable" "手动启用"
+            msg_ok "用户 ${C_BOLD}$username${C_RESET} 已恢复"
+            record_user_event "$username" "enable" "手动恢复"
         fi
     else
         msg_info "用户 ${C_BOLD}$username${C_RESET} 当前状态: ${C_BGREEN}正常${C_RESET}"
@@ -777,7 +777,7 @@ suspend_or_enable_user() {
 
 # --- 修改用户配额 ---
 modify_user_quota() {
-    draw_header "修改用户配额"
+    draw_header "调整用户配额"
 
     read_existing_username || return 1
     local username="$REPLY_INPUT"
@@ -838,13 +838,13 @@ modify_user_quota() {
         msg_ok "配额已更新"
         record_user_event "$username" "quota_modify" "${current_limit_gb:-未知}GB -> ${new_quota_gb}GB" "$mp" "$home"
     else
-        msg_info "操作已取消"
+        msg_info "已取消"
     fi
 }
 
 # --- 修改资源限制 ---
 modify_user_resource_limits() {
-    draw_header "修改资源限制"
+    draw_header "配置资源限制"
 
     read_existing_username || return 1
     local username="$REPLY_INPUT"
@@ -888,7 +888,7 @@ modify_user_resource_limits() {
             record_user_event "$username" "resource_remove" "移除资源限制"
             ;;
         *)
-            msg_info "操作已取消"
+            msg_info "已取消"
             ;;
     esac
 }
@@ -938,7 +938,7 @@ _handle_backup() {
             read_input "要恢复的用户名"; local username="$REPLY_INPUT"
             restore_from_batch "$batch_id" "$username"
             ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -994,7 +994,7 @@ _handle_firewall() {
             apply_service_template "$username" "$service"
             ;;
         8)  init_ufw ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -1037,7 +1037,7 @@ _handle_dns() {
             ;;
         7)  apply_all_dns_restrictions ;;
         8)  refresh_dns_rules ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -1046,8 +1046,8 @@ dns_menu() {
         "1:查看白名单" \
         "2:添加域名" \
         "3:移除域名" \
-        "4:启用用户限制" \
-        "5:移除用户限制" \
+        "4:启用 DNS 限制" \
+        "5:移除 DNS 限制" \
         "6:查看用户状态" \
         "7:批量应用限制" \
         "8:刷新 DNS 规则"
@@ -1070,7 +1070,7 @@ _handle_job_stats() {
             read_input "请输入用户名"; local username="$REPLY_INPUT"
             collect_user_jobs "$username"
             ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -1082,7 +1082,7 @@ job_stats_menu() {
         "4:查看当前进程"
 }
 
-# === 软连接管理菜单 ===
+# === 符号链接管理菜单 ===
 _handle_symlink() {
     local opt="$1"
     case $opt in
@@ -1126,20 +1126,20 @@ _handle_symlink() {
             fi
             ;;
         8)  show_all_symlinks_overview ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
 symlink_menu() {
-    run_submenu "软连接与共享" _handle_symlink \
-        "1:创建用户软连接" \
+    run_submenu "符号链接与共享" _handle_symlink \
+        "1:创建用户符号链接" \
         "2:创建跨盘链接" \
-        "3:查看用户软连接" \
-        "4:删除用户软连接" \
+        "3:查看用户符号链接" \
+        "4:删除用户符号链接" \
         "5:清理断链" \
         "6:创建共享链接" \
         "7:为所有用户创建共享链接" \
-        "8:软连接概览"
+        "8:符号链接概览"
 }
 
 # === 密码轮换菜单 ===
@@ -1154,7 +1154,7 @@ _handle_password_rotation() {
             ;;
         3)  remove_password_rotation ;;
         4)  manual_password_rotation ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -1265,7 +1265,7 @@ _handle_report() {
         19) view_weekly_report_log ;;
         20) view_audit_log ;;
         21) show_audit_stats ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -1309,7 +1309,7 @@ _handle_system() {
         7)  analyze_crash_causes ;;
         8)  configure_oom_protection ;;
         9)  show_network_info ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -1341,20 +1341,20 @@ _handle_user_management() {
         6)  safe_run modify_user_quota ;;
         7)  safe_run modify_user_resource_limits ;;
         8)  safe_run list_managed_users ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
 user_management_menu() {
     run_submenu "用户管理" _handle_user_management \
-        "1:创建或更新用户" \
+        "1:创建/更新用户" \
         "2:修改用户密码" \
         "3:删除用户账户" \
         "4:重命名用户账户" \
-        "5:暂停或启用用户" \
+        "5:暂停/恢复用户" \
         "6:调整用户配额" \
-        "7:设置资源限制" \
-        "8:查看受管用户"
+        "7:配置资源限制" \
+        "8:查看托管用户"
 }
 
 # ============================================================
@@ -1375,7 +1375,7 @@ _handle_disk_quota() {
             read_input "请输入用户名"; local username="$REPLY_INPUT"
             [[ -n "$username" ]] && show_single_user_resource "$username"
             ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -1384,7 +1384,7 @@ disk_quota_menu() {
         "1:数据盘概览" \
         "2:调整用户配额" \
         "3:查看用户配额" \
-        "4:设置资源限制" \
+        "4:配置资源限制" \
         "5:查看资源使用"
 }
 # ============================================================
@@ -1397,7 +1397,7 @@ _handle_network_security() {
         1)  safe_run firewall_menu ;;
         2)  safe_run dns_menu ;;
         3)  safe_run symlink_menu ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -1405,7 +1405,7 @@ network_security_menu() {
     run_submenu "网络与安全管理" _handle_network_security \
         "1:防火墙规则 ›" \
         "2:DNS 访问控制 ›" \
-        "3:软连接与共享 ›"
+        "3:符号链接与共享 ›"
 }
 
 # ============================================================
@@ -1418,7 +1418,7 @@ _handle_report_stats() {
         1)  safe_run report_menu ;;
         2)  safe_run job_stats_menu ;;
         3)  safe_run password_rotation_menu ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -1445,7 +1445,7 @@ _handle_audit() {
             ;;
         3)  show_audit_stats ;;
         4)  audit_rotate; msg_ok "日志轮转完成" ;;
-        *)  msg_err "无效选项" ;;
+        *)  msg_err "无效的选项" ;;
     esac
 }
 
@@ -1492,7 +1492,7 @@ main_menu() {
             6)  safe_run system_menu ;;
             7)  safe_run audit_menu ;;
             0)  msg_ok "再见！"; exit 0 ;;
-            *)  msg_err "无效选项" ;;
+            *)  msg_err "无效的选项" ;;
         esac
         pause_continue
     done
