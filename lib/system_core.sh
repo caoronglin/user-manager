@@ -571,3 +571,185 @@ check_hardware_health() {
 
     echo ""
 }
+# ============================================================
+# 硬件检测功能
+# ============================================================
+
+# 显示 CPU 详细信息
+show_cpu_info() {
+    draw_header "CPU 详细信息"
+    
+    if [[ -f /proc/cpuinfo ]]; then
+        local cpu_model cpu_cores cpu_threads
+        cpu_model=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
+        cpu_cores=$(grep -c "^processor" /proc/cpuinfo)
+        
+        draw_info_card "型号:" "$cpu_model" "$C_BOLD"
+        draw_info_card "核心数:" "$cpu_cores" "$C_BCYAN"
+        
+        # 获取 CPU 频率
+        if [[ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]]; then
+            local freq_mhz
+            freq_mhz=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null | awk '{printf "%.0f", $1/1000}')
+            draw_info_card "当前频率:" "${freq_mhz} MHz" "$C_BCYAN"
+        fi
+        
+        # 获取负载
+        local load1 load5 load15
+        read -r load1 load5 load15 _ < /proc/loadavg
+        draw_info_card "系统负载:" "1min:${load1} 5min:${load5} 15min:${load15}" "$C_BYELLOW"
+        
+        echo ""
+        msg_info "详细 CPU 信息（/proc/cpuinfo）:"
+        echo "${C_DIM}"
+        grep -E "(processor|vendor_id|cpu family|model|model name|stepping|microcode|cpu MHz|cache size)" /proc/cpuinfo | head -40 | sed 's/^/  /'
+        echo "${C_RESET}"
+    else
+        msg_err "无法读取 /proc/cpuinfo"
+        return 1
+    fi
+}
+
+# 显示内存详细信息（使用 dmidecode 和 /proc/meminfo）
+show_memory_info_detailed() {
+    draw_header "内存详细信息"
+    
+    # 从 /proc/meminfo 获取信息
+    if [[ -f /proc/meminfo ]]; then
+        local total_mem free_mem available_mem buffers cached
+        total_mem=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+        free_mem=$(awk '/^MemFree:/ {print $2}' /proc/meminfo)
+        available_mem=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+        buffers=$(awk '/^Buffers:/ {print $2}' /proc/meminfo)
+        cached=$(awk '/^Cached:/ {print $2}' /proc/meminfo)
+        
+        # 转换为 GB
+        local total_gb free_gb avail_gb
+        total_gb=$(awk "BEGIN {printf \"%.2f\", $total_mem/1024/1024}")
+        free_gb=$(awk "BEGIN {printf \"%.2f\", $free_mem/1024/1024}")
+        avail_gb=$(awk "BEGIN {printf \"%.2f\", $available_mem/1024/1024}")
+        
+        draw_info_card "总内存:" "${total_gb} GB" "$C_BOLD"
+        draw_info_card "可用内存:" "${avail_gb} GB" "$C_BGREEN"
+        draw_info_card "空闲内存:" "${free_gb} GB" "$C_BCYAN"
+        draw_info_card "Buffers:" "$(awk "BEGIN {printf \"%.2f\", $buffers/1024/1024}") GB" "$C_DIM"
+        draw_info_card "Cached:" "$(awk "BEGIN {printf \"%.2f\", $cached/1024/1024}") GB" "$C_DIM"
+        
+        # 计算使用率
+        local used_pct
+        used_pct=$(awk "BEGIN {printf \"%.0f\", 100 * ($total_mem - $available_mem) / $total_mem}")
+        printf "  ${C_BOLD}内存使用率:${C_RESET} "
+        draw_usage_bar "$used_pct" 30
+        echo ""
+        
+        echo ""
+    fi
+    
+    # 使用 dmidecode 获取物理内存信息
+    if command -v dmidecode &>/dev/null; then
+        msg_step "正在获取物理内存信息 (dmidecode)..."
+        
+        local mem_info
+        mem_info=$(priv_exec dmidecode -t memory 2>/dev/null | grep -E "(Locator:|Size:|Speed:|Manufacturer:|Type:|Part Number:|Configured)" | head -60 || echo "")
+        
+        if [[ -n "$mem_info" ]]; then
+            echo ""
+            msg_info "物理内存模块信息:"
+            echo "${C_DIM}"
+            echo "$mem_info" | sed 's/^/  /'
+            echo "${C_RESET}"
+        fi
+    else
+        msg_warn "未安装 dmidecode，无法获取物理内存信息"
+    fi
+    
+    # 显示 Swap 信息
+    echo ""
+    msg_info "Swap 信息:"
+    if [[ -f /proc/swaps ]]; then
+        echo "${C_DIM}"
+        cat /proc/swaps | sed 's/^/  /'
+        echo "${C_RESET}"
+    fi
+}
+
+# 显示磁盘信息
+show_disk_info() {
+    draw_header "磁盘信息"
+    
+    # 显示磁盘分区信息
+    msg_info "磁盘分区信息:"
+    echo "${C_DIM}"
+    lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL | sed 's/^/  /'
+    echo "${C_RESET}"
+    
+    echo ""
+    
+    # 显示文件系统使用情况
+    msg_info "文件系统使用情况:"
+    echo "${C_DIM}"
+    df -h -x tmpfs -x devtmpfs | sed 's/^/  /'
+    echo "${C_RESET}"
+    
+    echo ""
+    
+    # 显示磁盘 I/O 统计
+    msg_info "磁盘 I/O 统计 (iostat):"
+    if command -v iostat &>/dev/null; then
+        echo "${C_DIM}"
+        iostat -x 1 1 | tail -n +4 | sed 's/^/  /'
+        echo "${C_RESET}"
+    else
+        msg_warn "未安装 iostat，无法显示磁盘 I/O 统计"
+    fi
+}
+
+# 显示网络硬件信息
+show_network_hardware_info() {
+    draw_header "网络硬件信息"
+    
+    msg_info "网络接口信息:"
+    echo "${C_DIM}"
+    ip -s link show | sed 's/^/  /'
+    echo "${C_RESET}"
+    
+    echo ""
+    
+    # 显示 PCI 网络设备
+    if command -v lspci &>/dev/null; then
+        msg_info "PCI 网络设备:"
+        echo "${C_DIM}"
+        lspci | grep -i net | sed 's/^/  /'
+        echo "${C_RESET}"
+    fi
+    
+    echo ""
+    
+    # 显示网络统计
+    msg_info "网络连接统计:"
+    echo "${C_DIM}"
+    ss -s | sed 's/^/  /'
+    echo "${C_RESET}"
+}
+
+# 运行完整的硬件检测
+run_full_hardware_check() {
+    draw_header "完整硬件检测"
+    
+    msg_info "开始完整硬件检测..."
+    echo ""
+    
+    show_cpu_info
+    pause_continue
+    
+    show_memory_info_detailed
+    pause_continue
+    
+    show_disk_info
+    pause_continue
+    
+    show_network_hardware_info
+    pause_continue
+    
+    msg_ok "完整硬件检测完成！"
+}

@@ -1309,6 +1309,11 @@ _handle_system() {
         7)  analyze_crash_causes ;;
         8)  configure_oom_protection ;;
         9)  show_network_info ;;
+        10) show_cpu_info ;;
+        11) show_memory_info_detailed ;;
+        12) show_disk_info ;;
+        13) show_network_hardware_info ;;
+        14) run_full_hardware_check ;;
         *)  msg_err "无效的选项" ;;
     esac
 }
@@ -1323,7 +1328,13 @@ system_menu() {
         "6:系统日志分析" \
         "7:崩溃原因分析" \
         "8:配置 OOM 防护" \
-        "9:显示网络信息"
+        "9:显示网络信息" \
+        "---" \
+        "10:CPU 详细信息" \
+        "11:内存详细信息" \
+        "12:磁盘信息" \
+        "13:网络硬件信息" \
+        "14:完整硬件检测"
 }
 
 # ============================================================
