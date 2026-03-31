@@ -300,3 +300,80 @@ priv_init() {
 
 # 执行初始化
 priv_init
+
+# ============================================================
+# 统一权限检查入口（新增）
+# ============================================================
+
+# 权限矩阵定义
+declare -A PERMISSION_MATRIX=(
+    ["user:create"]="admin"
+    ["user:delete"]="admin"
+    ["user:update"]="user"
+    ["user:read"]="guest"
+    ["quota:set"]="admin"
+    ["quota:read"]="user"
+    ["firewall:add"]="admin"
+    ["firewall:delete"]="admin"
+    ["firewall:list"]="user"
+    ["backup:create"]="user"
+    ["backup:restore"]="admin"
+    ["backup:delete"]="admin"
+    ["email:send"]="user"
+    ["system:modify"]="admin"
+    ["system:read"]="guest"
+)
+
+# 权限检查统一入口
+check_permission() {
+    local resource="$1"
+    local action="$2"
+    local context="${3:-}"
+    
+    local key="${resource}:${action}"
+    local required_level="${PERMISSION_MATRIX[$key]:-admin}"
+    local current_level
+    current_level=$(get_current_permission_level)
+    
+    if (( current_level >= required_level )); then
+        return 0
+    fi
+    
+    return 1
+}
+
+# 需要权限执行
+require_permission() {
+    local resource="$1"
+    local action="$2"
+    local context="${3:-}"
+    
+    if ! check_permission "$resource" "$action" "$context"; then
+        if declare -F msg_err &>/dev/null; then
+            msg_err "权限不足: 需要 ${resource}:${action} 权限"
+        fi
+        return 1
+    fi
+    return 0
+}
+
+# 带权限检查的执行
+run_with_permission() {
+    local resource="$1"
+    local action="$2"
+    shift 2
+    
+    require_permission "$resource" "$action" || return 1
+    "$@"
+}
+
+# 获取当前权限级别
+get_current_permission_level() {
+    if is_root; then
+        echo "$ACL_LEVEL_ROOT"
+    elif declare -F get_acl_level &>/dev/null; then
+        get_acl_level
+    else
+        echo "$ACL_LEVEL_GUEST"
+    fi
+}

@@ -495,3 +495,197 @@ apply_service_template() {
 
     msg_ok "服务模板 ${C_BOLD}$service${C_RESET} 应用完成"
 }
+
+# ============================================================
+# 增强验证函数
+# ============================================================
+
+# 验证IPv4地址格式
+validate_ipv4() {
+    local ip="$1"
+    local regex='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+    
+    [[ ! "$ip" =~ $regex ]] && return 1
+    
+    local IFS='.'
+    read -ra octets <<< "$ip"
+    
+    for octet in "${octets[@]}"; do
+        (( octet < 0 || octet > 255 )) && return 1
+    done
+    
+    return 0
+}
+
+# 验证CIDR格式
+validate_cidr() {
+    local cidr="$1"
+    local regex='^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$'
+    
+    [[ ! "$cidr" =~ $regex ]] && return 1
+    
+    local ip prefix
+    ip="${cidr%/*}"
+    prefix="${cidr#*/}"
+    
+    validate_ipv4 "$ip" || return 1
+    (( prefix < 0 || prefix > 32 )) && return 1
+    
+    return 0
+}
+
+# ============================================================
+# 规则冲突检测
+# ============================================================
+
+# 检测端口规则是否已存在
+check_port_rule_exists() {
+    local port="$1"
+    local protocol="$2"
+    local username="${3:-}"
+    
+    local rules
+    rules=$(priv_ufw status numbered 2>/dev/null | grep -E "^[[:space:]]*\[[0-9]+\].*${port}/${protocol}")
+    
+    if [[ -n "$username" ]]; then
+        rules=$(echo "$rules" | grep "user $username")
+    fi
+    
+    [[ -n "$rules" ]]
+}
+
+# 检测规则冲突
+detect_rule_conflicts() {
+    local port="$1"
+    local protocol="$2"
+    local username="$3"
+    
+    local conflicts=""
+    
+    # 检查UFW规则
+    if check_port_rule_exists "$port" "$protocol"; then
+        conflicts+="UFW规则已存在: $port/$protocol\n"
+    fi
+    
+    # 检查端口映射文件
+    if [[ -f "$USER_PORT_MAP_FILE" ]]; then
+        local existing
+        existing=$(grep ":${port}:${protocol}:" "$USER_PORT_MAP_FILE" 2>/dev/null)
+        if [[ -n "$existing" ]]; then
+            local existing_user
+            existing_user=$(echo "$existing" | cut -d: -f1)
+            if [[ "$existing_user" != "$username" ]]; then
+                conflicts+="端口映射文件: 用户 $existing_user 已使用此端口\n"
+            fi
+        fi
+    fi
+    
+    if [[ -n "$conflicts" ]]; then
+        msg_warn "检测到规则冲突:"
+        echo -e "$conflicts"
+        return 1
+    fi
+    
+    return 0
+}
+
+# ============================================================
+# 文件锁保护
+# ============================================================
+
+# 端口映射文件锁
+readonly PORT_MAP_LOCK="/tmp/user_manager_port_map.lock"
+
+# 获取端口映射文件锁
+acquire_port_map_lock() {
+    local timeout="${1:-10}"
+    local waited=0
+    
+    while (( waited < timeout )); do
+        if mkdir "$PORT_MAP_LOCK" 2>/dev/null; then
+            echo $$ > "$PORT_MAP_LOCK/pid"
+            return 0
+        fi
+        sleep 0.5
+        ((waited++))
+    done
+    
+    msg_err "无法获取端口映射文件锁"
+    return 1
+}
+
+# 释放端口映射文件锁
+release_port_map_lock() {
+    if [[ -d "$PORT_MAP_LOCK" ]]; then
+        local lock_pid
+        lock_pid=$(cat "$PORT_MAP_LOCK/pid" 2>/dev/null || echo "")
+        if [[ "$lock_pid" == "$$" ]]; then
+            rm -rf "$PORT_MAP_LOCK"
+        fi
+    fi
+}
+
+# 安全写入端口映射文件
+safe_write_port_map() {
+    local entry="$1"
+    
+    acquire_port_map_lock || return 1
+    
+    echo "$entry" >> "$USER_PORT_MAP_FILE"
+    
+    release_port_map_lock
+}
+
+# ============================================================
+# 增强的删除规则函数
+# ============================================================
+
+# 安全删除端口规则（验证用户名）
+delete_port_rule_safe() {
+    local username="$1"
+    local port="$2"
+    local protocol="${3:-tcp}"
+    
+    if [[ -z "$username" || -z "$port" ]]; then
+        msg_err "用户名和端口号不能为空"
+        return 1
+    fi
+    
+    check_ufw_status || return 1
+    
+    # 查找匹配的规则（同时匹配端口和用户名）
+    local rule_nums
+    rule_nums=$(priv_ufw status numbered 2>/dev/null | \
+        grep -E "^[[:space:]]*\[[0-9]+\].*${port}/${protocol}" | \
+        grep "user $username" | \
+        grep -oE '^\[[[:space:]]*[0-9]+\]' | \
+        tr -d '[] ' | \
+        sort -rn)
+    
+    if [[ -z "$rule_nums" ]]; then
+        msg_warn "未找到用户 ${C_BOLD}$username${C_RESET} 的端口 ${C_BGREEN}$port${C_RESET}/${C_CYAN}$protocol${C_RESET} 规则"
+        return 0
+    fi
+    
+    # 删除规则（从大到小删除，避免编号变化）
+    local deleted=0
+    for num in $rule_nums; do
+        msg_step "删除规则 [$num]..."
+        echo "y" | priv_ufw delete "$num" && ((deleted+=1))
+    done
+    
+    # 从映射文件中删除
+    if [[ -f "$USER_PORT_MAP_FILE" ]]; then
+        acquire_port_map_lock || return 1
+        
+        local temp_file
+        temp_file=$(mktemp)
+        grep -v "^${username}:${port}:${protocol}:" "$USER_PORT_MAP_FILE" > "$temp_file" 2>/dev/null || true
+        mv "$temp_file" "$USER_PORT_MAP_FILE"
+        
+        release_port_map_lock
+    fi
+    
+    msg_ok "已删除 $deleted 条规则"
+    record_user_event "$username" "firewall_delete" "删除端口规则: $port/$protocol"
+}
