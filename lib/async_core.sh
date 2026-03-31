@@ -9,8 +9,11 @@ set -uo pipefail
 # 配置常量
 # ============================================================
 
+# 获取脚本目录
+_ASYNC_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # 异步任务数据库路径
-readonly ASYNC_DB="${DATA_DIR:-./data}/async_tasks.db"
+readonly ASYNC_DB="${DATA_DIR:-${_ASYNC_SCRIPT_DIR}/../data}/async_tasks.db"
 
 # 工作目录
 readonly ASYNC_RUN_DIR="/var/run/user_manager"
