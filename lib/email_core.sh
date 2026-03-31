@@ -10,11 +10,23 @@
 # 邮件模板目录
 readonly EMAIL_TEMPLATES_DIR="${SCRIPT_DIR:-$(dirname "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")}/templates/email"
 
-# 邮件队列文件
+# 邮件队列文件（保留JSON作为备份）
 readonly EMAIL_QUEUE_FILE="${DATA_DIR:-$SCRIPT_DIR/data}/email_queue.json"
+
+# SQLite邮件队列数据库
+readonly EMAIL_QUEUE_DB="${DATA_DIR:-$SCRIPT_DIR/data}/email_queue.db"
 
 # 邮件日志文件
 readonly EMAIL_LOG_FILE="${LOG_DIR:-$SCRIPT_DIR/logs}/email.log"
+
+# 队列状态常量
+readonly EMAIL_QUEUE_PENDING="pending"
+readonly EMAIL_QUEUE_SENDING="sending"
+readonly EMAIL_QUEUE_SENT="sent"
+readonly EMAIL_QUEUE_FAILED="failed"
+
+# 最大重试次数
+readonly EMAIL_MAX_RETRIES=5
 
 # ============================================================
 # 模板渲染
@@ -410,6 +422,56 @@ HTMLEOF
 # ============================================================
 
 # ============================================================
+# SQLite持久化队列初始化
+# ============================================================
+email_queue_db_init() {
+    if ! command -v sqlite3 &>/dev/null; then
+        msg_err "需要 sqlite3 命令管理邮件队列"
+        return 1
+    fi
+    
+    mkdir -p "$(dirname "$EMAIL_QUEUE_DB")" 2>/dev/null || true
+    
+    sqlite3 "$EMAIL_QUEUE_DB" <<'EOF'
+CREATE TABLE IF NOT EXISTS email_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    email TEXT NOT NULL,
+    template TEXT NOT NULL,
+    data TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    priority INTEGER DEFAULT 5,
+    attempts INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 5,
+    created_at TEXT NOT NULL,
+    scheduled_at TEXT,
+    sent_at TEXT,
+    error TEXT,
+    message_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_queue_status ON email_queue(status);
+CREATE INDEX IF NOT EXISTS idx_email_queue_scheduled ON email_queue(scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_email_queue_created ON email_queue(created_at);
+
+CREATE TABLE IF NOT EXISTS email_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    queue_id INTEGER,
+    email TEXT NOT NULL,
+    template TEXT,
+    status TEXT NOT NULL,
+    error TEXT,
+    duration_ms INTEGER,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (queue_id) REFERENCES email_queue(id)
+);
+EOF
+    
+    chmod 600 "$EMAIL_QUEUE_DB" 2>/dev/null || true
+    return 0
+}
+
+# ============================================================
 # email_queue_add - 添加邮件到发送队列
 # ============================================================
 # Parameters:
@@ -417,43 +479,167 @@ HTMLEOF
 #   $2 - email: 收件人邮箱
 #   $3 - template: 模板名称
 #   $4 - data: JSON 格式的模板数据
+#   $5 - priority: 优先级 (可选, 1-10, 默认5)
 # ============================================================
 email_queue_add() {
     local username="$1"
     local email="$2"
     local template="$3"
     local data="${4:-{}}"
+    local priority="${5:-5}"
     
-    if ! command -v jq &>/dev/null; then
-        msg_err "需要 jq 命令管理邮件队列"
+    if ! command -v sqlite3 &>/dev/null; then
+        msg_err "需要 sqlite3 命令管理邮件队列"
         return 1
     fi
     
-    # 确保队列文件存在
-    if [[ ! -f "$EMAIL_QUEUE_FILE" ]]; then
-        echo "[]" > "$EMAIL_QUEUE_FILE"
-    fi
+    [[ ! -f "$EMAIL_QUEUE_DB" ]] && email_queue_db_init
     
-    # 添加到队列
-    local temp_file
-    temp_file=$(mktemp) || { msg_err "无法创建临时文件"; return 1; }
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local escaped_data="${data//\'/\'\'}"
     
-    if jq --arg u "$username" \
-       --arg e "$email" \
-       --arg t "$template" \
-       --argjson d "$data" \
-       --argjson now "$(date +%s)" \
-       '. += [{"username": $u, "email": $e, "template": $t, "data": $d, "created": $now, "status": "pending", "attempts": 0}]' \
-       "$EMAIL_QUEUE_FILE" > "$temp_file"; then
-        mv "$temp_file" "$EMAIL_QUEUE_FILE"
+    sqlite3 "$EMAIL_QUEUE_DB" <<EOF
+INSERT INTO email_queue (username, email, template, data, status, priority, created_at)
+VALUES ('$username', '$email', '$template', '$escaped_data', '$EMAIL_QUEUE_PENDING', $priority, '$timestamp');
+EOF
+    
+    local result=$?
+    if [[ $result -eq 0 ]]; then
+        local queue_id
+        queue_id=$(sqlite3 "$EMAIL_QUEUE_DB" "SELECT last_insert_rowid();")
+        log_email_event "queue" "email=$email template=$template queue_id=$queue_id"
+        echo "$queue_id"
+        return 0
     else
-        rm -f "$temp_file"
-        msg_err "邮件队列更新失败"
+        msg_err "邮件队列添加失败"
         return 1
     fi
+}
+
+# ============================================================
+# email_queue_get_next - 获取下一条待发送邮件
+# ============================================================
+email_queue_get_next() {
+    [[ ! -f "$EMAIL_QUEUE_DB" ]] && return 1
     
-    msg_info "邮件已添加到发送队列"
-    return 0
+    local now
+    now=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    sqlite3 "$EMAIL_QUEUE_DB" <<EOF
+SELECT id, username, email, template, data FROM email_queue 
+WHERE status = '$EMAIL_QUEUE_PENDING' 
+  AND (scheduled_at IS NULL OR scheduled_at <= '$now')
+  AND attempts < max_retries
+ORDER BY priority ASC, created_at ASC 
+LIMIT 1;
+EOF
+}
+
+# ============================================================
+# email_queue_mark_sending - 标记邮件为发送中
+# ============================================================
+email_queue_mark_sending() {
+    local queue_id="$1"
+    [[ -z "$queue_id" ]] && return 1
+    
+    sqlite3 "$EMAIL_QUEUE_DB" <<EOF
+UPDATE email_queue 
+SET status = '$EMAIL_QUEUE_SENDING', 
+    scheduled_at = datetime('now')
+WHERE id = $queue_id;
+EOF
+}
+
+# ============================================================
+# email_queue_mark_sent - 标记邮件已发送
+# ============================================================
+email_queue_mark_sent() {
+    local queue_id="$1"
+    local message_id="${2:-}"
+    [[ -z "$queue_id" ]] && return 1
+    
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    sqlite3 "$EMAIL_QUEUE_DB" <<EOF
+UPDATE email_queue 
+SET status = '$EMAIL_QUEUE_SENT', 
+    sent_at = '$timestamp',
+    message_id = '$message_id'
+WHERE id = $queue_id;
+EOF
+}
+
+# ============================================================
+# email_queue_mark_failed - 标记邮件发送失败
+# ============================================================
+email_queue_mark_failed() {
+    local queue_id="$1"
+    local error="${2:-unknown error}"
+    [[ -z "$queue_id" ]] && return 1
+    
+    local escaped_error="${error//\'/\'\'}"
+    
+    sqlite3 "$EMAIL_QUEUE_DB" <<EOF
+UPDATE email_queue 
+SET status = '$EMAIL_QUEUE_FAILED',
+    error = '$escaped_error',
+    attempts = attempts + 1
+WHERE id = $queue_id;
+EOF
+}
+
+# ============================================================
+# email_queue_retry - 重试失败的邮件
+# ============================================================
+email_queue_retry() {
+    local queue_id="$1"
+    [[ -z "$queue_id" ]] && return 1
+    
+    sqlite3 "$EMAIL_QUEUE_DB" <<EOF
+UPDATE email_queue 
+SET status = '$EMAIL_QUEUE_PENDING',
+    scheduled_at = datetime('now', '+30 seconds'),
+    error = NULL
+WHERE id = $queue_id 
+  AND attempts < max_retries;
+EOF
+}
+
+# ============================================================
+# email_queue_stats - 队列统计
+# ============================================================
+email_queue_stats() {
+    [[ ! -f "$EMAIL_QUEUE_DB" ]] && { echo "pending=0 sending=0 sent=0 failed=0"; return 0; }
+    
+    sqlite3 "$EMAIL_QUEUE_DB" <<EOF
+SELECT 'pending=' || COUNT(*) FROM email_queue WHERE status = 'pending'
+UNION ALL
+SELECT 'sending=' || COUNT(*) FROM email_queue WHERE status = 'sending'
+UNION ALL
+SELECT 'sent=' || COUNT(*) FROM email_queue WHERE status = 'sent'
+UNION ALL
+SELECT 'failed=' || COUNT(*) FROM email_queue WHERE status = 'failed';
+EOF
+}
+
+# ============================================================
+# email_queue_cleanup - 清理已发送/失败的旧邮件
+# ============================================================
+email_queue_cleanup() {
+    local keep_days="${1:-7}"
+    
+    [[ ! -f "$EMAIL_QUEUE_DB" ]] && return 0
+    
+    sqlite3 "$EMAIL_QUEUE_DB" <<EOF
+DELETE FROM email_log 
+WHERE created_at < datetime('now', '-$keep_days days');
+
+DELETE FROM email_queue 
+WHERE status IN ('$EMAIL_QUEUE_SENT', '$EMAIL_QUEUE_FAILED')
+  AND created_at < datetime('now', '-$keep_days days');
+EOF
 }
 
 # ============================================================
@@ -465,61 +651,205 @@ email_queue_add() {
 email_queue_process() {
     local max_emails="${1:-10}"
     
-    if ! command -v jq &>/dev/null; then
-        msg_err "需要 jq 命令处理邮件队列"
+    if ! command -v sqlite3 &>/dev/null; then
+        msg_err "需要 sqlite3 命令处理邮件队列"
         return 1
     fi
     
-    if [[ ! -f "$EMAIL_QUEUE_FILE" ]]; then
-        msg_info "邮件队列为空"
-        return 0
-    fi
-    
-    # 获取待处理的邮件
-    local pending_emails
-    pending_emails=$(jq -r '.[] | select(.status == "pending") | @base64' "$EMAIL_QUEUE_FILE" | head -n "$max_emails")
-    
-    if [[ -z "$pending_emails" ]]; then
-        msg_info "没有待处理的邮件"
-        return 0
-    fi
+    [[ ! -f "$EMAIL_QUEUE_DB" ]] && { msg_info "邮件队列为空"; return 0; }
     
     local processed=0 success=0 failed=0
     
-    while IFS= read -r encoded; do
-        [[ -z "$encoded" ]] && continue
+    while (( processed < max_emails )); do
+        local next_email
+        next_email=$(email_queue_get_next)
         
-        # 解码邮件数据
-        local email_data username email template
-        email_data=$(echo "$encoded" | base64 -d)
-        username=$(echo "$email_data" | jq -r '.username')
-        email=$(echo "$email_data" | jq -r '.email')
-        template=$(echo "$email_data" | jq -r '.template')
+        [[ -z "$next_email" ]] && break
         
-        msg_info "处理队列邮件：$username -> $email (模板：$template)"
+        local queue_id username email template data
+        IFS='|' read -r queue_id username email template data <<< "$next_email"
         
-        # 根据模板发送邮件
+        [[ -z "$queue_id" ]] && break
+        
+        email_queue_mark_sending "$queue_id"
+        msg_info "处理队列邮件 #$queue_id：$username -> $email (模板：$template)"
+        
+        local send_result=1
+        local start_time end_time duration_ms
+        start_time=$(date +%s%3N 2>/dev/null || date +%s)
+        
         case "$template" in
             password_notify)
                 local password action
-                password=$(echo "$email_data" | jq -r '.data.password')
-                action=$(echo "$email_data" | jq -r '.data.action')
-                if send_password_email "$username" "$password" "$email" "$action"; then
-                    ((success+=1))
+                if command -v jq &>/dev/null && [[ -n "$data" ]]; then
+                    password=$(echo "$data" | jq -r '.password // empty')
+                    action=$(echo "$data" | jq -r '.action // "密码更新"')
+                fi
+                [[ -n "$password" ]] && send_password_email "$username" "$password" "$email" "$action" && send_result=0
+                ;;
+            quota_warning)
+                if declare -F send_quota_warning_email &>/dev/null; then
+                    send_quota_warning_email "$username" "$email" "$data" && send_result=0
                 else
-                    ((failed+=1))
+                    msg_warn "quota_warning模板处理函数未实现"
                 fi
                 ;;
-            # 可扩展其他模板类型
+            account_suspended)
+                if declare -F send_account_suspended_email &>/dev/null; then
+                    send_account_suspended_email "$username" "$email" "$data" && send_result=0
+                else
+                    msg_warn "account_suspended模板处理函数未实现"
+                fi
+                ;;
+            backup_completed)
+                if declare -F send_backup_notification_email &>/dev/null; then
+                    send_backup_notification_email "$username" "$email" "$data" && send_result=0
+                else
+                    msg_warn "backup_completed模板处理函数未实现"
+                fi
+                ;;
             *)
                 msg_warn "未知模板类型：$template"
-                ((failed+=1))
                 ;;
         esac
         
+        end_time=$(date +%s%3N 2>/dev/null || date +%s)
+        duration_ms=$(( end_time - start_time ))
+        
+        if [[ $send_result -eq 0 ]]; then
+            email_queue_mark_sent "$queue_id"
+            log_email_event "$username" "$email" "$template" "sent" "queue_id=$queue_id duration=${duration_ms}ms"
+            ((success+=1))
+        else
+            email_queue_mark_failed "$queue_id" "发送失败"
+            log_email_event "$username" "$email" "$template" "failed" "queue_id=$queue_id"
+            ((failed+=1))
+        fi
+        
         ((processed+=1))
-    done <<< "$pending_emails"
+    done
     
     msg_info "邮件队列处理完成：处理=$processed, 成功=$success, 失败=$failed"
     return 0
+}
+
+# ============================================================
+# 异步邮件发送接口（使用 async_core.sh）
+# ============================================================
+
+# 异步发送密码通知邮件
+# 参数: $1=username, $2=password, $3=email, $4=action
+# 返回: 任务ID
+send_password_email_async() {
+    local username="$1"
+    local password="$2"
+    local email="$3"
+    local action="${4:-密码更新}"
+    
+    # 构建任务数据
+    local data
+    data=$(jq -n \
+        --arg u "$username" \
+        --arg p "$password" \
+        --arg e "$email" \
+        --arg a "$action" \
+        '{"username": $u, "password": $p, "email": $e, "action": $a}')
+    
+    # 提交到邮件队列
+    local queue_id
+    queue_id=$(email_queue_add "$username" "$email" "password_notify" "$data") || return 1
+    
+    echo "$queue_id"
+    return 0
+}
+
+# 异步发送配额警告邮件
+send_quota_warning_email_async() {
+    local username="$1"
+    local email="$2"
+    local quota_info="$3"
+    
+    local data
+    data=$(jq -n \
+        --arg u "$username" \
+        --arg e "$email" \
+        --arg q "$quota_info" \
+        '{"username": $u, "email": $e, "quota_info": $q}')
+    
+    local queue_id
+    queue_id=$(email_queue_add "$username" "$email" "quota_warning" "$data") || return 1
+    
+    echo "$queue_id"
+    return 0
+}
+
+# 异步发送账户暂停通知
+send_account_suspended_email_async() {
+    local username="$1"
+    local email="$2"
+    local reason="${3:-}"
+    
+    local data
+    data=$(jq -n \
+        --arg u "$username" \
+        --arg e "$email" \
+        --arg r "$reason" \
+        '{"username": $u, "email": $e, "reason": $r}')
+    
+    local queue_id
+    queue_id=$(email_queue_add "$username" "$email" "account_suspended" "$data") || return 1
+    
+    echo "$queue_id"
+    return 0
+}
+
+# 异步发送备份完成通知
+send_backup_completed_email_async() {
+    local username="$1"
+    local email="$2"
+    local backup_details="$3"
+    
+    local data
+    data=$(jq -n \
+        --arg u "$username" \
+        --arg e "$email" \
+        --argjson d "$backup_details" \
+        '{"username": $u, "email": $e, "details": $d}')
+    
+    local queue_id
+    queue_id=$(email_queue_add "$username" "$email" "backup_completed" "$data") || return 1
+    
+    echo "$queue_id"
+    return 0
+}
+
+# 检查邮件是否已发送
+check_email_sent() {
+    local queue_id="$1"
+    
+    local status
+    status=$(sqlite3 "$EMAIL_QUEUE_DB" "SELECT status FROM email_queue WHERE id = $queue_id;" 2>/dev/null)
+    
+    [[ "$status" == "sent" ]]
+}
+
+# 等待邮件发送完成
+wait_for_email() {
+    local queue_id="$1"
+    local timeout="${2:-60}"
+    local interval=2
+    local elapsed=0
+    
+    while (( elapsed < timeout )); do
+        local status
+        status=$(sqlite3 "$EMAIL_QUEUE_DB" "SELECT status FROM email_queue WHERE id = $queue_id;" 2>/dev/null)
+        
+        case "$status" in
+            sent) return 0 ;;
+            failed) return 1 ;;
+            *) sleep "$interval"; ((elapsed += interval)) ;;
+        esac
+    done
+    
+    return 1
 }

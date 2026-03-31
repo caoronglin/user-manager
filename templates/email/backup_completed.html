@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>备份完成通知</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f4f4f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+            padding: 30px 40px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        .content {
+            padding: 40px;
+        }
+        .success-icon {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .success-icon .icon {
+            width: 64px;
+            height: 64px;
+            background: #dcfce7;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+        }
+        .info-card {
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            color: #64748b;
+            font-size: 14px;
+        }
+        .info-value {
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #dcfce7;
+            color: #16a34a;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .backup-details {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .backup-details h3 {
+            color: #166534;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+        .detail-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .detail-item .label {
+            color: #4b5563;
+            width: 100px;
+        }
+        .detail-item .value {
+            color: #1f2937;
+            font-weight: 500;
+        }
+        .footer {
+            background: #f8fafc;
+            padding: 20px 40px;
+            text-align: center;
+            color: #64748b;
+            font-size: 12px;
+            border-top: 1px solid #e2e8f0;
+        }
+        .footer a {
+            color: #22c55e;
+            text-decoration: none;
+        }
+        .warning-box {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .warning-box p {
+            color: #92400e;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>✅ 备份完成通知</h1>
+            <p>您的数据备份已成功完成</p>
+        </div>
+        
+        <div class="content">
+            <div class="success-icon">
+                <div class="icon">✓</div>
+            </div>
+            
+            <p style="text-align: center; color: #6b7280; margin-bottom: 24px;">
+                您好 <strong>${username}</strong>，您的数据备份已成功完成
+            </p>
+            
+            <div class="info-card">
+                <div class="info-row">
+                    <span class="info-label">备份状态</span>
+                    <span class="status-badge">成功</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">备份时间</span>
+                    <span class="info-value">${timestamp}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">备份类型</span>
+                    <span class="info-value">${backup_type}</span>
+                </div>
+            </div>
+            
+            <div class="backup-details">
+                <h3>📦 备份详情</h3>
+                <div class="detail-item">
+                    <span class="label">数据大小:</span>
+                    <span class="value">${data_size}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">文件数量:</span>
+                    <span class="value">${file_count}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">备份位置:</span>
+                    <span class="value">${backup_location}</span>
+                </div>
+                <div class="detail-item">
+                    <span class="label">备份耗时:</span>
+                    <span class="value">${duration}</span>
+                </div>
+            </div>
+            
+            <div class="warning-box">
+                <p>💡 <strong>温馨提示：</strong>请定期检查备份完整性，确保数据安全。如需恢复数据，请联系管理员。</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>此邮件由系统自动发送，请勿回复</p>
+            <p style="margin-top: 8px;">
+                如有疑问，请联系 <a href="mailto:${admin_email}">${admin_email}</a>
+            </p>
+            <p style="margin-top: 12px; color: #94a3b8;">
+                © ${year} 用户管理系统 - 数据安全保障
+            </p>
+        </div>
+    </div>
+</body>
+</html>

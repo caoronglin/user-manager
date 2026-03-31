@@ -27,7 +27,56 @@ readonly ULIMIT_TYPES=(
 # ulimit 查询和设置函数
 # ============================================================
 
-# 获取指定用户的 ulimit 值
+# 以指定用户身份执行命令（最小权限封装）
+# 用法：as_user <username> <command> [args...]
+# 优先使用：sudo -u（非交互式环境）或 priv_sudo（交互式环境）
+as_user() {
+    local username="$1"
+    shift
+    
+    # 验证参数
+    [[ -z "$username" ]] && { msg_err "as_user: 用户名不能为空"; return 1; }
+    [[ $# -eq 0 ]] && { msg_err "as_user: 命令不能为空"; return 1; }
+    
+    # 检查用户是否存在
+    if ! id "$username" &>/dev/null; then
+        msg_err "as_user: 用户不存在: $username"
+        return 1
+    fi
+    
+    # 执行命令
+    if [[ "${SUDO_NONINTERACTIVE:-0}" == "1" ]]; then
+        # 非交互式环境，使用 sudo -u
+        sudo -n -u "$username" "$@" 2>&1
+    else
+        # 交互式环境，优先使用 priv_sudo（如果可用）
+        if declare -F priv_sudo &>/dev/null; then
+            priv_sudo -u "$username" "$@" 2>&1
+        else
+            sudo -u "$username" "$@" 2>&1
+        fi
+    fi
+}
+
+# 将资源名称映射到 ulimit 选项字母
+# 标准映射：nofile->n, nproc->u, stack->s, cpu->t, etc.
+_ulimit_opt_from_resource() {
+    local resource="$1"
+    case "$resource" in
+        core)   echo "c" ;;
+        data)   echo "d" ;;
+        fsize)  echo "f" ;;
+        memlock)echo "l" ;;
+        nofile) echo "n" ;;
+        nproc)  echo "u" ;;
+        rss)    echo "m" ;;
+        stack)  echo "s" ;;
+        cpu)    echo "t" ;;
+        *)      echo "n" ;; # 默认使用 nofile (n)
+    esac
+}
+
+# 获取指定用户的 ulimit 值（修复版）
 get_user_ulimit() {
     local username="$1"
     local resource="${2:-nofile}"
@@ -39,12 +88,17 @@ get_user_ulimit() {
         return 1
     fi
     
-    # 使用 sudo 获取用户 ulimit
-    local cmd="ulimit -${resource}"
-    [[ "$limit_type" == "hard" ]] && cmd="ulimit -H -${resource}"
+    # 将资源名称映射到 ulimit 选项字母
+    local opt
+    opt=$(_ulimit_opt_from_resource "$resource")
     
+    # 构建 ulimit 命令
+    local cmd="ulimit -${opt}"
+    [[ "$limit_type" == "hard" ]] && cmd="ulimit -H -${opt}"
+    
+    # 使用最小权限封装执行（替代直接 sudo -u）
     local result
-    result=$(sudo -u "$username" bash -c "$cmd" 2>&1) || {
+    result=$(as_user "$username" bash -c "$cmd" 2>&1) || {
         msg_err "获取 ulimit 失败: $result"
         return 1
     }
@@ -258,8 +312,11 @@ show_user_process_resources() {
 }
 
 # ============================================================
-# 查询资源限制（保留原有函数）
+# 查询资源限制
 # ============================================================
+
+# 获取当前资源限制（通过systemd配置）
+get_current_resource_limits() {
     local username="$1"
     local uid config_file
     uid=$(id -u "$username" 2>/dev/null) || return 1
