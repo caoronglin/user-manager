@@ -1,6 +1,13 @@
 #!/bin/bash
 # user_core.sh - 用户管理核心模块 v6.0
 # 提供用户 CRUD 操作、密码管理、暂停功能、作业统计
+#
+# SECURITY NOTE: 本模块通过管道传递明文密码至 chpasswd。
+# 密码在进程列表（/proc）中可能短暂可见。
+# 生产环境建议：
+#   - 使用 `chpasswd -e` 配合预加密密码
+#   - 确保日志/审计不记录密码明文
+#   - 密码操作完成后立即清除相关变量 (unset)
 
 # ============================================================
 # 密码池管理
@@ -238,7 +245,7 @@ create_user() {
 
     priv_useradd -d "$home" -s /bin/bash -m "$username" || return 1
     echo "$username:$password" | priv_chpasswd || return 1
-    run_privileged cp -r /etc/skel/. "$home/" 2>/dev/null || true
+    priv_cp -r /etc/skel/. "$home/" 2>/dev/null || true
     priv_deluser "$username" sudo 2>/dev/null || true
     priv_deluser "$username" adm 2>/dev/null || true
 
@@ -287,7 +294,7 @@ update_user() {
             priv_mv "$current_home" "$home" 2>/dev/null || true
         else
             priv_mkdir -p "$home"
-            run_privileged cp -r /etc/skel/. "$home/" 2>/dev/null || true
+            priv_cp -r /etc/skel/. "$home/" 2>/dev/null || true
         fi
         priv_chown -R "$username:$username" "$home" 2>/dev/null
     fi
@@ -312,7 +319,7 @@ delete_user() {
         fi
     fi
     
-    run_privileged userdel -r "$username" 2>/dev/null
+    priv_userdel -r "$username" 2>/dev/null
     return $?
 }
 
@@ -671,7 +678,7 @@ fi
 GENEOF
 )
 
-    if echo "$script_content" | run_privileged tee "$script_path" > /dev/null; then
+    if printf '%s' "$script_content" | write_privileged_text_file "$script_path" "0755" "root:root"; then
         priv_chmod +x "$script_path"
         msg_ok "轮换脚本创建成功"
     else
@@ -684,8 +691,8 @@ GENEOF
     local cron_line="0 3 */${interval_days} * * $script_path"
 
     # 移除旧任务
-    run_privileged crontab -l 2>/dev/null | grep -v "$script_path" | run_privileged crontab - 2>/dev/null || true
-    if ( run_privileged crontab -l 2>/dev/null; echo "$cron_line" ) | run_privileged crontab -; then
+    rewrite_root_crontab_without_literal "$script_path" >/dev/null 2>&1 || true
+    if append_root_crontab_line "$cron_line"; then
         echo ""
         msg_ok "定时密码轮换已配置"
         draw_info_card "执行频率:" "每 ${interval_days} 天，凌晨 3:00"
@@ -706,7 +713,7 @@ remove_password_rotation() {
     draw_header "移除定时密码轮换"
 
     # 从 crontab 移除
-    run_privileged crontab -l 2>/dev/null | grep -v "$script_path" | run_privileged crontab - 2>/dev/null || true
+    rewrite_root_crontab_without_literal "$script_path" >/dev/null 2>&1 || true
 
     # 删除脚本
     if [[ -f "$script_path" ]]; then
@@ -732,7 +739,7 @@ show_password_rotation_status() {
 
     # 检查 crontab
     local cron_line
-    cron_line=$(run_privileged crontab -l 2>/dev/null | grep "$script_path" || true)
+    cron_line=$(find_root_crontab_line "$script_path")
 
     if [[ -n "$cron_line" ]]; then
         draw_info_card "定时任务:" "${C_BGREEN}已启用${C_RESET}"

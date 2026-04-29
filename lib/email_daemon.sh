@@ -58,7 +58,14 @@ is_daemon_running() {
     if [[ -f "$DAEMON_PID_FILE" ]]; then
         local pid
         pid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
-        [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+        if [[ -z "$pid" ]]; then
+            return 1
+        fi
+        if ! [[ "$pid" =~ ^[0-9]+$ ]]; then
+            rm -f "$DAEMON_PID_FILE"
+            return 1
+        fi
+        kill -0 "$pid" 2>/dev/null
     else
         return 1
     fi
@@ -72,6 +79,17 @@ start_daemon() {
     
     mkdir -p "$DAEMON_RUN_DIR" 2>/dev/null || true
     mkdir -p "$DAEMON_LOG_DIR" 2>/dev/null || true
+    chmod 750 "$DAEMON_RUN_DIR" "$DAEMON_LOG_DIR" 2>/dev/null || true
+    
+    local lock_fd
+    exec {lock_fd}>"$DAEMON_PID_FILE.lock" 2>/dev/null || true
+    if [[ -n "${lock_fd:-}" ]]; then
+        flock -n "$lock_fd" 2>/dev/null || {
+            exec {lock_fd}>&-
+            echo "无法获取守护进程锁，可能已有实例在启动"
+            return 1
+        }
+    fi
     
     # 启动后台守护进程
     (
@@ -80,6 +98,11 @@ start_daemon() {
     
     local pid=$!
     echo "$pid" > "$DAEMON_PID_FILE"
+    chmod 644 "$DAEMON_PID_FILE" 2>/dev/null || true
+    
+    if [[ -n "${lock_fd:-}" ]]; then
+        exec {lock_fd}>&-
+    fi
     
     echo "邮件守护进程已启动 (PID: $pid)"
     daemon_log "INFO" "守护进程启动 (PID: $pid)"

@@ -28,6 +28,38 @@ readonly EMAIL_QUEUE_FAILED="failed"
 # 最大重试次数
 readonly EMAIL_MAX_RETRIES=5
 
+sanitize_mail_header_value() {
+    local value="$1"
+    value="${value//$'\r'/ }"
+    value="${value//$'\n'/ }"
+    printf '%s' "$value" | tr -s ' '
+}
+
+html_escape_text() {
+    printf '%s' "$1" | sed \
+        -e 's/&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g' \
+        -e 's/"/\&quot;/g' \
+        -e "s/'/\&#39;/g"
+}
+
+validate_safe_hostname() {
+    local host="$1"
+
+    [[ -n "$host" ]] || return 1
+
+    if [[ "$host" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$ ]]; then
+        return 0
+    fi
+
+    if [[ "$host" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
 # ============================================================
 # 模板渲染
 # ============================================================
@@ -64,15 +96,16 @@ render_template_file() {
         return 1
     }
     
-    # 使用 bash 参数扩展进行精确替换（避免 envsubst 的全局替换问题）
-    # 转义特殊字符防止替换失败
-    local escaped_password="${password//&/\\&}"
-    escaped_password="${escaped_password//\//\\/}"
-    
-    content="${content//\$\{username\}/$username}"
+    local escaped_username escaped_password escaped_action escaped_timestamp
+    escaped_username=$(html_escape_text "$username")
+    escaped_password=$(html_escape_text "$password")
+    escaped_action=$(html_escape_text "$action")
+    escaped_timestamp=$(html_escape_text "$timestamp")
+
+    content="${content//\$\{username\}/$escaped_username}"
     content="${content//\$\{password\}/$escaped_password}"
-    content="${content//\$\{action\}/$action}"
-    content="${content//\$\{timestamp\}/$timestamp}"
+    content="${content//\$\{action\}/$escaped_action}"
+    content="${content//\$\{timestamp\}/$escaped_timestamp}"
     
     echo "$content"
     return 0
@@ -136,6 +169,11 @@ validate_email_config() {
         msg_err "发件人邮箱格式无效：$from_address"
         return 1
     fi
+
+    if ! validate_safe_hostname "$smtp_server"; then
+        msg_err "SMTP 服务器地址无效或包含危险字符：$smtp_server"
+        return 1
+    fi
     
     # 6. 检查配置文件权限（应为 600）
     local perms
@@ -147,7 +185,7 @@ validate_email_config() {
     # 7. 可选：SMTP 服务器连通性测试（仅在 DEBUG 模式或配置测试时执行）
     if [[ "${DEBUG:-0}" == "1" ]] || [[ "${TEST_CONNECTION:-0}" == "1" ]]; then
         if command -v timeout &>/dev/null; then
-            if ! timeout 5 bash -c "echo > /dev/tcp/$smtp_server/$smtp_port" 2>/dev/null; then
+            if ! timeout 5 bash -c 'cat < /dev/null > /dev/tcp/$1/$2' _ "$smtp_server" "$smtp_port" 2>/dev/null; then
                 msg_warn "无法连接到 SMTP 服务器：$smtp_server:$smtp_port"
                 # 不返回错误，仅警告
             fi
@@ -201,14 +239,12 @@ log_email_event() {
 # ============================================================
 # send_password_email - 发送密码通知邮件（HTML 格式）
 # ============================================================
-# Parameters:
-#   $1 - username: 用户名
-#   $2 - password: 密码
-#   $3 - email: 收件人邮箱
-#   $4 - action: 操作类型 (默认：密码更新)
-#   $5 - max_retries: 最大重试次数 (默认：3)
-# Returns:
-#   0 on success, 1 on failure
+# SECURITY NOTE: 此函数通过 SMTP 发送明文密码。
+# 生产环境建议：
+#   - 使用一次性链接代替明文密码
+#   - 确保 SMTP 使用 TLS/STARTTLS 加密传输
+#   - 密码邮件发送后督促用户立即修改密码
+#   - 确保邮件日志不包含密码明文
 # ============================================================
 send_password_email() {
     local username="$1"
@@ -261,7 +297,13 @@ send_password_email() {
     [[ -z "$from_addr" ]] && from_addr="noreply@example.com"
     
     # 生成主题和时间戳
-    local subject="【重要】${action}通知 - ${username}"
+    local safe_from_name safe_from_addr safe_to safe_subject
+    safe_from_name=$(sanitize_mail_header_value "${from_name:-用户管理系统}")
+    safe_from_addr=$(sanitize_mail_header_value "${from_addr:-noreply@example.com}")
+    safe_to=$(sanitize_mail_header_value "$email")
+    safe_subject=$(sanitize_mail_header_value "【重要】${action}通知 - ${username}")
+
+    local subject="$safe_subject"
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
@@ -282,8 +324,8 @@ send_password_email() {
     # 构建邮件内容
     local mail_content
     mail_content=$(cat <<MAILEOF
-From: ${from_name} <${from_addr}>
-To: ${email}
+From: ${safe_from_name} <${safe_from_addr}>
+To: ${safe_to}
 Subject: ${subject}
 MIME-Version: 1.0
 Content-Type: text/html; charset=UTF-8
@@ -341,13 +383,19 @@ generate_fallback_template() {
     local password="$2"
     local action="$3"
     local timestamp="$4"
+    local escaped_username escaped_password escaped_action escaped_timestamp
+
+    escaped_username=$(html_escape_text "$username")
+    escaped_password=$(html_escape_text "$password")
+    escaped_action=$(html_escape_text "$action")
+    escaped_timestamp=$(html_escape_text "$timestamp")
     
     cat <<HTMLEOF
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>${action}通知</title>
+    <title>${escaped_action}通知</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -355,16 +403,16 @@ generate_fallback_template() {
 <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);overflow:hidden;">
   <tr>
     <td style="background:#2563eb;padding:28px 36px;">
-      <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">${action}通知</h1>
+      <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">${escaped_action}通知</h1>
     </td>
   </tr>
   <tr>
     <td style="padding:32px 36px;">
       <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
-        尊敬的用户 <strong>${username}</strong>，您好！
+        尊敬的用户 <strong>${escaped_username}</strong>，您好！
       </p>
       <p style="margin:0 0 24px;color:#374151;font-size:15px;line-height:1.6;">
-        您的账户${action}已完成。以下是您的登录凭据：
+        您的账户${escaped_action}已完成。以下是您的登录凭据：
       </p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:28px;">
         <tr>
@@ -372,15 +420,15 @@ generate_fallback_template() {
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
               <tr>
                 <td style="padding:6px 0;color:#6b7280;font-size:13px;width:70px;">用户名</td>
-                <td style="padding:6px 0;color:#111827;font-size:15px;font-weight:600;font-family:'Courier New',monospace;">${username}</td>
+                <td style="padding:6px 0;color:#111827;font-size:15px;font-weight:600;font-family:'Courier New',monospace;">${escaped_username}</td>
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#6b7280;font-size:13px;">密 码</td>
-                <td style="padding:6px 0;color:#2563eb;font-size:15px;font-weight:600;font-family:'Courier New',monospace;">${password}</td>
+                <td style="padding:6px 0;color:#2563eb;font-size:15px;font-weight:600;font-family:'Courier New',monospace;">${escaped_password}</td>
               </tr>
               <tr>
                 <td style="padding:6px 0;color:#6b7280;font-size:13px;">时 间</td>
-                <td style="padding:6px 0;color:#111827;font-size:14px;">${timestamp}</td>
+                <td style="padding:6px 0;color:#111827;font-size:14px;">${escaped_timestamp}</td>
               </tr>
             </table>
           </td>
@@ -405,10 +453,10 @@ generate_fallback_template() {
     <td style="padding:20px 36px;border-top:1px solid #e5e7eb;">
       <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">
         此邮件由系统自动发送，请勿直接回复。如有问题，请联系系统管理员。<br>
-        — 用户管理系统 · ${timestamp}
-      </p>
-    </td>
-  </tr>
+         — 用户管理系统 · ${escaped_timestamp}
+       </p>
+     </td>
+   </tr>
 </table>
 </td></tr>
 </table>

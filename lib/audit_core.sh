@@ -13,6 +13,7 @@ readonly AUDIT_LOG_DIR="${DATA_DIR:-./data}/audit"
 readonly AUDIT_LOG_FILE="$AUDIT_LOG_DIR/operations.log"
 # shellcheck disable=SC2034
 readonly AUDIT_INDEX_FILE="$AUDIT_LOG_DIR/index.db"
+readonly AUDIT_JOURNAL_IDENTIFIER="${AUDIT_JOURNAL_IDENTIFIER:-user-manager}"
 
 # 日志轮转配置
 readonly AUDIT_MAX_SIZE=$((10 * 1024 * 1024))  # 10MB
@@ -50,6 +51,10 @@ readonly AUDIT_RESULT_ERROR="ERROR"
 
 # 初始化审计系统
 audit_init() {
+    if ! audit_backend_uses_file; then
+        return 0
+    fi
+
     # 创建日志目录
     if [[ ! -d "$AUDIT_LOG_DIR" ]]; then
         mkdir -p "$AUDIT_LOG_DIR" 2>/dev/null || {
@@ -108,6 +113,109 @@ audit_write_line() {
     fi
 }
 
+audit_backend_mode() {
+    local mode="${USER_MANAGER_AUDIT_BACKEND:-${AUDIT_LOG_BACKEND:-file}}"
+    mode=$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')
+
+    case "$mode" in
+        file|journald|both)
+            printf '%s\n' "$mode"
+            ;;
+        *)
+            printf 'file\n'
+            ;;
+    esac
+}
+
+audit_backend_uses_file() {
+    local mode
+    mode=$(audit_backend_mode)
+    [[ "$mode" == "file" || "$mode" == "both" ]]
+}
+
+audit_backend_uses_journal() {
+    local mode
+    mode=$(audit_backend_mode)
+    [[ "$mode" == "journald" || "$mode" == "both" ]]
+}
+
+audit_priority_for_result() {
+    local result="${1:-}"
+
+    case "$result" in
+        "$AUDIT_RESULT_SUCCESS") printf '6\n' ;;
+        "$AUDIT_RESULT_DENIED") printf '4\n' ;;
+        "$AUDIT_RESULT_FAILURE"|"$AUDIT_RESULT_ERROR") printf '3\n' ;;
+        *) printf '5\n' ;;
+    esac
+}
+
+audit_build_journal_message() {
+    local op_type="${1:-}"
+    local target="${2:-}"
+    local result="${3:-}"
+    local details="${4:-}"
+    local actor="${5:-}"
+    local message="${details:-action=${op_type} target=${target} result=${result} actor=${actor}}"
+
+    printf '%s\n' "$(audit_escape_field "$message")"
+}
+
+audit_build_journal_fields() {
+    local op_type="${1:-}"
+    local target="${2:-}"
+    local result="${3:-}"
+    local details="${4:-}"
+    local actor="${5:-}"
+    local message priority
+
+    message=$(audit_build_journal_message "$op_type" "$target" "$result" "$details" "$actor")
+    priority=$(audit_priority_for_result "$result")
+
+    printf 'MESSAGE=%s\n' "$message"
+    printf 'PRIORITY=%s\n' "$priority"
+    printf 'USERMGR_ACTION=%s\n' "$(audit_escape_field "$op_type")"
+    printf 'TARGET=%s\n' "$(audit_escape_field "$target")"
+    printf 'RESULT=%s\n' "$(audit_escape_field "$result")"
+    printf 'ACTOR=%s\n' "$(audit_escape_field "$actor")"
+    printf 'SYSLOG_IDENTIFIER=%s\n' "$AUDIT_JOURNAL_IDENTIFIER"
+}
+
+audit_extract_journal_field() {
+    local payload="${1:-}"
+    local field_name="${2:-}"
+    local line
+
+    while IFS= read -r line; do
+        [[ "$line" == "$field_name="* ]] || continue
+        printf '%s\n' "${line#*=}"
+        return 0
+    done <<< "$payload"
+
+    return 1
+}
+
+audit_write_journal_entry() {
+    local payload="${1:-}"
+    local priority
+
+    [[ -z "$payload" ]] && { msg_err_ctx "audit_write_journal_entry" "journald payload 不能为空"; return 1; }
+
+    if command -v logger &>/dev/null; then
+        if printf '%s\n' "$payload" | logger --journald 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    if command -v systemd-cat &>/dev/null; then
+        priority=$(audit_extract_journal_field "$payload" "PRIORITY")
+        printf '%s\n' "$payload" | systemd-cat --priority="${priority:-5}" --identifier="$AUDIT_JOURNAL_IDENTIFIER" 2>/dev/null
+        return $?
+    fi
+
+    return 1
+}
+
 # 记录审计日志
 # 参数：$1=操作类型, $2=目标对象, $3=结果, $4=详情(可选), $5=用户(可选)
 audit_log() {
@@ -124,8 +232,11 @@ audit_log() {
         fi
         return 1
     fi
+
     # 检查日志文件大小，必要时轮转
-    audit_rotate_check
+    if audit_backend_uses_file; then
+        audit_rotate_check
+    fi
     
     # 获取当前时间（Unix时间戳 + 可读格式）
     local timestamp
@@ -151,9 +262,39 @@ audit_log() {
     # 格式: timestamp|unix_time|hostname|pid|ppid|user|op_type|target|result|details
     local log_entry="${timestamp}|${unix_time}|${esc_hostname}|${pid}|${ppid}|${esc_user}|${esc_op}|${esc_target}|${esc_result}|${esc_details}"
     
-    # 写入日志文件
-    audit_write_line "$log_entry"
-    
+    local journal_payload=""
+    local write_status=1
+
+    if audit_backend_uses_journal; then
+        journal_payload=$(audit_build_journal_fields "$op_type" "$target" "$result" "$details" "$user")
+    fi
+
+    case "$(audit_backend_mode)" in
+        file)
+            audit_write_line "$log_entry"
+            write_status=$?
+            ;;
+        journald)
+            audit_write_journal_entry "$journal_payload"
+            write_status=$?
+            ;;
+        both)
+            local file_status=1
+            local journal_status=1
+            audit_write_line "$log_entry"
+            file_status=$?
+            audit_write_journal_entry "$journal_payload"
+            journal_status=$?
+            if [[ $file_status -eq 0 || $journal_status -eq 0 ]]; then
+                write_status=0
+            fi
+            ;;
+    esac
+
+    if [[ $write_status -ne 0 ]]; then
+        return "$write_status"
+    fi
+
     # 更新索引（异步，不阻塞主流程）
     (audit_update_index "$timestamp" "$op_type" "$target" "$result" "$user" &) 2>/dev/null
     
@@ -196,6 +337,20 @@ audit_error() {
     audit_log "$op_type" "$target" "$AUDIT_RESULT_ERROR" "$details"
 }
 
+audit_view_journald_log() {
+    local lines="${1:-50}"
+
+    if ! command -v journalctl &>/dev/null; then
+        msg_warn "journalctl 不可用"
+        return 1
+    fi
+
+    journalctl -t "$AUDIT_JOURNAL_IDENTIFIER" -n "$lines" --no-pager -o short-iso 2>/dev/null || {
+        msg_warn "无法读取 journald 审计日志"
+        return 1
+    }
+}
+
 # ============================================================
 # 索引更新（预留接口，当前为空操作）
 # ============================================================
@@ -209,8 +364,12 @@ audit_error() {
 #   0 始终成功
 # ============================================================
 audit_update_index() {
-    # TODO: 实现索引更新逻辑（如 SQLite 索引或文件索引）
-    # 当前为空操作，仅作为接口预留
+    # DEFERRED: 索引更新逻辑（如 SQLite 索引或文件索引）
+    # 当前为空操作，作为接口预留以便未来实现。
+    # 如需快速检索，可在此处添加：
+    #   1. 基于时间戳排序的文件索引 → echo "$timestamp|$action|$target|$result|$user" >> "$AUDIT_INDEX_FILE"
+    #   2. SQLite 索引（需 sqlite3 依赖）
+    # 当前审计日志已通过文本文件记录，可通过 grep/awk 检索。
     return 0
 }
 

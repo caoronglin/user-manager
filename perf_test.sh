@@ -35,13 +35,12 @@ init_tests() {
 measure_time() {
     local name="$1"
     shift
-    local cmd="$*"
-    
     local start end duration
     start=$(date +%s%N)
     
-    # Execute command
-    eval "$cmd" >/dev/null 2>&1
+    if [[ $# -gt 0 ]]; then
+        "$@" >/dev/null 2>&1
+    fi
     local exit_code=$?
     
     end=$(date +%s%N)

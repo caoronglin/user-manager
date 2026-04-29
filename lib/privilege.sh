@@ -28,6 +28,16 @@ readonly -A PRIV_CMD_WHITELIST=(
     ["groupdel"]="$ACL_LEVEL_ADMIN"
     
     # 文件权限命令 - 根据上下文需要不同级别
+    ["apt-get"]="$ACL_LEVEL_ADMIN"
+    ["mkdir"]="$ACL_LEVEL_ADMIN"
+    ["rmdir"]="$ACL_LEVEL_ADMIN"
+    ["rm"]="$ACL_LEVEL_ADMIN"
+    ["mv"]="$ACL_LEVEL_ADMIN"
+    ["cp"]="$ACL_LEVEL_ADMIN"
+    ["ln"]="$ACL_LEVEL_ADMIN"
+    ["sed"]="$ACL_LEVEL_ADMIN"
+    ["touch"]="$ACL_LEVEL_ADMIN"
+    ["tee"]="$ACL_LEVEL_ADMIN"
     ["chown"]="$ACL_LEVEL_ADMIN"
     ["chmod"]="$ACL_LEVEL_ADMIN"
     ["chgrp"]="$ACL_LEVEL_ADMIN"
@@ -52,6 +62,11 @@ readonly -A PRIV_CMD_WHITELIST=(
     ["ipset"]="$ACL_LEVEL_ADMIN"
     
     # 其他特权命令
+    ["crontab"]="$ACL_LEVEL_ADMIN"
+    ["du"]="$ACL_LEVEL_ADMIN"
+    ["parallel"]="$ACL_LEVEL_ADMIN"
+    ["quota"]="$ACL_LEVEL_ADMIN"
+    ["xargs"]="$ACL_LEVEL_ADMIN"
     ["mount"]="$ACL_LEVEL_ADMIN"
     ["umount"]="$ACL_LEVEL_ADMIN"
     ["kill"]="$ACL_LEVEL_ADMIN"
@@ -187,10 +202,15 @@ priv_exec() {
 
 # 捕获当前状态快照
 priv_capture_state() {
+    local safe_user safe_pwd
+    safe_user="${USER:-unknown}"
+    safe_pwd="$(pwd)"
+    safe_user="${safe_user//\"/\\\"}"
+    safe_pwd="${safe_pwd//\"/\\\"}"
     local snapshot="{"
-    snapshot="${snapshot}\"user\":\"${USER:-unknown}\","
+    snapshot="${snapshot}\"user\":\"${safe_user}\","
     snapshot="${snapshot}\"uid\":${UID:-$(id -u)},"
-    snapshot="${snapshot}\"pwd\":\"$(pwd)\","
+    snapshot="${snapshot}\"pwd\":\"${safe_pwd}\","
     snapshot="${snapshot}\"time\":$(date +%s)"
     snapshot="${snapshot}}"
     echo "$snapshot"
@@ -206,6 +226,7 @@ priv_userdel() { priv_exec userdel "$@"; }
 priv_groupadd() { priv_exec groupadd "$@"; }
 priv_groupmod() { priv_exec groupmod "$@"; }
 priv_groupdel() { priv_exec groupdel "$@"; }
+priv_apt_get() { priv_exec apt-get "$@"; }
 priv_chown() { priv_exec chown "$@"; }
 priv_chmod() { priv_exec chmod "$@"; }
 priv_chgrp() { priv_exec chgrp "$@"; }
@@ -216,6 +237,12 @@ priv_mv() { priv_exec mv "$@"; }
 priv_cp() { priv_exec cp "$@"; }
 priv_ln() { priv_exec ln "$@"; }
 priv_touch() { priv_exec touch "$@"; }
+priv_sed() { priv_exec sed "$@"; }
+priv_tee() { priv_exec tee "$@"; }
+priv_crontab() { priv_exec crontab "$@"; }
+priv_du() { priv_exec du "$@"; }
+priv_parallel() { priv_exec parallel "$@"; }
+priv_xargs() { priv_exec xargs "$@"; }
 priv_mount() { priv_exec mount "$@"; }
 priv_umount() { priv_exec umount "$@"; }
 priv_systemctl() { priv_exec systemctl "$@"; }
@@ -226,6 +253,7 @@ priv_kill() { priv_exec kill "$@"; }
 priv_pkill() { priv_exec pkill "$@"; }
 priv_killall() { priv_exec killall "$@"; }
 priv_setquota() { priv_exec setquota "$@"; }
+priv_quota() { priv_exec quota "$@"; }
 priv_edquota() { priv_exec edquota "$@"; }
 priv_repquota() { priv_exec repquota "$@"; }
 priv_tar() { priv_exec tar "$@"; }
