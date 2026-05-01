@@ -1,160 +1,1077 @@
 #!/bin/bash
-# tui_manager.sh - TUI版用户管理器 v1.0.0
-# 基于原生Bash的终端用户界面
+# tui_manager.sh - TUI 主线入口
 
 set -uo pipefail
 
-# 获取脚本目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/lib"
 
-# 加载核心库
-source "$LIB_DIR/config.sh"
-source "$LIB_DIR/common.sh"
-source "$LIB_DIR/privilege.sh"
-source "$LIB_DIR/tui_core.sh"
+# shellcheck disable=SC1091
+source "$LIB_DIR/bootstrap.sh"
+um_load_profile tui || exit 1
 
-# ============================================================
-# 主界面
-# ============================================================
+_tui_source_module() {
+    local module="$1"
+    local module_path="$LIB_DIR/$module"
 
-# 绘制主菜单
-draw_main_menu() {
-    # 绘制标题栏
-    tui_draw_fill 0 0 "$TUI_COLS" 3 "$TUI_COLOR_ACCENT"
-    tui_fg 0
-    tui_move 1 $(( (TUI_COLS - 30) / 2 ))
-    tui_bold
-    echo "用户与系统管理器 v0.3.0"
-    tui_reset
-    
-    # 绘制菜单
-    tui_menu_create "主菜单" \
-        "用户管理" \
-        "磁盘与配额管理" \
-        "网络与安全管理" \
-        "备份与恢复" \
-        "报告与统计" \
-        "系统维护" \
-        "实时监控" \
-        "查看日志" \
-        "退出"
-    
-    tui_menu_draw 4 $(( (TUI_COLS - 50) / 2 )) 50
-    
-    # 绘制状态栏
-    local user_count
-    user_count=$(get_managed_user_count 2>/dev/null || echo "0")
-    local uptime_info
-    uptime_info=$(uptime -p 2>/dev/null | sed 's/up //' || echo "unknown")
-    
-    tui_statusbar_draw $((TUI_LINES - 1)) \
-        "用户数: $user_count" \
-        "运行时间: $uptime_info "
+    if [[ -f "$module_path" ]]; then
+        # shellcheck disable=SC1090
+        source "$module_path"
+    fi
 }
 
-# 主菜单键盘处理
+_tui_load_mainline_modules() {
+    local -a modules=(
+        "resource_core.sh"
+        "email_core.sh"
+        "audit_core.sh"
+        "backup_core.sh"
+        "firewall_core.sh"
+        "dns_core.sh"
+        "symlink_core.sh"
+        "report_core.sh"
+        "system_core.sh"
+        "controller_user_workflows.sh"
+        "controller_submenus.sh"
+    )
+    local module
+    for module in "${modules[@]}"; do
+        _tui_source_module "$module"
+    done
+}
+
+_tui_load_mainline_modules
+
+# 加载数据驱动菜单引擎
+# shellcheck disable=SC1091
+source "$LIB_DIR/tui_menus.sh"
+
+get_tui_managed_user_count() {
+    if ! declare -F get_managed_usernames >/dev/null 2>&1; then
+        echo "0"
+        return 0
+    fi
+
+    local users=()
+    mapfile -t users < <(get_managed_usernames 2>/dev/null)
+    echo "${#users[@]}"
+}
+
+draw_main_menu() {
+    _tui_draw_menu "main"
+}
+
+tui_run_classic_menu() {
+    local menu_func="$1"
+
+    if ! declare -F "$menu_func" >/dev/null 2>&1; then
+        tui_message "错误" "菜单未实现: $menu_func"
+        return 1
+    fi
+
+    tui_cleanup
+    "$menu_func"
+    local rc=$?
+    tui_init
+    return $rc
+}
+
+tui_run_workflow_action() {
+    local workflow_func="$1"
+
+    if ! declare -F "$workflow_func" >/dev/null 2>&1; then
+        tui_message "错误" "功能未实现: $workflow_func"
+        return 1
+    fi
+
+    tui_cleanup
+    "$workflow_func"
+    local rc=$?
+    tui_init
+    return $rc
+}
+
+tui_run_prompted_username_action() {
+    local prompt_text="$1"
+    local action_func="$2"
+
+    if ! declare -F "$action_func" >/dev/null 2>&1; then
+        tui_message "错误" "功能未实现: $action_func"
+        return 1
+    fi
+
+    local username
+    while true; do
+        if ! tui_prompt_input "参数输入" "$prompt_text" ""; then
+            TUI_REDRAW=true
+            return 1
+        fi
+        username="$REPLY_INPUT"
+
+        if [[ -z "$username" ]]; then
+            tui_message "错误" "用户名不能为空"
+            continue
+        fi
+        if declare -F validate_username >/dev/null 2>&1 && ! validate_username "$username" >/dev/null 2>&1; then
+            tui_message "错误" "用户名格式无效"
+            continue
+        fi
+        if ! id "$username" &>/dev/null; then
+            tui_message "错误" "用户不存在: $username"
+            continue
+        fi
+        break
+    done
+
+    tui_cleanup
+    "$action_func" "$username"
+    local rc=$?
+    tui_init
+    return $rc
+}
+
+tui_run_prompt_sequence_action() {
+    local action_func="$1"
+    shift
+
+    if ! declare -F "$action_func" >/dev/null 2>&1; then
+        tui_message "错误" "功能未实现: $action_func"
+        return 1
+    fi
+
+    local -a args=()
+    local prompt_spec prompt_text prompt_default
+    for prompt_spec in "$@"; do
+        prompt_text="$prompt_spec"
+        prompt_default=""
+        if [[ "$prompt_spec" == *"|"* ]]; then
+            prompt_text="${prompt_spec%%|*}"
+            prompt_default="${prompt_spec#*|}"
+        fi
+        if ! tui_prompt_input "参数输入" "$prompt_text" "$prompt_default"; then
+            TUI_REDRAW=true
+            return 1
+        fi
+        args+=("$REPLY_INPUT")
+    done
+
+    tui_cleanup
+    "$action_func" "${args[@]}"
+    local rc=$?
+    tui_init
+    return $rc
+}
+
+tui_run_native_menu() {
+    local draw_func="$1"
+    local key_handler="$2"
+
+    TUI_SUBMENU_EXIT=0
+    TUI_REDRAW=true
+
+    while [[ "${TUI_SUBMENU_EXIT:-0}" != "1" ]]; do
+        if [[ "${TUI_REDRAW:-true}" == "true" ]]; then
+            tui_clear
+            "$draw_func"
+            TUI_REDRAW=false
+        fi
+
+        local key
+        key=$(tui_read_key 2>/dev/null) || continue
+        [[ -n "$key" ]] || continue
+
+        "$key_handler" "$key"
+
+        if [[ "${TUI_SUBMENU_EXIT:-0}" != "1" ]]; then
+            TUI_REDRAW=true
+        fi
+    done
+
+    TUI_SUBMENU_EXIT=0
+    TUI_REDRAW=true
+    return 0
+}
+
+draw_tui_user_menu() {
+    _tui_draw_menu "user"
+}
+
+handle_tui_user_menu_key() {
+    local key="$1"
+    local result
+
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_create_or_assign_user_native ;;
+        1) tui_run_workflow_action change_user_password ;;
+        2) tui_run_workflow_action delete_user_account ;;
+        3) tui_run_workflow_action rename_user_account ;;
+        4) tui_run_workflow_action suspend_or_enable_user ;;
+        5) tui_run_workflow_action modify_user_quota ;;
+        6) tui_run_workflow_action modify_user_resource_limits ;;
+        7) tui_show_managed_users_view ;;
+        8|-1)
+            TUI_SUBMENU_EXIT=1
+            ;;
+    esac
+
+    return 0
+}
+
+tui_run_user_management_menu() {
+    tui_run_native_menu draw_tui_user_menu handle_tui_user_menu_key
+}
+
+tui_show_managed_users_view() {
+    local users=()
+    local selected=0
+    local scroll_offset=0
+    local running=true
+
+    mapfile -t users < <(get_managed_usernames 2>/dev/null)
+
+    while $running; do
+        tui_clear
+        tui_draw_fill 0 0 "$TUI_COLS" 3 "$TUI_COLOR_ACCENT"
+        tui_fg 0
+        tui_move 1 $(( (TUI_COLS - 12) / 2 ))
+        tui_bold
+        echo "托管用户列表"
+        tui_reset
+
+        if (( ${#users[@]} == 0 )); then
+            tui_draw_center 6 "当前无任何托管用户" "$TUI_COLOR_MUTED"
+            tui_statusbar_draw $((TUI_LINES - 1)) "托管用户列表" "q 返回"
+            local empty_key
+            empty_key=$(tui_read_key 2>/dev/null) || continue
+            [[ "$empty_key" == "q" || "$empty_key" == "ESC" || "$empty_key" == "ENTER" ]] && break
+            continue
+        fi
+
+        local max_rows=$((TUI_LINES - 8))
+        (( max_rows < 1 )) && max_rows=1
+        local end_index=$(( scroll_offset + max_rows ))
+        (( end_index > ${#users[@]} )) && end_index=${#users[@]}
+
+        tui_move 4 2
+        tui_bold
+        tui_fg "$TUI_COLOR_ACCENT"
+        printf "%-16s %-12s %-10s %-10s %s\n" "用户名" "挂载点" "配额GB" "使用率" "主目录"
+        tui_reset
+
+        local row=5
+        local i
+        for ((i = scroll_offset; i < end_index; i++)); do
+            local username="${users[$i]}"
+            local home mp quota_gb usage_text quota_info used_bytes limit_bytes pct
+            home=$(get_user_home "$username" 2>/dev/null || echo "-")
+            mp=$(get_user_mountpoint "$home" 2>/dev/null || echo "N/A")
+            quota_gb="未设置"
+            usage_text="-"
+
+            if [[ "$mp" != "N/A" ]]; then
+                quota_info=$(get_user_quota_info "$username" "$mp")
+                used_bytes="${quota_info%:*}"
+                limit_bytes="${quota_info#*:}"
+                if [[ "$limit_bytes" =~ ^[0-9]+$ ]] && (( limit_bytes > 0 )); then
+                    quota_gb=$(bytes_to_gb "$limit_bytes")
+                    if [[ "$used_bytes" =~ ^[0-9]+$ ]]; then
+                        pct=$(awk "BEGIN {printf \"%.0f\", 100 * $used_bytes / $limit_bytes}" 2>/dev/null)
+                        usage_text="${pct}%"
+                    fi
+                fi
+            fi
+
+            tui_move "$row" 2
+            if (( i == selected )); then
+                tui_reverse
+                tui_fg "$TUI_COLOR_HIGHLIGHT"
+            else
+                tui_fg "$TUI_COLOR_FG"
+            fi
+            printf "%-16s %-12s %-10s %-10s %s" "$username" "$mp" "$quota_gb" "$usage_text" "$home"
+            tui_reset
+            ((row++))
+        done
+
+        tui_statusbar_draw $((TUI_LINES - 1)) \
+            "托管用户 ${selected+1}/${#users[@]}" \
+            "↑/↓ 滚动  Enter 详情  q 返回"
+
+        local key
+        key=$(tui_read_key 2>/dev/null) || continue
+        case "$key" in
+            UP|k)
+                if (( selected > 0 )); then
+                    ((selected--))
+                    (( selected < scroll_offset )) && scroll_offset=$selected
+                fi
+                ;;
+            DOWN|j)
+                if (( selected < ${#users[@]} - 1 )); then
+                    ((selected++))
+                    if (( selected >= scroll_offset + max_rows )); then
+                        scroll_offset=$((selected - max_rows + 1))
+                    fi
+                fi
+                ;;
+            ENTER)
+                tui_run_workflow_action show_single_user_resource "${users[$selected]}"
+                ;;
+            q|ESC)
+                running=false
+                ;;
+        esac
+    done
+
+    TUI_REDRAW=true
+    return 0
+}
+
+tui_run_create_or_assign_user_native() {
+    local username password disk_num update_existing=false install_miniforge=false
+    local target_info idx mp home quota_bytes quota_input sel_df sel_avail_b sel_avail_h
+    local action password_display
+
+    acquire_lock || return 1
+
+    if ! tui_prompt_input "创建/更新用户" "用户名" ""; then
+        release_lock
+        TUI_REDRAW=true
+        return 1
+    fi
+    username="$REPLY_INPUT"
+
+    if [[ -z "$username" ]] || ! validate_username "$username" >/dev/null 2>&1; then
+        tui_message "错误" "用户名无效"
+        release_lock
+        return 1
+    fi
+
+    if id "$username" &>/dev/null; then
+        update_existing=true
+    fi
+
+    if ! tui_prompt_select "创建/更新用户" "密码设置方式" 0 "从密码池随机选择（推荐）" "手动输入密码"; then
+        release_lock
+        TUI_REDRAW=true
+        return 1
+    fi
+
+    case "$TUI_PROMPT_INDEX" in
+        0)
+            password=$(get_random_password)
+            [[ -z "$password" ]] && { tui_message "错误" "无法获取随机密码"; release_lock; return 1; }
+            ;;
+        1)
+            if ! tui_prompt_input "创建/更新用户" "手动密码" ""; then
+                release_lock
+                TUI_REDRAW=true
+                return 1
+            fi
+            password="$REPLY_INPUT"
+            if (( ${#password} < 8 )); then
+                tui_message "错误" "密码长度至少需要 8 位"
+                release_lock
+                return 1
+            fi
+            ;;
+        *)
+            release_lock
+            return 1
+            ;;
+    esac
+
+    if ! tui_prompt_input "创建/更新用户" "磁盘编号" "1"; then
+        release_lock
+        TUI_REDRAW=true
+        return 1
+    fi
+    disk_num="$REPLY_INPUT"
+
+    target_info=$(_resolve_provision_target "$username" "$disk_num") || {
+        release_lock
+        return 1
+    }
+    IFS='|' read -r idx mp home <<< "$target_info"
+
+    quota_bytes=$(_resolve_provision_quota "$username" "$mp" "$update_existing")
+
+    if ! tui_prompt_input "创建/更新用户" "配额 (留空=默认)" ""; then
+        release_lock
+        TUI_REDRAW=true
+        return 1
+    fi
+    quota_input="$REPLY_INPUT"
+    if [[ -n "$quota_input" ]]; then
+        quota_bytes=$(parse_quota_input "$quota_input")
+        if [[ -z "$quota_bytes" ]]; then
+            tui_message "错误" "无效的配额格式"
+            release_lock
+            return 1
+        fi
+    fi
+
+    sel_df=$(df -B1 "$mp" 2>/dev/null | awk 'NR==2 {print $4, $5}')
+    read -r sel_avail_b _ <<< "$sel_df"
+    sel_avail_h=$(bytes_to_human "$sel_avail_b")
+
+    if ! $update_existing; then
+        if tui_confirm "为新用户安装 Miniforge？" "n"; then
+            install_miniforge=true
+        fi
+    fi
+
+    if ! tui_confirm "确认提交用户 $username ?" "y"; then
+        release_lock
+        TUI_REDRAW=true
+        return 1
+    fi
+
+    tui_cleanup
+
+    password_display=$(format_password_display "$password")
+    if $update_existing; then
+        action="update"
+        update_user "$username" "$password" "$home" || {
+            release_lock
+            tui_init
+            return 1
+        }
+    else
+        action="create"
+        create_user "$username" "$password" "$home" "$install_miniforge" || {
+            release_lock
+            tui_init
+            return 1
+        }
+    fi
+
+    priv_chown "$username:$username" "$home" 2>/dev/null || true
+    priv_chmod 700 "$home" 2>/dev/null || true
+    priv_usermod -d "$home" "$username" 2>/dev/null || true
+    set_user_quota "$username" "$quota_bytes" "$mp" || {
+        release_lock
+        tui_init
+        return 1
+    }
+
+    if $update_existing; then
+        _send_password_notification "$username" "$password" "账户更新"
+    else
+        _send_password_notification "$username" "$password" "账户创建"
+    fi
+
+    record_user_event "$username" "$action" "用户" "$mp" "$home" "$quota_bytes"
+    release_lock
+    tui_init
+    TUI_REDRAW=true
+    return 0
+}
+
+tui_run_modify_user_quota_native() {
+    local username home mp quota_info used_bytes current_limit_bytes current_limit_gb=""
+    local new_quota new_quota_bytes new_quota_gb
+
+    if ! tui_prompt_input "调整用户配额" "请输入用户名" ""; then
+        TUI_REDRAW=true
+        return 1
+    fi
+    username="$REPLY_INPUT"
+
+    if [[ -z "$username" ]] || ! validate_username "$username" >/dev/null 2>&1 || ! id "$username" &>/dev/null; then
+        tui_message "错误" "用户不存在或用户名无效"
+        return 1
+    fi
+
+    home=$(get_user_home "$username")
+    mp=$(get_user_mountpoint "$home")
+    if [[ -z "$home" || -z "$mp" ]]; then
+        tui_message "错误" "无法确定用户主目录或挂载点"
+        return 1
+    fi
+
+    quota_info=$(get_user_quota_info "$username" "$mp")
+    used_bytes="${quota_info%:*}"
+    current_limit_bytes="${quota_info#*:}"
+    if [[ "$current_limit_bytes" =~ ^[0-9]+$ ]] && (( current_limit_bytes > 0 )); then
+        current_limit_gb=$(bytes_to_gb "$current_limit_bytes")
+    fi
+
+    if ! tui_prompt_input "调整用户配额" "请输入新配额 (如: 500G, 1T)" ""; then
+        TUI_REDRAW=true
+        return 1
+    fi
+    new_quota="$REPLY_INPUT"
+    new_quota_bytes=$(parse_quota_input "$new_quota")
+    if [[ -z "$new_quota_bytes" ]]; then
+        tui_message "错误" "无效的配额格式"
+        return 1
+    fi
+
+    new_quota_gb=$(bytes_to_gb "$new_quota_bytes")
+    if ! tui_confirm "确认将 $username 配额改为 ${new_quota_gb}GB ?" "y"; then
+        TUI_REDRAW=true
+        return 1
+    fi
+
+    tui_cleanup
+    set_user_quota "$username" "$new_quota_bytes" "$mp" || {
+        tui_init
+        return 1
+    }
+    record_user_event "$username" "quota_modify" "${current_limit_gb:-未知}GB -> ${new_quota_gb}GB" "$mp" "$home"
+    tui_init
+    TUI_REDRAW=true
+    return 0
+}
+
+draw_tui_disk_quota_menu() {
+    _tui_draw_menu "disk"
+}
+
+handle_tui_disk_quota_menu_key() {
+    local key="$1"
+    local result
+
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_workflow_action show_disk_overview ;;
+        1) tui_run_modify_user_quota_native ;;
+        2) tui_run_prompted_username_action "请输入用户名" show_single_user_resource ;;
+        3) tui_run_workflow_action modify_user_resource_limits ;;
+        4) tui_run_prompted_username_action "请输入用户名" show_single_user_resource ;;
+        5|-1)
+            TUI_SUBMENU_EXIT=1
+            ;;
+    esac
+
+    return 0
+}
+
+tui_run_disk_quota_menu() {
+    tui_run_native_menu draw_tui_disk_quota_menu handle_tui_disk_quota_menu_key
+}
+
+draw_tui_network_security_menu() {
+    _tui_draw_menu "network"
+}
+
+# --- 防火墙子菜单 ---
+draw_tui_firewall_menu() {
+    _tui_draw_menu "firewall"
+}
+
+handle_tui_firewall_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+    case "$result" in
+        0) tui_run_prompt_sequence_action add_port_rule "用户名" "端口号" "协议 (tcp/udp)|tcp" "来源IP (可选)" ;;
+        1) tui_run_prompt_sequence_action delete_port_rule "用户名" "端口号" "协议 (tcp/udp)|tcp" ;;
+        2) tui_run_workflow_action list_firewall_rules ;;
+        3) tui_run_prompt_sequence_action list_user_firewall_rules "用户名" ;;
+        4) tui_run_workflow_action show_port_usage ;;
+        5) tui_run_prompt_sequence_action add_port_range "用户名" "起始端口" "结束端口" "协议 (tcp/udp)|tcp" ;;
+        6) tui_run_prompt_sequence_action apply_service_template "用户名" "服务类型 (web/database/ssh/jupyter/ml/all)" ;;
+        7) tui_run_workflow_action init_ufw ;;
+        8|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+    return 0
+}
+
+tui_run_firewall_menu_native() {
+    tui_run_native_menu draw_tui_firewall_menu handle_tui_firewall_menu_key
+}
+
+# --- DNS 子菜单 ---
+draw_tui_dns_menu() {
+    _tui_draw_menu "dns"
+}
+
+handle_tui_dns_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+    case "$result" in
+        0) tui_run_workflow_action show_dns_whitelist ;;
+        1) tui_run_prompt_sequence_action add_dns_entry "请输入域名" ;;
+        2) tui_run_prompt_sequence_action remove_dns_entry "请输入域名" ;;
+        3) tui_run_prompt_sequence_action apply_dns_restrictions "请输入用户名" ;;
+        4) tui_run_prompt_sequence_action remove_dns_restrictions "请输入用户名" ;;
+        5) tui_run_prompt_sequence_action show_dns_status "请输入用户名" ;;
+        6) tui_run_workflow_action apply_all_dns_restrictions ;;
+        7) tui_run_workflow_action refresh_dns_rules ;;
+        8|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+    return 0
+}
+
+tui_run_dns_menu_native() {
+    tui_run_native_menu draw_tui_dns_menu handle_tui_dns_menu_key
+}
+
+# --- 符号链接子菜单 ---
+draw_tui_symlink_menu() {
+    _tui_draw_menu "symlink"
+}
+
+handle_tui_symlink_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+    case "$result" in
+        0) tui_run_prompt_sequence_action create_user_symlink "用户名" "链接名称" "目标路径" ;;
+        1) tui_run_prompt_sequence_action create_cross_disk_symlink "用户名" "目标盘号" "子目录 (可选)" ;;
+        2) tui_run_prompt_sequence_action list_user_symlinks "用户名" ;;
+        3) tui_run_prompt_sequence_action delete_user_symlink "用户名" "链接名称" ;;
+        4) tui_run_prompt_sequence_action cleanup_broken_symlinks "用户名" ;;
+        5) tui_run_prompt_sequence_action create_shared_symlink "用户名" "共享名称" "共享路径" ;;
+        6) tui_run_prompt_sequence_action create_shared_for_all "共享名称" "共享路径" ;;
+        7) tui_run_workflow_action show_all_symlinks_overview ;;
+        8|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+    return 0
+}
+
+tui_run_symlink_menu_native() {
+    tui_run_native_menu draw_tui_symlink_menu handle_tui_symlink_menu_key
+}
+
+# --- SSH/Fail2ban 子菜单 ---
+draw_tui_ssh_fail2ban_menu() {
+    _tui_draw_menu "ssh_fail2ban"
+}
+
+handle_tui_ssh_fail2ban_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+    case "$result" in
+        0) tui_run_workflow_action security_baseline_sshd_summary ;;
+        1) tui_run_prompt_sequence_action security_baseline_show_recent_auth_failures "最近认证失败日志行数|20" ;;
+        2) tui_run_workflow_action security_baseline_show_fail2ban_status ;;
+        3) tui_run_prompt_sequence_action security_baseline_configure_fail2ban_sshd_jail "bantime 秒数|600" "findtime 秒数|600" "maxretry 次数|5" ;;
+        4) tui_run_workflow_action security_baseline_fail2ban_list_jails ;;
+        5) tui_run_workflow_action security_baseline_fail2ban_show_nginx_status ;;
+        6) tui_run_prompt_sequence_action security_baseline_configure_fail2ban_nginx_jail "nginx bantime 秒数|3600" "nginx findtime 秒数|600" "nginx maxretry 次数|2" ;;
+        7|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+    return 0
+}
+
+tui_run_ssh_fail2ban_menu_native() {
+    tui_run_native_menu draw_tui_ssh_fail2ban_menu handle_tui_ssh_fail2ban_menu_key
+}
+
+handle_tui_network_security_menu_key() {
+    local key="$1"
+    local result
+
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_firewall_menu_native ;;
+        1) tui_run_dns_menu_native ;;
+        2) tui_run_symlink_menu_native ;;
+        3) tui_run_ssh_fail2ban_menu_native ;;
+        4) tui_run_workflow_action show_network_stack_panel ;;
+        5|-1)
+            TUI_SUBMENU_EXIT=1
+            ;;
+    esac
+
+    return 0
+}
+
+tui_run_network_security_menu() {
+    tui_run_native_menu draw_tui_network_security_menu handle_tui_network_security_menu_key
+}
+
+draw_tui_backup_menu() {
+    _tui_draw_menu "backup"
+}
+
+draw_tui_backup_advanced_menu() {
+    _tui_draw_menu "backup_advanced"
+}
+
+handle_tui_backup_advanced_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_prompt_sequence_action configure_backup_schedule "请输入用户名" "备份时间（小时，0-23）" ;;
+        1) tui_run_prompt_sequence_action remove_backup_schedule "请输入用户名" ;;
+        2) tui_run_workflow_action show_backup_schedules ;;
+        3) tui_run_workflow_action backup_all_users ;;
+        4) tui_run_workflow_action backup_all_users_parallel ;;
+        5) tui_run_workflow_action show_backup_batches ;;
+        6) tui_run_prompt_sequence_action restore_from_batch "批次ID (如 20251029_174643)" "要恢复的用户名" ;;
+        7|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+
+    return 0
+}
+
+tui_run_backup_advanced_menu_native() {
+    tui_run_native_menu draw_tui_backup_advanced_menu handle_tui_backup_advanced_menu_key
+}
+
+handle_tui_backup_menu_key() {
+    local key="$1"
+    local result
+
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_prompt_sequence_action manual_backup_user "请输入用户名" ;;
+        1) tui_run_prompt_sequence_action restore_user_backup "请输入用户名" "备份点名称 (留空=最新)" ;;
+        2) tui_run_prompt_sequence_action show_backup_status "请输入用户名" ;;
+        3) tui_run_workflow_action list_backup_users ;;
+        4) tui_run_backup_advanced_menu_native ;;
+        5|-1)
+            TUI_SUBMENU_EXIT=1
+            ;;
+    esac
+
+    return 0
+}
+
+tui_run_backup_menu_native() {
+    tui_run_native_menu draw_tui_backup_menu handle_tui_backup_menu_key
+}
+
+draw_tui_job_stats_menu() {
+    _tui_draw_menu "job_stats"
+}
+
+handle_tui_job_stats_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_workflow_action collect_all_job_stats ;;
+        1) tui_run_prompt_sequence_action get_weekly_job_stats "请输入用户名" ;;
+        2) tui_run_prompt_sequence_action get_monthly_job_stats "请输入用户名" ;;
+        3) tui_run_prompt_sequence_action collect_user_jobs "请输入用户名" ;;
+        4|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+
+    return 0
+}
+
+tui_run_job_stats_menu_native() {
+    tui_run_native_menu draw_tui_job_stats_menu handle_tui_job_stats_menu_key
+}
+
+draw_tui_password_rotation_menu() {
+    _tui_draw_menu "password_rotation"
+}
+
+handle_tui_password_rotation_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_workflow_action show_password_rotation_status ;;
+        1) tui_run_prompt_sequence_action configure_password_rotation "轮换间隔（天）|${PASSWORD_ROTATE_INTERVAL_DAYS:-90}" ;;
+        2) tui_run_workflow_action remove_password_rotation ;;
+        3) tui_run_workflow_action manual_password_rotation ;;
+        4|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+
+    return 0
+}
+
+tui_run_password_rotation_menu_native() {
+    tui_run_native_menu draw_tui_password_rotation_menu handle_tui_password_rotation_menu_key
+}
+
+draw_tui_report_menu() {
+    _tui_draw_menu "report"
+}
+
+_tui_send_user_personal_report() {
+    local username="$1"
+    local report_file
+
+    report_file="$REPORT_DIR/user_${username}_$(date +%Y%m%d).html"
+    if generate_user_personal_report "$username" "$report_file"; then
+        send_user_report_email "$username" "$report_file"
+    fi
+}
+
+handle_tui_report_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_workflow_action generate_html_report ;;
+        1) tui_run_workflow_action generate_user_statistics ;;
+        2) tui_run_workflow_action generate_quota_report ;;
+        3) tui_run_workflow_action generate_resource_report ;;
+        4) tui_run_workflow_action show_user_resource_usage ;;
+        5) tui_run_prompted_username_action "请输入用户名" show_single_user_resource ;;
+        6) tui_run_workflow_action show_user_creation_log ;;
+        7) tui_run_prompted_username_action "用户名" query_user_history ;;
+        8) tui_run_prompt_sequence_action query_by_date_range "开始日期 (YYYY-MM-DD)" "结束日期 (YYYY-MM-DD)" ;;
+        9) tui_run_workflow_action analyze_operation_trends ;;
+        10) tui_run_workflow_action analyze_anomalies ;;
+        11) tui_run_workflow_action generate_log_summary ;;
+        12) tui_run_prompt_sequence_action export_full_report "输出文件 (留空=自动)" ;;
+        13) tui_run_prompt_sequence_action export_users_csv "输出文件 (留空=自动)" ;;
+        14) tui_run_prompted_username_action "请输入用户名" _tui_send_user_personal_report ;;
+        15) tui_run_workflow_action send_all_user_reports ;;
+        16) tui_run_workflow_action setup_weekly_report_cron ;;
+        17) tui_run_workflow_action remove_weekly_report_cron ;;
+        18) tui_run_workflow_action view_weekly_report_log ;;
+        19) tui_run_workflow_action view_audit_log ;;
+        20) tui_run_workflow_action show_audit_stats ;;
+        21|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+
+    return 0
+}
+
+tui_run_report_menu_native() {
+    tui_run_native_menu draw_tui_report_menu handle_tui_report_menu_key
+}
+
+draw_tui_report_stats_menu() {
+    _tui_draw_menu "report_stats"
+}
+
+handle_tui_report_stats_menu_key() {
+    local key="$1"
+    local result
+
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_workflow_action generate_html_report ;;
+        1) tui_run_workflow_action generate_user_statistics ;;
+        2) tui_run_job_stats_menu_native ;;
+        3) tui_run_password_rotation_menu_native ;;
+        4) tui_run_report_menu_native ;;
+        5|-1)
+            TUI_SUBMENU_EXIT=1
+            ;;
+    esac
+
+    return 0
+}
+
+tui_run_report_stats_menu_native() {
+    tui_run_native_menu draw_tui_report_stats_menu handle_tui_report_stats_menu_key
+}
+
+draw_tui_systemd_timer_menu() {
+    _tui_draw_menu "systemd_timer"
+}
+
+handle_tui_systemd_timer_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_workflow_action systemd_timer_list_timers ;;
+        1) tui_run_prompt_sequence_action systemd_timer_install_profile "profile (weekly-report/account-health-check)|weekly-report" ;;
+        2) tui_run_prompt_sequence_action systemd_timer_show_logs "timer 名称|weekly-report" "最近日志行数|50" ;;
+        3) tui_run_prompt_sequence_action systemd_timer_remove "要删除的 timer 名称|weekly-report" ;;
+        4|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+
+    return 0
+}
+
+tui_run_systemd_timer_menu_native() {
+    tui_run_native_menu draw_tui_systemd_timer_menu handle_tui_systemd_timer_menu_key
+}
+
+draw_tui_system_details_menu() {
+    _tui_draw_menu "system_details"
+}
+
+handle_tui_system_details_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_workflow_action show_cpu_info ;;
+        1) tui_run_workflow_action show_memory_info_detailed ;;
+        2) tui_run_workflow_action show_disk_info ;;
+        3) tui_run_workflow_action show_network_hardware_info ;;
+        4) tui_run_workflow_action run_full_hardware_check ;;
+        5) tui_run_prompt_sequence_action journalctl_show_boot_logs "boot 引用 (0=当前, -1=上次)|0" "最近日志行数|100" ;;
+        6) tui_run_workflow_action journalctl_list_failed_services ;;
+        7) tui_run_prompt_sequence_action journalctl_diagnose_service "服务名 (如 ssh / docker.service)" "最近日志行数|80" ;;
+        8) tui_run_prompt_sequence_action journalctl_compare_boot_errors "对比最近 err..alert 日志条数|100" ;;
+        9) tui_run_workflow_action launch_btop_monitor ;;
+        10) tui_run_workflow_action launch_htop_monitor ;;
+        11) tui_run_workflow_action analyze_crash_causes ;;
+        12) tui_run_workflow_action configure_oom_protection ;;
+        13) tui_run_workflow_action show_network_info ;;
+        14|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+
+    return 0
+}
+
+tui_run_system_details_menu_native() {
+    tui_run_native_menu draw_tui_system_details_menu handle_tui_system_details_menu_key
+}
+
+draw_tui_system_menu() {
+    _tui_draw_menu "system"
+}
+
+handle_tui_system_menu_key() {
+    local key="$1"
+    local result
+
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_workflow_action show_system_info ;;
+        1) tui_run_workflow_action show_memory_info ;;
+        2) tui_run_workflow_action check_hardware_health ;;
+        3) tui_run_workflow_action analyze_system_logs ;;
+        4) tui_run_workflow_action show_ubuntu_maintenance_panel ;;
+        5) tui_run_workflow_action show_network_stack_panel ;;
+        6) tui_run_systemd_timer_menu_native ;;
+        7) tui_run_system_details_menu_native ;;
+        8|-1)
+            TUI_SUBMENU_EXIT=1
+            ;;
+    esac
+
+    return 0
+}
+
+tui_run_system_menu_native() {
+    tui_run_native_menu draw_tui_system_menu handle_tui_system_menu_key
+}
+
+draw_tui_audit_advanced_menu() {
+    _tui_draw_menu "audit_advanced"
+}
+
+handle_tui_audit_advanced_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_prompt_sequence_action audit_query "操作类型 (留空=全部)" "用户名 (留空=全部)" "日期范围 (YYYY-MM-DD 或 YYYY-MM-DD:YYYY-MM-DD, 留空=全部)" ;;
+        1) tui_run_workflow_action show_audit_stats ;;
+        2) tui_run_workflow_action audit_rotate ;;
+        3) tui_run_workflow_action view_journald_audit_log ;;
+        4|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+
+    return 0
+}
+
+tui_run_audit_advanced_menu_native() {
+    tui_run_native_menu draw_tui_audit_advanced_menu handle_tui_audit_advanced_menu_key
+}
+
+draw_tui_audit_menu() {
+    _tui_draw_menu "audit"
+}
+
+handle_tui_audit_menu_key() {
+    local key="$1"
+    local result
+
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_workflow_action view_audit_log ;;
+        1) tui_run_workflow_action show_audit_stats ;;
+        2) tui_run_workflow_action view_journald_audit_log ;;
+        3) tui_run_audit_advanced_menu_native ;;
+        4|-1)
+            TUI_SUBMENU_EXIT=1
+            ;;
+    esac
+
+    return 0
+}
+
+tui_run_audit_menu_native() {
+    tui_run_native_menu draw_tui_audit_menu handle_tui_audit_menu_key
+}
+
 handle_main_menu_key() {
     local key="$1"
-    
     local result
+
     result=$(tui_menu_handle_key "$key")
-    
-    if [[ -n "$result" ]]; then
-        case "$result" in
-            0) run_submenu "用户管理" draw_user_menu handle_user_menu_key ;;
-            1) run_submenu "磁盘与配额" draw_quota_menu handle_quota_menu_key ;;
-            2) run_submenu "网络与安全" draw_network_menu handle_network_menu_key ;;
-            3) run_submenu "备份与恢复" draw_backup_menu handle_backup_menu_key ;;
-            4) run_submenu "报告与统计" draw_report_menu handle_report_menu_key ;;
-            5) run_submenu "系统维护" draw_system_menu handle_system_menu_key ;;
-            6) run_monitor_view ;;
-            7) run_log_viewer ;;
-            8|-1) TUI_RUNNING=false ;;
-        esac
-        TUI_REDRAW=true
+    if [[ -z "$result" ]]; then
+        return 0
     fi
-}
-
-# ============================================================
-# 子菜单运行
-# ============================================================
-
-run_submenu() {
-    local title="$1"
-    local draw_func="$2"
-    local key_handler="$3"
     
-    tui_run "$draw_func" "$key_handler"
+    case "$result" in
+        0) tui_run_user_management_menu ;;
+        1) tui_run_disk_quota_menu ;;
+        2) tui_run_network_security_menu ;;
+        3) tui_run_backup_menu_native ;;
+        4) tui_run_report_stats_menu_native ;;
+        5) tui_run_system_menu_native ;;
+        6) tui_run_audit_menu_native ;;
+        7) run_monitor_view ;;
+        8) run_log_viewer ;;
+        9|-1) TUI_RUNNING=false ;;
+    esac
+
+    TUI_REDRAW=true
 }
-
-# ============================================================
-# 用户管理菜单
-# ============================================================
-
-draw_user_menu() {
-    tui_draw_fill 0 0 "$TUI_COLS" 3 235
-    tui_fg 0
-    tui_move 1 $(( (TUI_COLS - 20) / 2 ))
-    tui_bold
-    echo "用户管理"
-    tui_reset
-    
-    tui_menu_create "用户管理" \
-        "创建/更新用户" \
-        "修改用户密码" \
-        "删除用户账户" \
-        "重命名用户账户" \
-        "暂停/恢复用户" \
-        "调整用户配额" \
-        "配置资源限制" \
-        "查看托管用户" \
-        "返回主菜单"
-    
-    tui_menu_draw 4 $(( (TUI_COLS - 45) / 2 )) 45
-}
-
-handle_user_menu_key() {
-    local key="$1"
-    local result
-    result=$(tui_menu_handle_key "$key")
-    
-    if [[ -n "$result" ]]; then
-        case "$result" in
-            0) tui_message "用户管理" "创建用户功能" ;;
-            1) tui_message "用户管理" "修改密码功能" ;;
-            2) tui_message "用户管理" "删除用户功能" ;;
-            7) show_user_list ;;
-            8|-1) return 0 ;;
-        esac
-        TUI_REDRAW=true
-    fi
-}
-
-# ============================================================
-# 系统监控视图
-# ============================================================
 
 run_monitor_view() {
     local running=true
-    
+
     while $running; do
         tui_clear
-        
-        # 标题
+
         tui_draw_fill 0 0 "$TUI_COLS" 3 39
         tui_fg 0
         tui_move 1 $(( (TUI_COLS - 20) / 2 ))
         tui_bold
         echo "实时系统监控"
         tui_reset
-        
-        # CPU使用率
+
         local cpu_usage
         cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print int($2)}' 2>/dev/null || echo "0")
         tui_progress_draw 5 5 $((TUI_COLS - 10)) "$cpu_usage" "CPU"
-        
-        # 内存使用率
+
         local mem_usage mem_total mem_used
         if command -v free &>/dev/null; then
             mem_usage=$(free | grep Mem | awk '{printf "%.0f", $3/$2 * 100}')
@@ -166,39 +1083,35 @@ run_monitor_view() {
             mem_used="?"
         fi
         tui_progress_draw 7 5 $((TUI_COLS - 10)) "$mem_usage" "内存 ($mem_used/$mem_total)"
-        
-        # 磁盘使用率
+
         local disk_usage disk_total
-        disk_usage=$(df -h / | tail -1 | awk '{print $5}' | tr -d '%' 2>/dev/null || echo "0")
-        disk_total=$(df -h / | tail -1 | awk '{print $2}' 2>/dev/null || echo "?")
+        disk_usage=$(df -h / | awk 'END{gsub(/%/, "", $5); print $5}' 2>/dev/null || echo "0")
+        disk_total=$(df -h / | awk 'END{print $2}' 2>/dev/null || echo "?")
         tui_progress_draw 9 5 $((TUI_COLS - 10)) "$disk_usage" "磁盘 ($disk_total)"
-        
-        # 进程信息
+
         tui_move 12 5
         tui_bold
         tui_fg "$TUI_COLOR_ACCENT"
         echo "进程状态:"
         tui_reset
-        
+
         local procs
-        procs=$(ps aux --sort=-%mem 2>/dev/null | head -6 | tail -5)
+        procs=$(ps aux --sort=-%mem 2>/dev/null | sed -n '2,6p')
         tui_move 13 5
         printf "%-10s %-8s %-6s %-6s %s\n" "USER" "PID" "CPU%" "MEM%" "COMMAND"
         tui_move 14 5
         echo "$procs" | while read -r line; do
             printf "%-10s %-8s %-6s %-6s %s\n" $line
         done
-        
-        # 提示
+
         tui_move $((TUI_LINES - 2)) 5
         tui_fg "$TUI_COLOR_MUTED"
         echo "按 b 启动 btop | n 启动 ncdu | q 返回"
         tui_reset
-        
-        # 读取按键
+
         local key
         key=$(tui_read_key 2>/dev/null) || continue
-        
+
         case "$key" in
             b|B)
                 tui_cleanup
@@ -220,67 +1133,59 @@ run_monitor_view() {
                 fi
                 tui_init
                 ;;
-            q|ESC) running=false ;;
+            q|ESC)
+                running=false
+                ;;
         esac
     done
 }
 
-# ============================================================
-# 日志查看器
-# ============================================================
-
 run_log_viewer() {
-    local log_file="${LOG_DIR:-./logs}/audit.log"
+    local log_file="${SYSTEM_LOG:-${LOG_DIR:-./logs}/system.log}"
     local scroll_pos=0
     local running=true
-    
+
     while $running; do
         tui_clear
-        
-        # 标题
+
         tui_draw_fill 0 0 "$TUI_COLS" 3 235
         tui_fg 0
         tui_move 1 $(( (TUI_COLS - 20) / 2 ))
         tui_bold
         echo "日志查看器"
         tui_reset
-        
-        # 日志内容
+
         if [[ -f "$log_file" ]]; then
-            local lines
+            local lines display_lines
             lines=$(wc -l < "$log_file")
-            local display_lines=$((TUI_LINES - 5))
-            
-            tail -n $((lines - scroll_pos)) "$log_file" 2>/dev/null | head -n "$display_lines" | \
-                while IFS= read -r line; do
-                    # 高亮不同级别
-                    if [[ "$line" =~ ERROR|FAIL ]]; then
-                        tui_fg "$TUI_COLOR_ERROR"
-                    elif [[ "$line" =~ WARN ]]; then
-                        tui_fg "$TUI_COLOR_WARNING"
-                    elif [[ "$line" =~ SUCCESS|OK ]]; then
-                        tui_fg "$TUI_COLOR_SUCCESS"
-                    fi
-                    echo "$line"
-                    tui_reset
-                done
+            display_lines=$((TUI_LINES - 5))
+
+            tail -n $((lines - scroll_pos)) "$log_file" 2>/dev/null | head -n "$display_lines" | while IFS= read -r line; do
+                if [[ "$line" =~ ERROR|FAIL ]]; then
+                    tui_fg "$TUI_COLOR_ERROR"
+                elif [[ "$line" =~ WARN ]]; then
+                    tui_fg "$TUI_COLOR_WARNING"
+                elif [[ "$line" =~ SUCCESS|OK ]]; then
+                    tui_fg "$TUI_COLOR_SUCCESS"
+                fi
+                echo "$line"
+                tui_reset
+            done
         else
             tui_move 5 $(( (TUI_COLS - 20) / 2 ))
             tui_fg "$TUI_COLOR_MUTED"
             echo "日志文件不存在: $log_file"
             tui_reset
         fi
-        
-        # 提示
+
         tui_move $((TUI_LINES - 1)) 0
         tui_statusbar_draw $((TUI_LINES - 1)) \
             "日志: $log_file" \
-            "↑/↓ 滚动  q 返回 "
-        
-        # 读取按键
+            "↑/↓ 滚动  q 返回"
+
         local key
         key=$(tui_read_key 2>/dev/null) || continue
-        
+
         case "$key" in
             UP) ((scroll_pos > 0)) && ((scroll_pos--)) ;;
             DOWN) ((scroll_pos++)) ;;
@@ -289,150 +1194,16 @@ run_log_viewer() {
     done
 }
 
-# ============================================================
-# 用户列表视图
-# ============================================================
-
-show_user_list() {
-    tui_clear
-    
-    tui_draw_fill 0 0 "$TUI_COLS" 3 39
-    tui_fg 0
-    tui_move 1 $(( (TUI_COLS - 20) / 2 ))
-    tui_bold
-    echo "托管用户列表"
-    tui_reset
-    
-    if declare -F list_users &>/dev/null; then
-        local users
-        users=$(list_users 2>/dev/null)
-        
-        tui_move 4 5
-        tui_bold
-        printf "%-20s %-10s %-15s %s\n" "用户名" "配额" "状态" "创建时间"
-        tui_reset
-        
-        tui_move 5 5
-        echo "$users" | while read -r line; do
-            echo "$line"
-        done
-    else
-        tui_move 5 10
-        echo "无法获取用户列表"
-    fi
-    
-    tui_move $((TUI_LINES - 2)) 10
-    tui_fg "$TUI_COLOR_MUTED"
-    echo "按任意键返回..."
-    tui_reset
-    
-    tui_read_key
-}
-
-# ============================================================
-# 其他菜单占位
-# ============================================================
-
-draw_quota_menu() {
-    tui_menu_create "磁盘与配额管理" \
-        "查看配额使用情况" \
-        "设置用户配额" \
-        "配额报告" \
-        "返回"
-    tui_menu_draw 4 $(( (TUI_COLS - 40) / 2 )) 40
-}
-
-handle_quota_menu_key() {
-    local result
-    result=$(tui_menu_handle_key "$1")
-    [[ "$result" == "3" || "$result" == "-1" ]] && return 0
-    tui_message "配额管理" "功能开发中"
-    TUI_REDRAW=true
-}
-
-draw_network_menu() {
-    tui_menu_create "网络与安全管理" \
-        "防火墙规则管理" \
-        "DNS白名单管理" \
-        "网络信息查看" \
-        "返回"
-    tui_menu_draw 4 $(( (TUI_COLS - 40) / 2 )) 40
-}
-
-handle_network_menu_key() {
-    local result
-    result=$(tui_menu_handle_key "$1")
-    [[ "$result" == "3" || "$result" == "-1" ]] && return 0
-    tui_message "网络管理" "功能开发中"
-    TUI_REDRAW=true
-}
-
-draw_backup_menu() {
-    tui_menu_create "备份与恢复" \
-        "创建备份" \
-        "恢复备份" \
-        "备份设置" \
-        "验证备份" \
-        "返回"
-    tui_menu_draw 4 $(( (TUI_COLS - 40) / 2 )) 40
-}
-
-handle_backup_menu_key() {
-    local result
-    result=$(tui_menu_handle_key "$1")
-    [[ "$result" == "4" || "$result" == "-1" ]] && return 0
-    tui_message "备份管理" "功能开发中"
-    TUI_REDRAW=true
-}
-
-draw_report_menu() {
-    tui_menu_create "报告与统计" \
-        "用户活动报告" \
-        "资源使用报告" \
-        "生成HTML报告" \
-        "返回"
-    tui_menu_draw 4 $(( (TUI_COLS - 40) / 2 )) 40
-}
-
-handle_report_menu_key() {
-    local result
-    result=$(tui_menu_handle_key "$1")
-    [[ "$result" == "3" || "$result" == "-1" ]] && return 0
-    tui_message "报告管理" "功能开发中"
-    TUI_REDRAW=true
-}
-
-draw_system_menu() {
-    tui_menu_create "系统维护" \
-        "系统信息" \
-        "清理临时文件" \
-        "检查更新" \
-        "返回"
-    tui_menu_draw 4 $(( (TUI_COLS - 40) / 2 )) 40
-}
-
-handle_system_menu_key() {
-    local result
-    result=$(tui_menu_handle_key "$1")
-    [[ "$result" == "3" || "$result" == "-1" ]] && return 0
-    tui_message "系统维护" "功能开发中"
-    TUI_REDRAW=true
-}
-
-# ============================================================
-# 主入口
-# ============================================================
-
 main() {
-    # 初始化TUI
+    check_dependencies || exit 1
+    load_config || exit 1
+    setup_trap_handler
+
     tui_init
-    
-    # 运行主循环
     tui_run draw_main_menu handle_main_menu_key
-    
-    # 清理
     tui_cleanup
 }
 
-# 运行
-main "$@"
+if [[ "${TUI_MANAGER_NO_MAIN:-0}" != "1" && "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
