@@ -26,7 +26,10 @@ DISABLED_USERS_FILE="${USER_MANAGER_DISABLED_USERS_FILE:-$DATA_DIR/disabled_user
 USER_CREATION_LOG="${USER_MANAGER_USER_CREATION_LOG:-$DATA_DIR/created_users.txt}"
 USER_REPORT_DIR="${USER_MANAGER_USER_REPORT_DIR:-$REPORT_DIR}"
 USER_PORT_MAP_FILE="${USER_MANAGER_USER_PORT_MAP_FILE:-$DATA_DIR/user_port_map.txt}"
-PASSWORD_POOL_FILE="${USER_MANAGER_PASSWORD_POOL_FILE:-$DATA_DIR/password_pool.txt}"
+# 密码池目录（每次执行生成带时间戳的新池）
+PASSWORD_POOL_DIR="${USER_MANAGER_PASSWORD_POOL_DIR:-$DATA_DIR/password_pools}"
+PASSWORD_POOL_FILE="${USER_MANAGER_PASSWORD_POOL_FILE:-$PASSWORD_POOL_DIR/password_pool.txt}"
+PASSWORD_POOL_KEEP="${USER_MANAGER_PASSWORD_POOL_KEEP:-5}"  # 保留最近 N 个密码池
 USER_CONFIG_FILE="${USER_MANAGER_USER_CONFIG_FILE:-$DATA_DIR/user_config.json}"
 EMAIL_CONFIG_FILE="${USER_MANAGER_EMAIL_CONFIG_FILE:-$DATA_DIR/email_config.json}"
 DNS_CONFIG_FILE="${USER_MANAGER_DNS_CONFIG_FILE:-$DATA_DIR/dns_whitelist.txt}"
@@ -46,6 +49,12 @@ QUOTA_DEFAULT="${USER_MANAGER_QUOTA_DEFAULT:-$((500 * 1024**3))}"  # 500GB
 # === systemd 配置 ===
 RESOURCE_LIMIT_FILENAME="${USER_MANAGER_RESOURCE_LIMIT_FILENAME:-90-user-manager-limits.conf}"
 
+# === 备份配置 ===
+BACKUP_AUTO_VERIFY="${USER_MANAGER_BACKUP_AUTO_VERIFY:-true}"
+BACKUP_MIN_KEEP="${USER_MANAGER_BACKUP_MIN_KEEP:-3}"
+BACKUP_RETENTION_DAYS="${USER_MANAGER_BACKUP_RETENTION_DAYS:-7}"
+BACKUP_CHECKSUM_DIR="${BACKUP_ROOT}/.checksums"
+
 # === 磁盘使用率阈值 ===
 DISK_WARNING_THRESHOLD="${USER_MANAGER_DISK_WARNING_THRESHOLD:-90}"
 
@@ -60,7 +69,7 @@ CONDARC_TEMPLATE="${USER_MANAGER_CONDARC_TEMPLATE:-$DATA_DIR/condarc.template}"
 # === 初始化目录结构 ===
 init_directories() {
     # 仅创建项目本地目录；外部系统目录（如备份根目录）由对应操作按需创建
-    local dirs=("$DATA_DIR" "$REPORT_DIR" "$JOB_STATS_DIR" "$LOG_DIR")
+    local dirs=("$DATA_DIR" "$REPORT_DIR" "$JOB_STATS_DIR" "$LOG_DIR" "$PASSWORD_POOL_DIR")
     for dir in "${dirs[@]}"; do
         [[ -d "$dir" ]] || mkdir -p "$dir" 2>/dev/null || { msg_err "无法创建目录: $dir"; return 1; }
     done
@@ -87,6 +96,11 @@ load_config() {
             "$EMAIL_CONFIG_FILE" \
             "$PASSWORD_POOL_FILE" \
             "$DNS_CONFIG_FILE" 2>/dev/null || true
+    fi
+
+    # 清理旧密码池（保留最近 N 个）
+    if declare -f cleanup_old_password_pools &>/dev/null; then
+        cleanup_old_password_pools "$PASSWORD_POOL_KEEP" 2>/dev/null || true
     fi
     
     return 0

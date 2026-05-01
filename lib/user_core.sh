@@ -10,19 +10,32 @@
 #   - 密码操作完成后立即清除相关变量 (unset)
 
 # ============================================================
-# 密码池管理
+# 密码池管理（每次执行使用时间戳生成新密码池）
 # ============================================================
 
-# 生成密码池（8568个8位密码）
+# 生成密码池（8568个8位密码），使用时间戳确保每次执行生成新池
 # 格式：3位连续大写(ASDFGHJKL) + 1位小写 + 3位连续数字 + 1位特殊字符
+# 用法: generate_password_pool [自定义输出路径]
+#   - 无参数或默认路径时：使用时间戳命名（password_pool_YYYYMMDD_HHMMSS.txt）
+#   - 自定义路径时：直接写入指定文件（向后兼容测试）
+# 返回：新生成的密码池文件路径
 generate_password_pool() {
-    local pool_file="${1:-$PASSWORD_POOL_FILE}"
+    local custom_path="${1:-}"
+    local pool_dir="${PASSWORD_POOL_DIR}"
+    local pool_file used_file timestamp
 
-    mkdir -p "$(dirname "$pool_file")"
-
-    if [[ -f "$pool_file" ]] && [[ $(wc -l < "$pool_file") -ge 8568 ]]; then
-        msg_info "密码池已存在（$(wc -l < "$pool_file") 个密码）"
-        return 0
+    # 判断是否使用自定义路径
+    if [[ -n "$custom_path" ]] && [[ "$custom_path" != "$PASSWORD_POOL_FILE" ]]; then
+        # 自定义路径：向后兼容，直接写入
+        pool_file="$custom_path"
+        used_file="${pool_file}.used"
+        mkdir -p "$(dirname "$pool_file")"
+    else
+        # 时间戳模式：每次都生成新池
+        timestamp=$(date +%Y%m%d_%H%M%S)
+        mkdir -p "$pool_dir"
+        pool_file="${pool_dir}/password_pool_${timestamp}.txt"
+        used_file="${pool_dir}/password_pool_${timestamp}.used"
     fi
 
     msg_info "正在生成密码池（8568 个密码）..."
@@ -45,16 +58,12 @@ generate_password_pool() {
 
     {
         local i j k m
-        # Positions 1-3: 3 consecutive chars from ASDFGHJKL (7 combos)
         for (( i = 0; i <= ${#upper_row} - 3; i++ )); do
             local tri="${upper_row:i:3}"
-            # Position 4: one char from lower_chars (17 chars)
             for (( j = 0; j < ${#lower_chars}; j++ )); do
                 local lc="${lower_chars:j:1}"
-                # Positions 5-7: 3 consecutive digits from digit_row (8 combos)
                 for (( k = 0; k <= ${#digit_row} - 3; k++ )); do
                     local dig="${digit_row:k:3}"
-                    # Position 8: one special char (9 chars)
                     for (( m = 0; m < ${#specials}; m++ )); do
                         echo "${tri}${lc}${dig}${specials:m:1}"
                     done
@@ -63,34 +72,138 @@ generate_password_pool() {
         done
     } > "$tmp_file"
 
-    # Shuffle and write to pool file
-    if ! shuf "$tmp_file" > "$pool_file"; then
-        rm -f "$tmp_file"
-        umask "$old_umask"
-        msg_err "密码池生成失败"
-        return 1
+    # 使用时间戳作为随机种子进行洗牌，确保每次生成的池唯一
+    if [[ -z "$custom_path" ]] || [[ "$custom_path" == "$PASSWORD_POOL_FILE" ]]; then
+        if ! shuf --random-source=<(printf '%s' "$timestamp$RANDOM") "$tmp_file" > "$pool_file" 2>/dev/null; then
+            shuf "$tmp_file" > "$pool_file" || {
+                rm -f "$tmp_file"
+                umask "$old_umask"
+                msg_err "密码池生成失败"
+                return 1
+            }
+        fi
+    else
+        shuf "$tmp_file" > "$pool_file" || {
+            rm -f "$tmp_file"
+            umask "$old_umask"
+            msg_err "密码池生成失败"
+            return 1
+        }
     fi
     rm -f "$tmp_file"
     chmod 600 "$pool_file" 2>/dev/null || true
+
+    # 创建 .used 追踪文件（仅时间戳模式）
+    touch "$used_file" 2>/dev/null || true
+    chmod 600 "$used_file" 2>/dev/null || true
+
     umask "$old_umask"
+
+    # 更新当前活跃密码池的符号链接（仅时间戳模式）
+    if [[ -z "$custom_path" ]] || [[ "$custom_path" == "$PASSWORD_POOL_FILE" ]]; then
+        local latest_link="${pool_dir}/password_pool_latest.txt"
+        ln -sf "$pool_file" "$latest_link" 2>/dev/null || true
+    fi
 
     local count
     count=$(wc -l < "$pool_file")
-    msg_ok "密码池已生成：$pool_file（${count} 个密码）"
+    msg_ok "密码池已生成：${pool_file}（${count} 个密码）"
+
+    echo "$pool_file"
 }
 
-# 从密码池中获取一个随机密码
+# 从密码池中获取一个随机且未使用过的密码
+# 自动生成新池（如果不存在），追踪已用密码避免重复
 get_random_password() {
-    if [[ ! -f "$PASSWORD_POOL_FILE" ]] || [[ $(wc -l < "$PASSWORD_POOL_FILE" 2>/dev/null) -lt 1 ]]; then
-        generate_password_pool "$PASSWORD_POOL_FILE"
+    local pool_dir="${PASSWORD_POOL_DIR}"
+    mkdir -p "$pool_dir"
+
+    # 查找最新的密码池文件
+    local pool_file
+    pool_file=$(ls -t "$pool_dir"/password_pool_*.txt 2>/dev/null | head -1)
+
+    # 如果没有密码池或最新池为空，生成新池
+    if [[ -z "$pool_file" ]] || [[ ! -f "$pool_file" ]] || [[ $(wc -l < "$pool_file" 2>/dev/null) -lt 1 ]]; then
+        pool_file=$(generate_password_pool) || return 1
     fi
 
-    local total_passwords
-    total_passwords=$(wc -l < "$PASSWORD_POOL_FILE")
+    local used_file="${pool_file%.txt}.used"
+    touch "$used_file" 2>/dev/null || true
 
-    local random_line
-    random_line=$(shuf -i 1-"$total_passwords" -n 1)
-    sed -n "${random_line}p" "$PASSWORD_POOL_FILE"
+    local total_passwords
+    total_passwords=$(wc -l < "$pool_file")
+
+    # 获取已使用的密码数量
+    local used_count
+    used_count=$(wc -l < "$used_file" 2>/dev/null || echo 0)
+
+    # 如果所有密码都已使用，生成新池
+    if (( used_count >= total_passwords )); then
+        msg_warn "当前密码池已耗尽，生成新密码池..."
+        pool_file=$(generate_password_pool) || return 1
+        used_file="${pool_file%.txt}.used"
+        touch "$used_file" 2>/dev/null || true
+        total_passwords=$(wc -l < "$pool_file")
+    fi
+
+    # 在未使用的密码中随机选取
+    local selected_password=""
+    local max_attempts=200
+    local attempt=0
+
+    while [[ -z "$selected_password" ]] && (( attempt < max_attempts )); do
+        local random_line
+        random_line=$(shuf -i 1-"$total_passwords" -n 1)
+        local candidate
+        candidate=$(sed -n "${random_line}p" "$pool_file" 2>/dev/null)
+
+        if [[ -n "$candidate" ]]; then
+            # 检查是否已被使用
+            if ! grep -qxF "$candidate" "$used_file" 2>/dev/null; then
+                selected_password="$candidate"
+                echo "$candidate" >> "$used_file"
+            fi
+        fi
+        ((attempt++))
+    done
+
+    if [[ -z "$selected_password" ]]; then
+        msg_err "无法获取未使用的密码，自动生成新密码池..."
+        pool_file=$(generate_password_pool) || return 1
+        used_file="${pool_file%.txt}.used"
+        touch "$used_file" 2>/dev/null || true
+        total_passwords=$(wc -l < "$pool_file")
+        random_line=$(shuf -i 1-"$total_passwords" -n 1)
+        selected_password=$(sed -n "${random_line}p" "$pool_file")
+        echo "$selected_password" >> "$used_file"
+    fi
+
+    echo "$selected_password"
+}
+
+# 清理旧的密码池文件，只保留最近 N 个
+cleanup_old_password_pools() {
+    local keep="${1:-$PASSWORD_POOL_KEEP}"
+    local pool_dir="${PASSWORD_POOL_DIR}"
+
+    [[ -d "$pool_dir" ]] || return 0
+
+    local -a pool_files=()
+    while IFS= read -r f; do
+        pool_files+=("$f")
+    done < <(ls -t "$pool_dir"/password_pool_*.txt 2>/dev/null)
+
+    if (( ${#pool_files[@]} > keep )); then
+        local cleaned=0
+        for (( i = keep; i < ${#pool_files[@]}; i++ )); do
+            local f="${pool_files[$i]}"
+            local used_file="${f%.txt}.used"
+            rm -f "$f" "$used_file" 2>/dev/null && ((cleaned++))
+        done
+        (( cleaned > 0 )) && msg_info "已清理 ${cleaned} 个旧密码池"
+    fi
+
+    return 0
 }
 
 # ============================================================

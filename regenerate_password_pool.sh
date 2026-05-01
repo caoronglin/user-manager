@@ -1,6 +1,7 @@
 #!/bin/bash
-# regenerate_password_pool.sh - 密码池重新生成工具 v5.0
-# 使用新算法生成 8568 个 8 位密码
+# regenerate_password_pool.sh - 密码池重新生成工具 v6.0
+# 每次执行使用时间戳生成新的密码池，自动清理旧池
+#   逻辑不变：3位连续大写 + 1位小写 + 3位连续数字 + 1位特殊字符 = 8568 个
 
 set -euo pipefail
 
@@ -18,6 +19,11 @@ source "$LIB_DIR/privilege.sh"
 
 load_config || { echo "加载配置失败"; exit 1; }
 
+draw_header "密码池重新生成工具（时间戳模式）"
+
+msg_info "每次执行生成带时间戳的新密码池，旧池自动保留最近 ${PASSWORD_POOL_KEEP} 个"
+echo ""
+
 # 密码格式：
 #   位置 1-3: 从 ASDFGHJKL 连续选取 3 个 (7 种组合)
 #   位置 4:   从 qwertyuiopzxcvbnm 随机选 1 个 (17 种)
@@ -25,76 +31,43 @@ load_config || { echo "加载配置失败"; exit 1; }
 #   位置 8:   从 !@#$%^&*? 随机选 1 个 (9 种)
 #   总计: 7 × 17 × 8 × 9 = 8568 个密码
 
-draw_header "密码池重新生成工具"
-
-msg_info "密码格式说明:"
-draw_info_card "位置 1-3" "ASDFGHJKL 连续 3 字符 (7 种)"
-draw_info_card "位置 4" "qwertyuiopzxcvbnm 随机 1 字符 (17 种)"
-draw_info_card "位置 5-7" "1234567890 连续 3 数字 (8 种)"
-draw_info_card "位置 8" "!@#\$%^&*? 随机 1 字符 (9 种)"
-draw_info_card "总计" "7 × 17 × 8 × 9 = 8568 个"
+draw_info_card "密码格式" "3大写+1小写+3数字+1特殊字符"
+draw_info_card "总密码数" "8568 个"
+draw_info_card "命名规则" "password_pool_YYYYMMDD_HHMMSS.txt"
+draw_info_card "旧池保留" "最近 ${PASSWORD_POOL_KEEP} 个"
 echo ""
 
-POOL_FILE="$PASSWORD_POOL_FILE"
+# shellcheck disable=SC1091
+source "$LIB_DIR/user_core.sh"
 
-if [[ -f "$POOL_FILE" ]]; then
-    local_count=$(wc -l < "$POOL_FILE")
-    msg_warn "当前密码池已有 ${local_count} 个密码"
-    if ! confirm_action "是否重新生成密码池？（当前密码池将被覆盖）"; then
-        msg_info "操作已取消"
-        exit 0
-    fi
-fi
-
-msg_step "正在生成密码池..."
-
-old_umask=$(umask)
-umask 077
-
-UPPER="ASDFGHJKL"
-LOWER="qwertyuiopzxcvbnm"
-DIGITS="1234567890"
-SPECIALS='!@#$%^&*?'
-
-TMP_FILE=$(mktemp) || {
-    umask "$old_umask"
-    msg_err "无法创建临时文件"
+# 强制生成新密码池
+msg_step "正在生成新的密码池..."
+new_pool=$(generate_password_pool) || {
+    msg_err "密码池生成失败"
     exit 1
 }
-trap 'rm -f "$TMP_FILE"; umask "$old_umask"' EXIT
 
-{
-    for (( i = 0; i <= ${#UPPER} - 3; i++ )); do
-        tri="${UPPER:i:3}"
-        for (( j = 0; j < ${#LOWER}; j++ )); do
-            lc="${LOWER:j:1}"
-            for (( k = 0; k <= ${#DIGITS} - 3; k++ )); do
-                dig="${DIGITS:k:3}"
-                for (( m = 0; m < ${#SPECIALS}; m++ )); do
-                    echo "${tri}${lc}${dig}${SPECIALS:m:1}"
-                done
-            done
-        done
-    done
-} > "$TMP_FILE"
-
-shuf "$TMP_FILE" > "$POOL_FILE"
-chmod 600 "$POOL_FILE" 2>/dev/null || true
-rm -f "$TMP_FILE"
-umask "$old_umask"
-trap - EXIT
-
-TOTAL=$(wc -l < "$POOL_FILE")
+TOTAL=$(wc -l < "$new_pool")
 msg_ok "密码池生成完成: ${C_BOLD}${TOTAL}${C_RESET} 个密码"
-msg_info "文件位置: ${C_CYAN}${POOL_FILE}${C_RESET}"
+msg_info "文件位置: ${C_CYAN}${new_pool}${C_RESET}"
+
+# 清理旧密码池
+cleanup_old_password_pools "$PASSWORD_POOL_KEEP"
 
 # 显示几个示例
 if [[ "${SHOW_PASSWORDS:-0}" == "1" ]]; then
     msg_step "示例密码（前 5 个）:"
-    head -5 "$POOL_FILE" | while read -r pw; do
+    head -5 "$new_pool" | while read -r pw; do
         echo "    ${C_BCYAN}${pw}${C_RESET}"
     done
     echo ""
 else
     msg_warn "示例密码已隐藏输出，设置 SHOW_PASSWORDS=1 可显示"
 fi
+
+# 列出密码池目录状态
+echo ""
+msg_info "密码池目录: ${C_CYAN}${PASSWORD_POOL_DIR}${C_RESET}"
+local count
+count=$(ls "$PASSWORD_POOL_DIR"/password_pool_*.txt 2>/dev/null | wc -l || echo 0)
+draw_info_card "当前池数量" "${count} 个"
