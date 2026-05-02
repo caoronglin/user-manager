@@ -6,6 +6,14 @@
 # 菜单数据定义
 # ============================================================
 
+# 声明所有关联数组（set -u 必须先 declare 再赋值）
+declare -A _TUI_MENU_TITLE
+declare -A _TUI_MENU_ITEMS
+declare -A _TUI_MENU_WIDTH
+declare -A _TUI_MENU_ROW
+declare -A _TUI_MENU_STATUS_LEFT
+declare -A _TUI_MENU_STATUS_RIGHT
+
 # 主菜单
 _TUI_MENU_TITLE["main"]="用户与系统管理器 TUI"
 _TUI_MENU_ITEMS["main"]="用户管理|磁盘与配额管理|网络与安全管理|备份与恢复|报告与统计|系统维护|审计与日志|实时监控|查看日志|退出"
