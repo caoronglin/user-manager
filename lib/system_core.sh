@@ -2,6 +2,38 @@
 # system_core.sh - 系统维护与监控模块 v0.2.1
 # 提供系统信息、内存信息、日志分析、崩溃诊断、资源监控等功能
 
+_um_system_core_source_optional() {
+    local module="$1"
+    local module_dir="${LIB_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+    local module_path="$module_dir/$module"
+
+    if [[ -f "$module_path" ]]; then
+        # shellcheck disable=SC1090
+        source "$module_path"
+    fi
+}
+
+# 聚合 Ubuntu/systemd 管理模块，供菜单复用。
+if [[ -z "${USER_MANAGER_UBUNTU_MAINTENANCE_LOADED:-}" ]]; then
+    _um_system_core_source_optional "ubuntu_maintenance_core.sh"
+fi
+
+if ! declare -F journalctl_show_boot_logs >/dev/null 2>&1; then
+    _um_system_core_source_optional "journalctl_core.sh"
+fi
+
+if ! declare -F security_baseline_sshd_summary >/dev/null 2>&1; then
+    _um_system_core_source_optional "security_baseline_core.sh"
+fi
+
+if ! declare -F show_network_stack_panel >/dev/null 2>&1; then
+    _um_system_core_source_optional "network_stack_core.sh"
+fi
+
+if ! declare -F systemd_timer_install_profile >/dev/null 2>&1; then
+    _um_system_core_source_optional "systemd_timer_core.sh"
+fi
+
 # ============================================================
 # 系统信息显示
 # ============================================================
@@ -58,8 +90,8 @@ show_memory_info() {
     if ! command -v dmidecode &>/dev/null; then
         msg_warn "未检测到 dmidecode"
         if confirm_action "是否安装 dmidecode？" "Y"; then
-            run_privileged apt-get update || return 1
-            run_privileged apt-get install -y dmidecode || return 1
+            priv_apt_get update || return 1
+            priv_apt_get install -y dmidecode || return 1
             msg_ok "dmidecode 安装完成"
         else
             msg_info "已取消安装"
@@ -372,33 +404,27 @@ configure_oom_protection() {
     local conf_file="${conf_dir}/90-user-manager.conf"
     local dropin_dir="/etc/systemd/system/systemd-oomd.service.d"
     local dropin_file="${dropin_dir}/90-user-manager.conf"
-    local tmp_conf tmp_dropin
 
-    tmp_conf=$(mktemp) || {
-        msg_err "无法创建临时文件"
-        return 1
-    }
-    cat <<'EOF' > "$tmp_conf"
+    priv_mkdir -p "$conf_dir" || return 1
+    priv_mkdir -p "$dropin_dir" || return 1
+
+    if ! write_privileged_text_file "$conf_file" "0644" "root:root" <<'EOF'
 [OOM]
 DefaultMemoryPressureLimit=60%
 DefaultMemoryPressureDurationSec=30s
 SwapUsedLimit=90%
 EOF
-    
-    tmp_dropin=$(mktemp) || {
-        rm -f "$tmp_conf"
-        msg_err "无法创建临时文件"
+    then
         return 1
-    }
-    cat <<'EOF' > "$tmp_dropin"
+    fi
+
+    if ! write_privileged_text_file "$dropin_file" "0644" "root:root" <<'EOF'
 [Service]
 OOMScoreAdjust=-900
 EOF
-
-    run_privileged mkdir -p "$conf_dir" || { rm -f "$tmp_conf" "$tmp_dropin"; return 1; }
-    run_privileged mkdir -p "$dropin_dir" || { rm -f "$tmp_conf" "$tmp_dropin"; return 1; }
-    run_privileged mv "$tmp_conf" "$conf_file" || { rm -f "$tmp_conf" "$tmp_dropin"; return 1; }
-    run_privileged mv "$tmp_dropin" "$dropin_file" || { rm -f "$tmp_conf" "$tmp_dropin"; return 1; }
+    then
+        return 1
+    fi
 
     priv_systemctl daemon-reload || return 1
     priv_systemctl enable --now systemd-oomd.service || return 1
@@ -417,8 +443,8 @@ launch_htop_monitor() {
     if ! command -v htop &>/dev/null; then
         msg_warn "未检测到 htop"
         if confirm_action "是否安装 htop？" "Y"; then
-            run_privileged apt-get update || return 1
-            run_privileged apt-get install -y htop || return 1
+            priv_apt_get update || return 1
+            priv_apt_get install -y htop || return 1
             msg_ok "htop 安装完成"
         else
             msg_info "已取消安装"
@@ -438,8 +464,8 @@ launch_btop_monitor() {
     if ! command -v btop &>/dev/null; then
         msg_warn "未检测到 btop"
         if confirm_action "是否安装 btop？" "Y"; then
-            run_privileged apt-get update || return 1
-            run_privileged apt-get install -y btop || return 1
+            priv_apt_get update || return 1
+            priv_apt_get install -y btop || return 1
             msg_ok "btop 安装完成"
         else
             msg_info "已取消安装"
@@ -534,7 +560,7 @@ check_hardware_health() {
         disks=$(lsblk -d -o NAME 2>/dev/null | grep -E "^sd|^nvme|^vd" | head -5)
         for disk in $disks; do
             local smart_status
-            smart_status=$(run_privileged smartctl -H "/dev/$disk" 2>/dev/null | grep -E "SMART|PASSED|FAILED" | head -1)
+            smart_status=$(priv_smartctl -H "/dev/$disk" 2>/dev/null | grep -E "SMART|PASSED|FAILED" | head -1)
             if [[ -n "$smart_status" ]]; then
                 draw_info_card "/dev/$disk:" "$smart_status"
             fi
@@ -580,7 +606,7 @@ show_cpu_info() {
     draw_header "CPU 详细信息"
     
     if [[ -f /proc/cpuinfo ]]; then
-        local cpu_model cpu_cores cpu_threads
+        local cpu_model cpu_cores
         cpu_model=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
         cpu_cores=$(grep -c "^processor" /proc/cpuinfo)
         
@@ -590,7 +616,7 @@ show_cpu_info() {
         # 获取 CPU 频率
         if [[ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]]; then
             local freq_mhz
-            freq_mhz=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null | awk '{printf "%.0f", $1/1000}')
+            freq_mhz=$(awk '{printf "%.0f", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null)
             draw_info_card "当前频率:" "${freq_mhz} MHz" "$C_BCYAN"
         fi
         
@@ -638,7 +664,7 @@ show_memory_info_detailed() {
         # 计算使用率
         local used_pct
         used_pct=$(awk "BEGIN {printf \"%.0f\", 100 * ($total_mem - $available_mem) / $total_mem}")
-        printf "  ${C_BOLD}内存使用率:${C_RESET} "
+        printf '  %s ' "${C_BOLD}内存使用率:${C_RESET}"
         draw_usage_bar "$used_pct" 30
         echo ""
         
@@ -656,7 +682,7 @@ show_memory_info_detailed() {
             echo ""
             msg_info "物理内存模块信息:"
             echo "${C_DIM}"
-            echo "$mem_info" | sed 's/^/  /'
+            sed 's/^/  /' <<< "$mem_info"
             echo "${C_RESET}"
         fi
     else
@@ -668,7 +694,7 @@ show_memory_info_detailed() {
     msg_info "Swap 信息:"
     if [[ -f /proc/swaps ]]; then
         echo "${C_DIM}"
-        cat /proc/swaps | sed 's/^/  /'
+        sed 's/^/  /' /proc/swaps
         echo "${C_RESET}"
     fi
 }
@@ -752,4 +778,39 @@ run_full_hardware_check() {
     pause_continue
     
     msg_ok "完整硬件检测完成！"
+}
+
+# ============================================================
+# Cron 辅助函数（从 common.sh 迁移）
+# ============================================================
+
+read_root_crontab() {
+    if declare -F priv_crontab >/dev/null 2>&1; then
+        priv_crontab -l 2>/dev/null || true
+    else
+        run_privileged crontab -l 2>/dev/null || true
+    fi
+}
+
+install_root_crontab() {
+    if declare -F priv_crontab >/dev/null 2>&1; then
+        priv_crontab -
+    else
+        run_privileged crontab -
+    fi
+}
+
+rewrite_root_crontab_without_literal() {
+    local literal="$1"
+    { read_root_crontab | grep -vF -- "$literal" || true; } | install_root_crontab
+}
+
+append_root_crontab_line() {
+    local line="$1"
+    { read_root_crontab; printf '%s\n' "$line"; } | install_root_crontab
+}
+
+find_root_crontab_line() {
+    local literal="$1"
+    read_root_crontab | grep -F -- "$literal" || true
 }
