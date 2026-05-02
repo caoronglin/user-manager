@@ -1,10 +1,7 @@
 #!/bin/bash
 # ubuntu_maintenance_core.sh - Ubuntu APT/重启维护摘要模块
 
-if [[ -n "${USER_MANAGER_UBUNTU_MAINTENANCE_LOADED:-}" ]]; then
-    # shellcheck disable=SC2317
-    return 0 2>/dev/null; exit 0
-fi
+if [[ -z "${USER_MANAGER_UBUNTU_MAINTENANCE_LOADED:-}" ]]; then
 USER_MANAGER_UBUNTU_MAINTENANCE_LOADED=1
 
 UBUNTU_MAINTENANCE_REBOOT_FLAG="${UBUNTU_MAINTENANCE_REBOOT_FLAG:-/var/run/reboot-required}"
@@ -309,3 +306,4 @@ show_ubuntu_maintenance_panel() {
 
     echo ""
 }
+fi

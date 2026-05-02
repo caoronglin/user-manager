@@ -9,9 +9,7 @@ if [[ -z "${ACL_LEVEL_ROOT:-}" || -z "${ACL_LEVEL_ADMIN:-}" || -z "${ACL_LEVEL_U
     else
         echo "privilege.sh requires access_control.sh to be sourced first" >&2
     fi
-    # shellcheck disable=SC2317
-    return 1 2>/dev/null; exit 1
-fi
+else
 
 # ============================================================
 # 命令白名单配置
@@ -405,3 +403,4 @@ get_current_permission_level() {
         echo "$ACL_LEVEL_GUEST"
     fi
 }
+fi

@@ -1,10 +1,7 @@
 #!/bin/bash
 # network_stack_core.sh - Ubuntu 网络栈诊断核心模块
 
-if [[ -n "${USER_MANAGER_NETWORK_STACK_LOADED:-}" ]]; then
-    # shellcheck disable=SC2317
-    return 0 2>/dev/null; exit 0
-fi
+if [[ -z "${USER_MANAGER_NETWORK_STACK_LOADED:-}" ]]; then
 USER_MANAGER_NETWORK_STACK_LOADED=1
 
 NETWORK_STACK_NETPLAN_DIR="${NETWORK_STACK_NETPLAN_DIR:-/etc/netplan}"
@@ -499,3 +496,4 @@ show_network_info() {
     draw_line "$MENU_WIDTH"
     echo ""
 }
+fi

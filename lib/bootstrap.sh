@@ -2,10 +2,8 @@
 # bootstrap.sh - 统一模块加载引导层
 # 目标：稳定 source 顺序，减少入口脚本重复加载逻辑
 
-# 防止重复加载
-if [[ -n "${USER_MANAGER_BOOTSTRAP_LOADED:-}" ]]; then
-    return 0 2>/dev/null; exit 0
-fi
+# 防止重复加载（无 return 模式，兼容所有执行上下文）
+if [[ -z "${USER_MANAGER_BOOTSTRAP_LOADED:-}" ]]; then
 USER_MANAGER_BOOTSTRAP_LOADED=1
 
 # 兜底路径（通常由入口脚本设置）
@@ -100,3 +98,5 @@ um_load_profile() {
 
     return 0
 }
+
+fi  # end bootstrap guard
