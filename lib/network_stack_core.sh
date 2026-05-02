@@ -3,7 +3,7 @@
 
 if [[ -n "${USER_MANAGER_NETWORK_STACK_LOADED:-}" ]]; then
     # shellcheck disable=SC2317
-    return 0 2>/dev/null || exit 0
+    return 0 2>/dev/null; exit 0
 fi
 USER_MANAGER_NETWORK_STACK_LOADED=1
 

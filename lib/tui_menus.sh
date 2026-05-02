@@ -151,8 +151,92 @@ _TUI_MENU_STATUS_LEFT["audit_advanced"]="详细审计选项"
 _TUI_MENU_STATUS_RIGHT["audit_advanced"]="↑/↓ 导航  Enter 选择  q 返回"
 
 # ============================================================
-# 通用菜单渲染引擎
+# 通用菜单渲染引擎（现代暗色主题）
 # ============================================================
+
+# 菜单图标映射
+_tui_menu_icon() {
+    local menu_id="${1:-main}"
+    case "$menu_id" in
+        main)    echo "⚙" ;;
+        user)    echo "👤" ;;
+        disk)    echo "💾" ;;
+        network) echo "🌐" ;;
+        firewall)echo "🛡" ;;
+        dns)     echo "🌍" ;;
+        symlink) echo "🔗" ;;
+        ssh_fail2ban) echo "🔐" ;;
+        backup)  echo "📦" ;;
+        backup_advanced) echo "📦" ;;
+        report_stats) echo "📊" ;;
+        report)  echo "📋" ;;
+        job_stats) echo "📈" ;;
+        password_rotation) echo "🔑" ;;
+        system)  echo "🖥" ;;
+        system_details) echo "🔧" ;;
+        systemd_timer) echo "⏰" ;;
+        audit)   echo "📝" ;;
+        audit_advanced) echo "🔍" ;;
+        *)       echo "▸" ;;
+    esac
+}
+
+# 绘制现代风格标题栏（双线框 + 渐变效果）
+_tui_draw_modern_header() {
+    local title="$1"
+    local menu_id="${2:-main}"
+    local icon
+    icon=$(_tui_menu_icon "$menu_id")
+    local header_text=" ${icon}  ${title}"
+
+    # 顶部双线
+    tui_move 0 0
+    tui_fg "$TUI_COLOR_BORDER"
+    printf '╔%s╗\n' "$(printf '═%.0s' $(seq 1 $((TUI_COLS - 2))))"
+    tui_reset
+
+    # 标题行
+    tui_move 1 2
+    tui_fg "$TUI_COLOR_BG"
+    tui_bg "$TUI_COLOR_ACCENT"
+    printf ' %-*s ' $((TUI_COLS - 4)) "$header_text"
+    tui_reset
+
+    # 闭合双线
+    tui_move 2 0
+    tui_fg "$TUI_COLOR_BORDER"
+    printf '╚%s╝\n' "$(printf '═%.0s' $(seq 1 $((TUI_COLS - 2))))"
+    tui_reset
+}
+
+# 绘制现代风格状态栏
+_tui_draw_modern_statusbar() {
+    local left="$1" right="$2"
+    local left_len=${#left}
+    local right_len=${#right}
+
+    tui_move $((TUI_LINES - 1)) 0
+    # 背景填充
+    tui_bg "$TUI_COLOR_SURFACE"
+    tui_fg "$TUI_COLOR_MUTED"
+    printf '%*s' "$TUI_COLS" ' '
+    
+    # 左侧文字
+    tui_move $((TUI_LINES - 1)) 2
+    printf '%s' "$left"
+
+    # 分隔符
+    tui_move $((TUI_LINES - 1)) $((left_len + 4))
+    tui_fg "$TUI_COLOR_BORDER"
+    printf '│'
+    tui_reset
+
+    # 右侧文字
+    tui_fg "$TUI_COLOR_MUTED"
+    tui_move $((TUI_LINES - 1)) $((TUI_COLS - right_len - 2))
+    printf '%s' "$right"
+    tui_reset
+}
 
 # 根据菜单 ID 绘制标准菜单
 # 用法: _tui_draw_menu "main"
@@ -165,30 +249,71 @@ _tui_draw_menu() {
     local status_left="${_TUI_MENU_STATUS_LEFT[$menu_id]}"
     local status_right="${_TUI_MENU_STATUS_RIGHT[$menu_id]}"
 
-    tui_draw_fill 0 0 "$TUI_COLS" 3 "$TUI_COLOR_ACCENT"
-    tui_fg 0
-    tui_move 1 $(( (TUI_COLS - ${#title}) / 2 ))
-    tui_bold
-    echo "$title"
-    tui_reset
+    # 绘制现代标题栏
+    _tui_draw_modern_header "$title" "$menu_id"
 
-    # 将 | 分隔的菜单项转为数组传递给 tui_menu_create
+    # 将 | 分隔的菜单项转为数组
     local -a items=()
     local IFS='|'
     read -ra items <<< "$items_str"
 
+    # 渲染菜单项到 TUI 内部数组
     tui_menu_create "$title" "${items[@]}"
-    tui_menu_draw "$row" $(( (TUI_COLS - width) / 2 )) "$width"
 
-    # 动态生成状态栏内容
+    # 绘制菜单列表（带卡片样式背景）
+    local menu_start=$row
+    local menu_left=$(( (TUI_COLS - width) / 2 ))
+
+    # 菜单容器顶部边框
+    tui_move $((menu_start - 1)) "$menu_left"
+    tui_fg "$TUI_COLOR_BORDER"
+    printf '┌%s┐' "$(printf '─%.0s' $(seq 1 $((width - 2))))"
+    tui_reset
+
+    # 绘制菜单项
+    local i=0
+    local item_count=${#items[@]}
+    for item_name in "${items[@]}"; do
+        tui_move $((menu_start + i)) "$menu_left"
+        tui_fg "$TUI_COLOR_BORDER"
+        printf '│'
+        
+        # 菜单项内容
+        local item_text
+        if (( i == item_count - 1 )); then
+            # 最后一项（退出/返回）用暗淡色
+            tui_fg "$TUI_COLOR_MUTED"
+            item_text="  0. ${item_name}"
+        else
+            tui_fg "$TUI_COLOR_FG"
+            item_text="  $((i + 1)). ${item_name}"
+        fi
+        
+        # 填充到固定宽度
+        printf '%-*s' $((width - 2)) "$item_text"
+        
+        tui_move $((menu_start + i)) $((menu_left + width - 1))
+        tui_fg "$TUI_COLOR_BORDER"
+        printf '│'
+        tui_reset
+        ((i++))
+    done
+
+    # 菜单容器底部边框
+    tui_move $((menu_start + i)) "$menu_left"
+    tui_fg "$TUI_COLOR_BORDER"
+    printf '└%s┘' "$(printf '─%.0s' $(seq 1 $((width - 2))))"
+    tui_reset
+
+    # 动态状态栏
     local actual_left="$status_left"
     local actual_right="$status_right"
     if [[ "$menu_id" == "main" ]]; then
         local user_count uptime_info
         user_count=$(get_tui_managed_user_count)
         uptime_info=$(uptime -p 2>/dev/null | sed 's/up //' || echo "unknown")
-        actual_left="托管用户: $user_count"
-        actual_right="运行时间: $uptime_info"
+        actual_left="👥 托管用户: $user_count"
+        actual_right="⏱ $uptime_info"
     fi
-    tui_statusbar_draw $((TUI_LINES - 1)) "$actual_left" "$actual_right"
+    _tui_draw_modern_statusbar "$actual_left" "$actual_right"
 }

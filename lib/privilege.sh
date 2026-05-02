@@ -10,7 +10,7 @@ if [[ -z "${ACL_LEVEL_ROOT:-}" || -z "${ACL_LEVEL_ADMIN:-}" || -z "${ACL_LEVEL_U
         echo "privilege.sh requires access_control.sh to be sourced first" >&2
     fi
     # shellcheck disable=SC2317
-    return 1 2>/dev/null || exit 1
+    return 1 2>/dev/null; exit 1
 fi
 
 # ============================================================

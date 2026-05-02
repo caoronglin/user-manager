@@ -51,16 +51,19 @@ tui_init() {
     # 清屏
     tput clear 2>/dev/null || clear
     
-    # 定义颜色（256色）
+    # 定义颜色（256色 - 现代暗色主题）
     if [[ "$TUI_HAS_COLORS" == "true" ]]; then
-        TUI_COLOR_BG=0        # 黑色背景
-        TUI_COLOR_FG=255      # 白色前景
-        TUI_COLOR_ACCENT=39   # 蓝色强调
-        TUI_COLOR_SUCCESS=82  # 绿色
-        TUI_COLOR_WARNING=220 # 黄色
-        TUI_COLOR_ERROR=196   # 红色
-        TUI_COLOR_MUTED=242   # 灰色
-        TUI_COLOR_HIGHLIGHT=51 # 青色高亮
+        TUI_COLOR_BG=234       # 深灰黑背景 (#1a1a2e)
+        TUI_COLOR_FG=252       # 柔和白前景
+        TUI_COLOR_ACCENT=39    # 亮蓝 #0088ff
+        TUI_COLOR_ACCENT2=51   # 青色高亮
+        TUI_COLOR_SUCCESS=48   # 翠绿
+        TUI_COLOR_WARNING=221  # 金色
+        TUI_COLOR_ERROR=203    # 柔和红
+        TUI_COLOR_MUTED=243    # 中灰
+        TUI_COLOR_HIGHLIGHT=45 # 电蓝
+        TUI_COLOR_SURFACE=236  # 卡片背景
+        TUI_COLOR_BORDER=239   # 边框灰
     fi
     
     TUI_INITIALIZED=true
@@ -301,6 +304,8 @@ tui_menu_create() {
     TUI_MENU_TITLE="$title"
     TUI_MENU_ITEMS=("${items[@]}")
     TUI_MENU_INDEX=0
+    TUI_MENU_SCROLL_OFFSET=0
+    TUI_MENU_VISIBLE_ITEMS=${#items[@]}
 }
 
 # 绘制菜单
@@ -308,15 +313,30 @@ tui_menu_draw() {
     local start_row="$1"
     local start_col="$2"
     local width="$3"
-    
-    local menu_height=$(( ${#TUI_MENU_ITEMS[@]} + 4 ))
+    local total_items=${#TUI_MENU_ITEMS[@]}
+    local max_visible=$(( TUI_LINES - start_row - 5 ))
+    (( max_visible < 1 )) && max_visible=1
+
+    if (( total_items < max_visible )); then
+        TUI_MENU_VISIBLE_ITEMS=$total_items
+    else
+        TUI_MENU_VISIBLE_ITEMS=$max_visible
+    fi
+
+    local max_offset=$(( total_items - TUI_MENU_VISIBLE_ITEMS ))
+    (( max_offset < 0 )) && max_offset=0
+    (( TUI_MENU_SCROLL_OFFSET > max_offset )) && TUI_MENU_SCROLL_OFFSET=$max_offset
+
+    local menu_height=$(( TUI_MENU_VISIBLE_ITEMS + 4 ))
     
     # 绘制边框
     tui_draw_box "$start_row" "$start_col" "$width" "$menu_height" "$TUI_MENU_TITLE"
     
     # 绘制菜单项
     local item_row=$((start_row + 2))
-    for i in "${!TUI_MENU_ITEMS[@]}"; do
+    local end_index=$(( TUI_MENU_SCROLL_OFFSET + TUI_MENU_VISIBLE_ITEMS ))
+    (( end_index > total_items )) && end_index=$total_items
+    for ((i = TUI_MENU_SCROLL_OFFSET; i < end_index; i++)); do
         local item="${TUI_MENU_ITEMS[$i]}"
         local display="  $item  "
         
@@ -338,21 +358,42 @@ tui_menu_draw() {
     # 绘制底部提示
     tui_move $((start_row + menu_height)) "$((start_col + 2))"
     tui_fg "$TUI_COLOR_MUTED"
-    echo "↑/↓ 导航  Enter 选择  q 退出"
+    if (( total_items > TUI_MENU_VISIBLE_ITEMS )); then
+        printf "↑/↓ 导航  Enter 选择  q 退出  [%d-%d/%d]" \
+            $((TUI_MENU_SCROLL_OFFSET + 1)) "$end_index" "$total_items"
+    else
+        echo "↑/↓ 导航  Enter 选择  q 退出"
+    fi
     tui_reset
 }
 
 # 处理菜单键盘输入
 tui_menu_handle_key() {
     local key="$1"
+    local visible_items="${TUI_MENU_VISIBLE_ITEMS:-${#TUI_MENU_ITEMS[@]}}"
     
     case "$key" in
         UP|k)
             ((TUI_MENU_INDEX > 0)) && ((TUI_MENU_INDEX--))
+            (( TUI_MENU_INDEX < TUI_MENU_SCROLL_OFFSET )) && TUI_MENU_SCROLL_OFFSET=$TUI_MENU_INDEX
             TUI_REDRAW=true
             ;;
         DOWN|j)
             ((TUI_MENU_INDEX < ${#TUI_MENU_ITEMS[@]} - 1)) && ((TUI_MENU_INDEX++))
+            if (( TUI_MENU_INDEX >= TUI_MENU_SCROLL_OFFSET + visible_items )); then
+                TUI_MENU_SCROLL_OFFSET=$((TUI_MENU_INDEX - visible_items + 1))
+            fi
+            TUI_REDRAW=true
+            ;;
+        HOME)
+            TUI_MENU_INDEX=0
+            TUI_MENU_SCROLL_OFFSET=0
+            TUI_REDRAW=true
+            ;;
+        END)
+            TUI_MENU_INDEX=$(( ${#TUI_MENU_ITEMS[@]} - 1 ))
+            TUI_MENU_SCROLL_OFFSET=$(( TUI_MENU_INDEX - visible_items + 1 ))
+            (( TUI_MENU_SCROLL_OFFSET < 0 )) && TUI_MENU_SCROLL_OFFSET=0
             TUI_REDRAW=true
             ;;
         ENTER)
@@ -511,6 +552,119 @@ tui_input_draw() {
     [[ $cursor_pos -gt $width ]] && cursor_col=$((col + 2 + width))
     tui_move $((row + 1)) "$cursor_col"
     tput cnorm 2>/dev/null || true
+}
+
+tui_prompt_input() {
+    local title="$1"
+    local label="$2"
+    local default_value="${3:-}"
+    local value="$default_value"
+
+    while true; do
+        local width=40
+        local row=$(( (TUI_LINES - 7) / 2 ))
+        local col=$(( (TUI_COLS - (width + 4)) / 2 ))
+
+        tui_clear
+        tui_draw_box "$row" "$col" $((width + 4)) 6 "$title"
+        tui_input_draw $((row + 1)) $((col + 2)) "$width" "$label" "$value"
+        tui_move $((row + 4)) $((col + 2))
+        tui_fg "$TUI_COLOR_MUTED"
+        echo -n "Enter 确认  Esc 取消  Backspace 删除"
+        tui_reset
+
+        local key
+        key=$(tui_read_key 2>/dev/null) || continue
+
+        case "$key" in
+            ENTER)
+                REPLY_INPUT="$value"
+                return 0
+                ;;
+            q|ESC)
+                return 1
+                ;;
+            BACKSPACE|$'\x7f'|$'\b')
+                value="${value%?}"
+                ;;
+            HOME)
+                value="$default_value"
+                ;;
+            *)
+                if [[ ${#key} -eq 1 && "$key" =~ [[:print:]] ]]; then
+                    value+="$key"
+                fi
+                ;;
+        esac
+    done
+}
+
+tui_prompt_select() {
+    local title="$1"
+    local label="$2"
+    local default_index="${3:-0}"
+    shift 3
+    local options=("$@")
+
+    (( ${#options[@]} == 0 )) && return 1
+
+    local selected="$default_index"
+    (( selected < 0 )) && selected=0
+    (( selected >= ${#options[@]} )) && selected=0
+
+    while true; do
+        local width=50
+        local height=$(( ${#options[@]} + 6 ))
+        local row=$(( (TUI_LINES - height) / 2 ))
+        local col=$(( (TUI_COLS - width) / 2 ))
+
+        tui_clear
+        tui_draw_box "$row" "$col" "$width" "$height" "$title"
+        tui_move $((row + 1)) $((col + 2))
+        tui_fg "$TUI_COLOR_ACCENT"
+        echo -n "$label"
+        tui_reset
+
+        local option_row=$((row + 2))
+        local i
+        for i in "${!options[@]}"; do
+            tui_move "$option_row" $((col + 2))
+            if (( i == selected )); then
+                tui_reverse
+                tui_fg "$TUI_COLOR_HIGHLIGHT"
+            else
+                tui_fg "$TUI_COLOR_FG"
+            fi
+            printf "%-${width}s" "  ${options[$i]}"
+            tui_reset
+            ((option_row++))
+        done
+
+        tui_move $((row + height - 1)) $((col + 2))
+        tui_fg "$TUI_COLOR_MUTED"
+        echo -n "↑/↓ 选择  Enter 确认  Esc 取消"
+        tui_reset
+
+        local key
+        key=$(tui_read_key 2>/dev/null) || continue
+
+        case "$key" in
+            UP|k)
+                (( selected > 0 )) && ((selected--))
+                ;;
+            DOWN|j)
+                (( selected < ${#options[@]} - 1 )) && ((selected++))
+                ;;
+            ENTER)
+                TUI_PROMPT_INDEX="$selected"
+                REPLY_INPUT="${options[$selected]}"
+                return 0
+                ;;
+            q|ESC)
+                return 1
+                ;;
+        esac
+    done
 }
 
 # ============================================================
@@ -733,4 +887,4 @@ export -f tui_draw_box tui_draw_text tui_draw_center tui_draw_hline tui_draw_fil
 export -f tui_menu_create tui_menu_draw tui_menu_handle_key
 export -f tui_table_draw tui_progress_draw tui_input_draw tui_statusbar_draw
 export -f tui_read_key tui_run
-export -f tui_confirm tui_message tui_loading
+export -f tui_confirm tui_message tui_loading tui_prompt_input tui_prompt_select
