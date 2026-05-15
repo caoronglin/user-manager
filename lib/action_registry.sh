@@ -1,12 +1,12 @@
 #!/bin/bash
 # action_registry.sh - TUI/CLI 共用动作表与分发器
 
-declare -Ag _ACTION_LABEL=()
-declare -Ag _ACTION_GROUP=()
-declare -Ag _ACTION_HANDLER=()
-declare -Ag _ACTION_REQUIRES=()
-declare -Ag _ACTION_MODES=()
-declare -Ag _ACTION_RISK=()
+declare -p _ACTION_LABEL >/dev/null 2>&1 || declare -Ag _ACTION_LABEL=()
+declare -p _ACTION_GROUP >/dev/null 2>&1 || declare -Ag _ACTION_GROUP=()
+declare -p _ACTION_HANDLER >/dev/null 2>&1 || declare -Ag _ACTION_HANDLER=()
+declare -p _ACTION_REQUIRES >/dev/null 2>&1 || declare -Ag _ACTION_REQUIRES=()
+declare -p _ACTION_MODES >/dev/null 2>&1 || declare -Ag _ACTION_MODES=()
+declare -p _ACTION_RISK >/dev/null 2>&1 || declare -Ag _ACTION_RISK=()
 
 action_registry_reset() {
     _ACTION_LABEL=()
@@ -36,12 +36,18 @@ action_register() {
 
 action_exists() {
     local id="${1:-}"
-    [[ -n "$id" && -n "${_ACTION_HANDLER[$id]:-}" ]]
+
+    [[ -n "$id" ]] || return 1
+    [[ -n "${_ACTION_HANDLER[$id]:-}" ]]
 }
 
 action_mode_supported() {
     local id="${1:-}" mode="${2:-cli}" modes
-    modes="${_ACTION_MODES[$id]:-both}"
+
+    [[ -n "$id" ]] || return 1
+    action_exists "$id" || return 1
+
+    modes="${_ACTION_MODES[$id]:-}"
 
     case "$modes" in
         both|"$mode")
@@ -60,6 +66,10 @@ action_mode_supported() {
 
 action_requirements_met() {
     local id="${1:-}" requires capability
+
+    [[ -n "$id" ]] || return 1
+    action_exists "$id" || return 1
+
     requires="${_ACTION_REQUIRES[$id]:-none}"
 
     [[ -n "$requires" && "$requires" != "none" ]] || return 0

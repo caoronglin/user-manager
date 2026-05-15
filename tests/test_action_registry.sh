@@ -12,6 +12,9 @@ source "$PROJECT_ROOT/lib/action_registry.sh"
 
 test_suite_start "Action Registry"
 
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
 demo_action_handler() { printf 'demo:%s\n' "${1:-}"; }
 demo_other_handler() { printf 'other\n'; }
 
@@ -25,11 +28,64 @@ else
     test_fail "unexpected action description: $description"
 fi
 
+test_start "repeat source does not clear registered action"
+source "$PROJECT_ROOT/lib/action_registry.sh"
+description="$(action_describe demo.run)"
+if action_exists demo.run && [[ "$description" == *"id=demo.run"* ]]; then
+    test_pass
+else
+    test_fail "registered action disappeared after re-source: $description"
+fi
+
 test_start "action_exists detects registered action"
 if action_exists demo.run; then
     test_pass
 else
     test_fail "registered action was not found"
+fi
+
+test_start "action_mode_supported rejects empty id safely"
+mode_stdout="$TMP_DIR/action_mode_empty.stdout"
+mode_stderr="$TMP_DIR/action_mode_empty.stderr"
+if action_mode_supported "" cli >"$mode_stdout" 2>"$mode_stderr"; then
+    test_fail "empty id should not be accepted"
+elif [[ -s "$mode_stdout" ]] || [[ -s "$mode_stderr" ]]; then
+    test_fail "empty id produced output: stdout=$(<"$mode_stdout") stderr=$(<"$mode_stderr")"
+else
+    test_pass
+fi
+
+test_start "action_mode_supported rejects unknown action"
+mode_stdout="$TMP_DIR/action_mode_unknown.stdout"
+mode_stderr="$TMP_DIR/action_mode_unknown.stderr"
+if action_mode_supported missing.action cli >"$mode_stdout" 2>"$mode_stderr"; then
+    test_fail "unknown action should not be accepted"
+elif [[ -s "$mode_stdout" ]] || [[ -s "$mode_stderr" ]]; then
+    test_fail "unknown action produced output: stdout=$(<"$mode_stdout") stderr=$(<"$mode_stderr")"
+else
+    test_pass
+fi
+
+test_start "action_requirements_met rejects empty id safely"
+req_stdout="$TMP_DIR/action_req_empty.stdout"
+req_stderr="$TMP_DIR/action_req_empty.stderr"
+if action_requirements_met "" >"$req_stdout" 2>"$req_stderr"; then
+    test_fail "empty id should not satisfy requirements"
+elif [[ -s "$req_stdout" ]] || [[ -s "$req_stderr" ]]; then
+    test_fail "empty id produced output: stdout=$(<"$req_stdout") stderr=$(<"$req_stderr")"
+else
+    test_pass
+fi
+
+test_start "action_requirements_met rejects unknown action"
+req_stdout="$TMP_DIR/action_req_unknown.stdout"
+req_stderr="$TMP_DIR/action_req_unknown.stderr"
+if action_requirements_met missing.action >"$req_stdout" 2>"$req_stderr"; then
+    test_fail "unknown action should not satisfy requirements"
+elif [[ -s "$req_stdout" ]] || [[ -s "$req_stderr" ]]; then
+    test_fail "unknown action produced output: stdout=$(<"$req_stdout") stderr=$(<"$req_stderr")"
+else
+    test_pass
 fi
 
 test_start "action_run dispatches handler with arguments"
@@ -68,6 +124,15 @@ if [[ "$output" == *"缺少能力"* ]]; then
     test_pass
 else
     test_fail "capability guard output was: $output"
+fi
+
+test_start "action_run reports missing handler"
+action_register "demo.broken" "Demo Broken" "demo" definitely_missing_handler "none" "both" "safe"
+output="$(action_run demo.broken cli 2>&1 || true)"
+if [[ "$output" == *"action handler 不存在"* ]]; then
+    test_pass
+else
+    test_fail "missing handler output was: $output"
 fi
 
 test_suite_end
