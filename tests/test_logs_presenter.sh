@@ -11,6 +11,7 @@ source "$PROJECT_ROOT/lib/env_core.sh"
 source "$PROJECT_ROOT/lib/journalctl_core.sh"
 source "$PROJECT_ROOT/lib/logs_core.sh"
 source "$PROJECT_ROOT/lib/logs_presenter.sh"
+source "$PROJECT_ROOT/lib/action_registry.sh"
 
 setup_test_env
 
@@ -42,8 +43,16 @@ OUT
     esac
 }
 
-JOURNALCTL_BIN=mock_journalctl
-SYSTEMCTL_BIN=mock_systemctl
+journalctl() {
+    mock_journalctl "$@"
+}
+
+systemctl() {
+    mock_systemctl "$@"
+}
+
+JOURNALCTL_BIN=journalctl
+SYSTEMCTL_BIN=systemctl
 
 test_suite_start "Logs Presenter"
 
@@ -88,6 +97,7 @@ else
 fi
 
 test_start "encoded title and error message are decoded"
+orig_logs_get_service_recent_def="$(declare -f logs_get_service_recent)"
 logs_get_service_recent() {
     cat <<'OUT'
 __LOGS_META__ status=error source=journalctl title=System%20log%20file%20%25%20check%20%3D%20ok
@@ -100,6 +110,20 @@ if [[ "$output" == *"title=System log file % check = ok"* ]] && [[ "$output" == 
     test_pass
 else
     test_fail "decoded presenter output was: $output"
+fi
+
+eval "$orig_logs_get_service_recent_def"
+
+test_start "default log actions dispatch via action_run"
+action_registry_reset
+action_register_defaults
+boot_output="$(action_run logs.boot cli --boot 0 --lines 5)"
+compat_boot_output="$(action_run logs.boot cli logs.boot --boot 0 --lines 5)"
+service_output="$(action_run logs.service_recent cli ssh --lines 5)"
+if [[ "$boot_output" == *"title=Boot logs"* ]] && [[ "$boot_output" == *"source=journalctl"* ]] && [[ "$boot_output" == *"boot=0"* ]] && [[ "$boot_output" == *"current boot line"* ]] && [[ "$compat_boot_output" == "$boot_output" ]] && [[ "$service_output" == *"title=Service recent logs"* ]] && [[ "$service_output" == *"unit=ssh.service"* ]] && [[ "$service_output" == *"ssh recent line one"* ]]; then
+    test_pass
+else
+    test_fail "action_run default outputs were: boot=$boot_output compat=$compat_boot_output service=$service_output"
 fi
 
 cleanup_test_env

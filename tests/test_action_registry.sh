@@ -135,4 +135,39 @@ else
     test_fail "missing handler output was: $output"
 fi
 
+test_start "default log actions dispatch natural args and compat id prefix"
+action_registry_reset
+source "$PROJECT_ROOT/lib/logs_presenter.sh"
+
+mock_journalctl() {
+    case "$*" in
+        *"-b 0"*) printf 'boot ok\n' ;;
+        *"-u ssh.service"*) printf 'ssh ok\n' ;;
+        *) printf 'generic\n' ;;
+    esac
+}
+
+mock_systemctl() {
+    case "$*" in
+        *"--failed"*) printf 'UNIT LOAD ACTIVE SUB DESCRIPTION\nssh.service loaded failed failed OpenSSH server\n' ;;
+        *) printf 'systemctl ok\n' ;;
+    esac
+}
+
+journalctl() { mock_journalctl "$@"; }
+systemctl() { mock_systemctl "$@"; }
+
+JOURNALCTL_BIN=journalctl
+SYSTEMCTL_BIN=systemctl
+
+action_register_defaults
+boot_output="$(action_run logs.boot cli --boot 0 --lines 5)"
+compat_boot_output="$(action_run logs.boot cli logs.boot --boot 0 --lines 5)"
+service_output="$(action_run logs.service_recent cli ssh --lines 5)"
+if [[ "$boot_output" == *"title=Boot logs"* ]] && [[ "$boot_output" == *"boot=0"* ]] && [[ "$boot_output" == *"boot ok"* ]] && [[ "$compat_boot_output" == "$boot_output" ]] && [[ "$service_output" == *"title=Service recent logs"* ]] && [[ "$service_output" == *"unit=ssh.service"* ]] && [[ "$service_output" == *"ssh ok"* ]]; then
+    test_pass
+else
+    test_fail "default log action dispatch output was: boot=$boot_output compat=$compat_boot_output service=$service_output"
+fi
+
 test_suite_end

@@ -139,12 +139,12 @@ action_describe() {
 }
 
 action_register_defaults() {
-    action_register "logs.boot" "查看 Boot 日志" "logs" logs_action_cli "journalctl" "both" "safe"
-    action_register "logs.failed_services" "列出失败服务" "logs" logs_action_cli "systemctl" "both" "safe"
-    action_register "logs.service_recent" "查看服务近期日志" "logs" logs_action_cli "journalctl" "both" "safe"
-    action_register "logs.boot_error_diff" "启动错误对比" "logs" logs_action_cli "journalctl" "both" "safe"
-    action_register "logs.system_file_tail" "查看系统日志文件" "logs" logs_action_cli "none" "both" "safe"
-    action_register "logs.auth_failures" "查看认证失败" "logs" logs_action_cli "none" "both" "safe"
+    action_register "logs.boot" "查看 Boot 日志" "logs" logs_action_boot_cli "journalctl" "both" "safe"
+    action_register "logs.failed_services" "列出失败服务" "logs" logs_action_failed_services_cli "systemctl" "both" "safe"
+    action_register "logs.service_recent" "查看服务近期日志" "logs" logs_action_service_recent_cli "journalctl" "both" "safe"
+    action_register "logs.boot_error_diff" "启动错误对比" "logs" logs_action_boot_error_diff_cli "journalctl" "both" "safe"
+    action_register "logs.system_file_tail" "查看系统日志文件" "logs" logs_action_system_file_tail_cli "none" "both" "safe"
+    action_register "logs.auth_failures" "查看认证失败" "logs" logs_action_auth_failures_cli "none" "both" "safe"
     action_register "system.timers.list" "列出 systemd timers" "system" systemd_timer_list_timers "systemctl" "both" "safe"
     action_register "system.timers.logs" "查看 timer 日志" "system" systemd_timer_show_logs "journalctl" "both" "safe"
     action_register "users.list" "查看托管用户" "users" list_managed_users "none" "both" "safe"

@@ -109,6 +109,30 @@ logs_format_capability_warning() {
     printf '当前环境缺少能力: %s。请安装依赖或切换到支持的系统。\n' "$capability"
 }
 
+_logs_presenter_action_dispatch() {
+    local mode="${1:-cli}"
+    local action_id="${2:-}"
+
+    shift 2 || true
+
+    if [[ "${1:-}" == "$action_id" ]]; then
+        shift
+    fi
+
+    case "$mode" in
+        cli)
+            logs_present_cli "$action_id" "$@"
+            ;;
+        tui)
+            logs_present_tui "$action_id" "$@"
+            ;;
+        *)
+            printf '未知日志 mode: %s\n' "$mode" >&2
+            return 1
+            ;;
+    esac
+}
+
 _logs_presenter_call_core() {
     local action_id="${1:-}"
 
@@ -241,12 +265,60 @@ logs_action_cli() {
     local action_id="${1:-}"
 
     shift || true
-    logs_present_cli "$action_id" "$@"
+    _logs_presenter_action_dispatch cli "$action_id" "$@"
 }
 
 logs_action_tui() {
     local action_id="${1:-}"
 
     shift || true
-    logs_present_tui "$action_id" "$@"
+    _logs_presenter_action_dispatch tui "$action_id" "$@"
+}
+
+logs_action_boot_cli() {
+    _logs_presenter_action_dispatch cli logs.boot "$@"
+}
+
+logs_action_boot_tui() {
+    _logs_presenter_action_dispatch tui logs.boot "$@"
+}
+
+logs_action_failed_services_cli() {
+    _logs_presenter_action_dispatch cli logs.failed_services "$@"
+}
+
+logs_action_failed_services_tui() {
+    _logs_presenter_action_dispatch tui logs.failed_services "$@"
+}
+
+logs_action_service_recent_cli() {
+    _logs_presenter_action_dispatch cli logs.service_recent "$@"
+}
+
+logs_action_service_recent_tui() {
+    _logs_presenter_action_dispatch tui logs.service_recent "$@"
+}
+
+logs_action_boot_error_diff_cli() {
+    _logs_presenter_action_dispatch cli logs.boot_error_diff "$@"
+}
+
+logs_action_boot_error_diff_tui() {
+    _logs_presenter_action_dispatch tui logs.boot_error_diff "$@"
+}
+
+logs_action_system_file_tail_cli() {
+    _logs_presenter_action_dispatch cli logs.system_file_tail "$@"
+}
+
+logs_action_system_file_tail_tui() {
+    _logs_presenter_action_dispatch tui logs.system_file_tail "$@"
+}
+
+logs_action_auth_failures_cli() {
+    _logs_presenter_action_dispatch cli logs.auth_failures "$@"
+}
+
+logs_action_auth_failures_tui() {
+    _logs_presenter_action_dispatch tui logs.auth_failures "$@"
 }
