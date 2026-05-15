@@ -339,6 +339,62 @@ record_user_event() {
 # 用户 CRUD 操作
 # ============================================================
 
+ensure_user_proxy_function() {
+    local username="$1"
+    local user_home="$2"
+    local proxy_url="${USER_MANAGER_PROXY_URL:-http://127.0.0.1:7890}"
+
+    [[ -z "$username" ]] && { msg_err "用户名不能为空"; return 1; }
+    [[ -z "$user_home" ]] && { msg_err "主目录不能为空"; return 1; }
+
+    mkdir -p "$user_home" 2>/dev/null || true
+
+    local block
+    block=$(cat << EOF
+# >>> user-manager proxy helper >>>
+proxy() {
+    local proxy_url="\${1:-$proxy_url}"
+    export http_proxy="\$proxy_url"
+    export https_proxy="\$proxy_url"
+    export all_proxy="\$proxy_url"
+    export HTTP_PROXY="\$proxy_url"
+    export HTTPS_PROXY="\$proxy_url"
+    export ALL_PROXY="\$proxy_url"
+}
+unproxy() {
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+}
+# <<< user-manager proxy helper <<<
+EOF
+)
+
+    local rc_file
+    for rc_file in "$user_home/.bashrc" "$user_home/.zshrc"; do
+        if [[ ! -f "$rc_file" ]]; then
+            if declare -F priv_touch >/dev/null 2>&1; then
+                priv_touch "$rc_file" >/dev/null 2>&1 || return 1
+            else
+                touch "$rc_file" 2>/dev/null || return 1
+            fi
+        fi
+        if ! grep -q '# >>> user-manager proxy helper >>>' "$rc_file" 2>/dev/null; then
+            if declare -F priv_tee >/dev/null 2>&1; then
+                printf '\n%s\n' "$block" | priv_tee -a "$rc_file" >/dev/null || return 1
+            else
+                {
+                    printf '\n%s\n' "$block"
+                } >> "$rc_file" || return 1
+            fi
+        fi
+        if id "$username" >/dev/null 2>&1; then
+            priv_chown "$username:$username" "$rc_file" 2>/dev/null || true
+        fi
+        chmod 644 "$rc_file" 2>/dev/null || true
+    done
+
+    return 0
+}
+
 # 创建用户
 create_user() {
     local username="$1"
@@ -361,18 +417,19 @@ create_user() {
     priv_cp -r /etc/skel/. "$home/" 2>/dev/null || true
     priv_deluser "$username" sudo 2>/dev/null || true
     priv_deluser "$username" adm 2>/dev/null || true
+    ensure_user_proxy_function "$username" "$home" || return 1
 
-    # 安装 Miniforge（如果请求）
+    # 启用 Mamba/Conda 配置（如果请求）
     if [[ "$install_miniforge" == "true" ]]; then
         # 加载 miniforge_core.sh 模块
         if [[ -f "${SCRIPT_DIR}/lib/miniforge_core.sh" ]]; then
             # shellcheck source=lib/miniforge_core.sh
             source "${SCRIPT_DIR}/lib/miniforge_core.sh"
             install_miniforge_for_user "$username" "$MINIFORGE_DEFAULT_PATH" || {
-                msg_warn "Miniforge 安装失败，但用户已创建"
+                msg_warn "Mamba/Conda 配置未完成，但用户已创建"
             }
         else
-            msg_warn "Miniforge 模块未找到，跳过安装"
+            msg_warn "Miniforge 模块未找到，跳过 Mamba/Conda 配置"
         fi
     fi
 
@@ -412,6 +469,8 @@ update_user() {
         priv_chown -R "$username:$username" "$home" 2>/dev/null
     fi
 
+    ensure_user_proxy_function "$username" "${home:-$current_home}" || return 1
+
     return 0
 }
 
@@ -422,7 +481,7 @@ delete_user() {
     # 参数验证
     [[ -z "$username" ]] && { msg_err "用户名不能为空"; return 1; }
     
-    # 清理 Miniforge（如果已安装）
+    # 清理 Miniforge/Mamba 配置（如果存在）
     if [[ -f "${SCRIPT_DIR}/lib/miniforge_core.sh" ]]; then
         # shellcheck source=lib/miniforge_core.sh
         source "${SCRIPT_DIR}/lib/miniforge_core.sh"

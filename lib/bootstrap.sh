@@ -72,6 +72,8 @@ um_load_profile() {
                 "symlink_core.sh"
                 "report_core.sh"
                 "system_core.sh"
+                "vm_core.sh"
+                "gpu_core.sh"
             )
             ;;
         tui)

@@ -31,6 +31,8 @@ _tui_load_mainline_modules() {
         "symlink_core.sh"
         "report_core.sh"
         "system_core.sh"
+        "vm_core.sh"
+        "gpu_core.sh"
         "controller_user_workflows.sh"
         "controller_submenus.sh"
     )
@@ -419,7 +421,7 @@ tui_run_create_or_assign_user_native() {
     sel_avail_h=$(bytes_to_human "$sel_avail_b")
 
     if ! $update_existing; then
-        if tui_confirm "为新用户安装 Miniforge？" "n"; then
+        if tui_confirm "为新用户启用 Mamba/Conda 配置？" "n"; then
             install_miniforge=true
         fi
     fi
@@ -889,6 +891,32 @@ draw_tui_systemd_timer_menu() {
     _tui_draw_menu "systemd_timer"
 }
 
+draw_tui_compute_menu() {
+    _tui_draw_menu "compute"
+}
+
+handle_tui_compute_menu_key() {
+    local key="$1"
+    local result
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_workflow_action list_virtual_machines ;;
+        1) tui_run_prompt_sequence_action show_virtual_machine_status "虚拟机名称" ;;
+        2) tui_run_workflow_action show_gpu_status ;;
+        3) tui_run_workflow_action list_gpu_devices ;;
+        4) tui_run_workflow_action show_gpu_processes ;;
+        5|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+
+    return 0
+}
+
+tui_run_compute_menu_native() {
+    tui_run_native_menu draw_tui_compute_menu handle_tui_compute_menu_key
+}
+
 handle_tui_systemd_timer_menu_key() {
     local key="$1"
     local result
@@ -965,7 +993,8 @@ handle_tui_system_menu_key() {
         5) tui_run_workflow_action show_network_stack_panel ;;
         6) tui_run_systemd_timer_menu_native ;;
         7) tui_run_system_details_menu_native ;;
-        8|-1)
+        8) tui_run_compute_menu_native ;;
+        9|-1)
             TUI_SUBMENU_EXIT=1
             ;;
     esac

@@ -720,13 +720,23 @@ tui_read_key() {
 # 主循环
 # ============================================================
 
+tui_handle_interrupt() {
+    tui_cleanup
+    if declare -F msg_warn >/dev/null 2>&1; then
+        printf '\n'
+        msg_warn "操作被中断"
+    fi
+    exit 130
+}
+
 # 运行主循环
 tui_run() {
     local draw_func="$1"
     local key_handler="$2"
     
-    # 设置退出trap
-    trap 'tui_cleanup; return 0' INT TERM EXIT
+    # 设置退出trap：中断时显式退出，避免在脚本 trap 中 return 产生 shell 噪声。
+    trap 'tui_handle_interrupt' INT TERM
+    trap 'tui_cleanup' EXIT
     
     while $TUI_RUNNING; do
         # 检查终端大小变化

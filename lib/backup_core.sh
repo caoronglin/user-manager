@@ -3,6 +3,10 @@
 # 提供用户数据备份、恢复、定时任务管理、批量备份功能
 # 改进：安全的 rsync 参数构建（无 eval）、修复并行备份路径、彩色输出
 
+# === 加载统一排除模块 ===
+# shellcheck disable=SC1091
+source "$LIB_DIR/backup_excludes.sh"
+
 # ============================================================
 #  1. show_backup_status  —— 显示用户备份历史
 # ============================================================
@@ -150,7 +154,7 @@ manual_backup_user() {
 
     if ! command -v rsync &>/dev/null; then
         msg_warn "rsync 未安装，使用 cp 命令备份（速度较慢）"
-        if run_privileged cp -a "$user_home" "$backup_dir"; then
+        if priv_cp -a "$user_home" "$backup_dir"; then
             msg_ok "备份完成"
             record_user_event "$username" "backup" "手动${backup_type}备份到 $backup_dir"
             return 0
@@ -163,7 +167,7 @@ manual_backup_user() {
 
     msg_step "使用 rsync 进行${backup_type}备份..."
 
-    # 构建排除参数数组 —— 不使用 eval
+    # 构建排除参数数组 —— 使用统一排除模块
     local -a rsync_args=( -av --delete )
 
     # 增量备份：使用 --link-dest 引用上次备份，仅传输差异
@@ -171,25 +175,14 @@ manual_backup_user() {
         rsync_args+=( --link-dest="$last_backup" )
     fi
 
-    rsync_args+=( --exclude='.cache' )
-    rsync_args+=( --exclude='.local/share/Trash' )
-    rsync_args+=( --exclude='*.tmp' )
-    rsync_args+=( --exclude='__pycache__' )
-    rsync_args+=( --exclude='.git/objects' )
-    rsync_args+=( --exclude='.git/logs' )
-
-    # 追加生物信息排除模式
-    while IFS= read -r pattern; do
-        [[ -z "$pattern" ]] && continue
-        rsync_args+=( --exclude="$pattern" )
-    done < <(get_bio_exclude_patterns)
+    build_rsync_exclude_args rsync_args
 
     rsync_args+=( "$user_home/" "$backup_dir/" )
 
     local start_ts
     start_ts=$(date +%s)
 
-    if run_privileged rsync "${rsync_args[@]}"; then
+    if priv_rsync "${rsync_args[@]}"; then
         local end_ts elapsed bsize
         end_ts=$(date +%s)
         elapsed=$((end_ts - start_ts))
@@ -201,6 +194,12 @@ manual_backup_user() {
         draw_info_card "备份大小:" "$bsize"
         draw_info_card "耗时:" "${elapsed}s"
         record_user_event "$username" "backup" "手动${backup_type}备份到 $backup_dir"
+        # 自动生成校验和
+        if declare -f auto_checksum_after_backup &>/dev/null; then
+            auto_checksum_after_backup "$backup_dir" "$username"
+        fi
+        # 更新备份索引
+        update_backup_index "$username" "$backup_type" "$backup_dir" "${last_backup:-}"
         return 0
     else
         msg_err "rsync 备份失败"
@@ -276,11 +275,11 @@ restore_user_backup() {
     pre_restore_backup="$BACKUP_ROOT/$username/pre_restore_$(date +%Y%m%d_%H%M%S)"
     msg_step "先备份当前数据到: $pre_restore_backup"
     priv_mkdir -p "$pre_restore_backup"
-    run_privileged rsync -a "$user_home/" "$pre_restore_backup/" 2>/dev/null || true
+    priv_rsync -a "$user_home/" "$pre_restore_backup/" 2>/dev/null || true
 
     msg_step "开始恢复..."
 
-    if run_privileged rsync -av --delete "$backup_dir/" "$user_home/"; then
+    if priv_rsync -av --delete "$backup_dir/" "$user_home/"; then
         # 修正所有权
         local user_uid user_gid
         user_uid=$(id -u "$username")
@@ -341,6 +340,13 @@ configure_backup_schedule() {
     draw_info_card "脚本路径:" "$script_path"
     echo ""
 
+    # 预生成全局排除文件供 cron 脚本使用
+    local global_exclude_file="$BACKUP_ROOT/.excludes/backup_excludes.txt"
+    priv_mkdir -p "$(dirname "$global_exclude_file")"
+    if ! generate_exclude_file "$global_exclude_file" >/dev/null; then
+        msg_warn "排除文件生成失败，备份将不排除文件"
+    fi
+
     msg_step "创建备份脚本: $script_path"
 
     # 生成备份脚本 —— 所有路径使用绝对值直接嵌入
@@ -381,94 +387,23 @@ fi
 
 mkdir -p "\$BACKUP_DIR"
 
-# ── 构建排除列表 ──
-EXCLUDE_FILE=\$(mktemp) || { log_msg "无法创建临时文件"; exit 1; }
-trap 'rm -f "\$EXCLUDE_FILE"' EXIT
-cat > "\$EXCLUDE_FILE" << 'EXCL'
-.cache
-.local/share/Trash
-*.tmp
-__pycache__
-.git/objects
-.git/logs
-*.bam
-*.bam.bai
-*.cram
-*.cram.crai
-*.fastq
-*.fastq.gz
-*.fq
-*.fq.gz
-*.sai
-*.sam
-*.sam.gz
-*.bcf
-*.vcf
-*.vcf.gz
-*.vcf.bgz
-*.tbi
-*.csi
-*.bed
-*.gff
-*.gff3
-*.gtf
-*.txt.gz
-*.pileup
-*.mpileup
-*.wig
-*.bedgraph
-*.bw
-*.bigwig
-*.hic
-*.cool
-*.mcool
-*.bai
-*.crai
-*.idx
-*.sra
-*.sra.lite
-*.ubam
-*.unmapped.bam
-*.sorted.bam
-*.dedup.bam
-*.recall.bam
-*.realigned.bam
-*.trimmed.fastq.gz
-*.trimmed.fq.gz
-*.paired.fq.gz
-*.unpaired.fq.gz
-*.R1.fastq.gz
-*.R2.fastq.gz
-*.fasta.fai
-*.dict
-*.amb
-*.ann
-*.bwt
-*.pac
-*.sa
-*.bt2
-*.bt2l
-*.hisat2
-*.ht2
-*.ht2l
-*.stidx
-*.stcoords
-.samtoolscache
-.gatk-cache
-.picard-tmp
-.bwa-cache
-.snakemake
-work/
-tmp/
-temp/
-intermediate/
-EXCL
+# ── 使用预生成的排除文件 ──
+EXCLUDE_FILE="$BACKUP_ROOT/.excludes/backup_excludes.txt"
+if [ ! -f "\$EXCLUDE_FILE" ]; then
+    log_msg "排除文件缺失，跳过排除: \$EXCLUDE_FILE"
+    EXCLUDE_FILE=""
+fi
 
-# ── 执行 rsync ──
-rsync -a --delete --exclude-from="\$EXCLUDE_FILE" \$LINK_DEST_OPT \\
-    --stats "\$USER_HOME/" "\$BACKUP_DIR/" >> "\$LOG_FILE" 2>&1
+# ── 执行 rsync（使用数组参数避免 eval 注入风险） ──
+RSYNC_ARGS=(-a --delete)
+if [ -n "\$EXCLUDE_FILE" ]; then
+    RSYNC_ARGS+=(--exclude-from="\$EXCLUDE_FILE")
+fi
+if [ -n "\$LINK_DEST_OPT" ]; then
+    RSYNC_ARGS+=(\$LINK_DEST_OPT)
+fi
+rsync "\${RSYNC_ARGS[@]}" --stats "\$USER_HOME/" "\$BACKUP_DIR/" >> "\$LOG_FILE" 2>&1
 RC=\$?
-rm -f "\$EXCLUDE_FILE"
 
 if [ \$RC -eq 0 ]; then
     BACKUP_SIZE=\$(du -sh "\$BACKUP_DIR" 2>/dev/null | cut -f1)
@@ -477,10 +412,28 @@ else
     log_msg "备份失败 (退出码: \$RC)"
 fi
 
-# ── 清理超过7天的旧备份 ──
+# ── 安全清理超过7天的旧备份（最少保留5个） ──
 log_msg "开始清理旧备份..."
-find "\$BACKUP_ROOT/\$USER" -maxdepth 1 -type d \( -name 'full_*' -o -name 'inc_*' -o -name 'auto_*' \) \\
-    -mtime +7 -exec rm -rf {} \; 2>> "\$LOG_FILE"
+BACKUP_DIR_LIST=\$(find "\$BACKUP_ROOT/\$USER" -maxdepth 1 -type d \
+    \( -name 'full_*' -o -name 'inc_*' -o -name 'auto_*' \) \
+    -mtime +7 -print 2>/dev/null | sort -r)
+if [ -n "\$BACKUP_DIR_LIST" ]; then
+    TOTAL_BACKUPS=\$(find "\$BACKUP_ROOT/\$USER" -maxdepth 1 -type d \
+        \( -name 'full_*' -o -name 'inc_*' -o -name 'auto_*' \) 2>/dev/null | wc -l)
+    KEEP_COUNT=\$((TOTAL_BACKUPS - \$(echo "\$BACKUP_DIR_LIST" | wc -l)))
+    if [ "\$KEEP_COUNT" -lt 5 ]; then
+        SKIP_COUNT=\$((5 - KEEP_COUNT))
+        BACKUP_DIR_LIST=\$(echo "\$BACKUP_DIR_LIST" | tail -n +\$((SKIP_COUNT + 1)))
+    fi
+    CLEANED=0
+    while IFS= read -r bdir; do
+        [ -z "\$bdir" ] && continue
+        if [ "\$bdir" = "\$BACKUP_ROOT/\$USER"/* ]; then
+            rm -rf "\$bdir" 2>> "\$LOG_FILE" && CLEANED=\$((CLEANED + 1))
+        fi
+    done <<< "\$BACKUP_DIR_LIST"
+    log_msg "清理完成: \$CLEANED 个旧备份"
+fi
 
 # ── 日志轮转（超过10MB） ──
 if [ -f "\$LOG_FILE" ]; then
@@ -495,7 +448,7 @@ GENEOF
 )
 
     # 写入脚本
-    if echo "$script_content" | run_privileged tee "$script_path" > /dev/null; then
+    if printf '%s' "$script_content" | write_privileged_text_file "$script_path" "0755" "root:root"; then
         priv_chmod +x "$script_path"
         msg_ok "备份脚本创建成功"
     else
@@ -507,8 +460,8 @@ GENEOF
     msg_step "配置定时任务..."
     local cron_line="$cron_expr $script_path"
 
-    run_privileged crontab -l 2>/dev/null | grep -v "$script_path" | run_privileged crontab - 2>/dev/null || true
-    if ( run_privileged crontab -l 2>/dev/null; echo "$cron_line" ) | run_privileged crontab -; then
+    rewrite_root_crontab_without_literal "$script_path" >/dev/null 2>&1 || true
+    if append_root_crontab_line "$cron_line"; then
         echo ""
         msg_ok "定时备份任务配置成功"
         draw_info_card "备份时间:" "每天 ${backup_hour}:00"
@@ -518,9 +471,168 @@ GENEOF
         record_user_event "$username" "schedule_backup" "配置定时备份: 每天${backup_hour}点"
         return 0
     else
-        msg_err "配置定时任务失败"
+        msg_err "恢复失败"
         return 1
     fi
+}
+
+# ============================================================
+# 13. _safe_cleanup_backups - 安全清理旧备份
+# ============================================================
+_safe_cleanup_backups() {
+    local user_backup_dir="$1"
+    local retention_days="${2:-${BACKUP_RETENTION_DAYS:-7}}"
+    local min_keep="${3:-${BACKUP_MIN_KEEP:-3}}"
+
+    [[ -z "$user_backup_dir" ]] && return 1
+    [[ ! -d "$user_backup_dir" ]] && return 2
+
+    if [[ "$user_backup_dir" != "$BACKUP_ROOT"/* ]]; then
+        msg_err "安全拒绝: 备份清理路径不在 BACKUP_ROOT 下: $user_backup_dir"
+        return 1
+    fi
+
+    local cleanup_list
+    cleanup_list=$(find "$user_backup_dir" -maxdepth 1 -type d \
+        \( -name 'full_*' -o -name 'inc_*' -o -name 'auto_*' \) \
+        -mtime "+${retention_days}" -print 2>/dev/null | sort -r)
+
+    if [[ -z "$cleanup_list" ]]; then
+        return 0
+    fi
+
+    local total_backups
+    total_backups=$(find "$user_backup_dir" -maxdepth 1 -type d \
+        \( -name 'full_*' -o -name 'inc_*' -o -name 'auto_*' \) 2>/dev/null | wc -l)
+
+    local keep_count=$((total_backups - $(echo "$cleanup_list" | wc -l)))
+    if (( keep_count < min_keep )); then
+        cleanup_list=$(echo "$cleanup_list" | tail -n +$((min_keep - keep_count + 1)))
+        [[ -z "$cleanup_list" ]] && return 0
+    fi
+
+    local cleaned=0 freed=0
+    local backup_dir
+    while IFS= read -r backup_dir; do
+        [[ -z "$backup_dir" ]] && continue
+        local bsize
+        bsize=$(du -sb "$backup_dir" 2>/dev/null | cut -f1)
+        freed=$((freed + ${bsize:-0}))
+        if rm -rf "$backup_dir" 2>/dev/null; then
+            ((cleaned+=1))
+        fi
+    done <<< "$cleanup_list"
+
+    if (( cleaned > 0 )); then
+        msg_ok "清理旧备份: $cleaned 个, 释放 $(bytes_to_human "$freed")"
+    fi
+    return 0
+}
+
+# ============================================================
+# 14. update_backup_index - 更新备份元数据索引
+# ============================================================
+update_backup_index() {
+    local username="$1"
+    local backup_type="$2"
+    local backup_dir="$3"
+    local depends_on="${4:-}"
+
+    [[ -z "$username" || -z "$backup_type" || -z "$backup_dir" || ! -d "$backup_dir" ]] && return 1
+
+    local index_file="$BACKUP_ROOT/$username/.backup_index.json"
+    local backup_id
+    backup_id=$(basename "$backup_dir")
+    local timestamp
+    timestamp=$(date -Iseconds)
+    local bsize
+    bsize=$(du -sb "$backup_dir" 2>/dev/null | cut -f1)
+    bsize=${bsize:-0}
+
+    local checksum_status="none"
+    local checksum_file="${CHECKSUM_DIR:-$BACKUP_ROOT/.checksums}/$username/${backup_id}${CHECKSUM_SUFFIX:-.sha256}"
+    [[ -f "$checksum_file" ]] && checksum_status="generated"
+
+    local depends_value="null"
+    [[ -n "$depends_on" ]] && depends_value="\"$(basename "$depends_on")\""
+
+    if command -v jq &>/dev/null; then
+        local entry
+        entry=$(jq -n --arg id "$backup_id" --arg type "$backup_type" \
+            --arg ts "$timestamp" --arg cs "$checksum_status" \
+            --argjson size "$bsize" \
+            "{id: \$id, type: \$type, timestamp: \$ts, depends_on: $depends_value, size: \$size, checksum: \$cs}")
+
+        if [[ -f "$index_file" ]]; then
+            local tmp_file
+            tmp_file=$(mktemp)
+            jq --argjson entry "$entry" \
+                '.backups += [$entry] | .backups |= sort_by(.timestamp) | .last_updated = now' \
+                "$index_file" > "$tmp_file" 2>/dev/null && mv "$tmp_file" "$index_file"
+        else
+            mkdir -p "$(dirname "$index_file")"
+            jq -n --arg user "$username" --argjson entry "$entry" \
+                '{username: $user, backups: [$entry], last_updated: now}' > "$index_file"
+        fi
+    fi
+
+    return 0
+}
+
+# ============================================================
+# 15. show_backup_chain - 显示备份链路
+# ============================================================
+show_backup_chain() {
+    local username="$1"
+
+    [[ -z "$username" ]] && { msg_err "用户名不能为空"; return 1; }
+
+    local index_file="$BACKUP_ROOT/$username/.backup_index.json"
+
+    draw_header "备份链路 — $username"
+
+    if [[ ! -f "$index_file" ]]; then
+        msg_info "没有备份索引数据"
+        return 0
+    fi
+
+    if ! command -v jq &>/dev/null; then
+        msg_warn "jq 未安装，无法解析备份索引"
+        return 1
+    fi
+
+    local backup_count
+    backup_count=$(jq '.backups | length' "$index_file" 2>/dev/null)
+    if [[ -z "$backup_count" || "$backup_count" -eq 0 ]]; then
+        msg_info "索引中没有备份记录"
+        return 0
+    fi
+
+    printf "  ${C_DIM}%-28s %-10s %-8s %-10s %s${C_RESET}\n" "备份ID" "类型" "大小" "校验" "依赖"
+    draw_line 75
+
+    local i
+    for ((i=0; i<backup_count; i++)); do
+        local bid btype bsize bcs bdep
+        bid=$(jq -r ".backups[$i].id" "$index_file")
+        btype=$(jq -r ".backups[$i].type" "$index_file")
+        bsize=$(jq -r ".backups[$i].size" "$index_file")
+        bsize=$(bytes_to_human "${bsize:-0}")
+        bcs=$(jq -r ".backups[$i].checksum" "$index_file")
+        bdep=$(jq -r ".backups[$i].depends_on // \"-\"" "$index_file")
+
+        local color="$C_CYAN"
+        [[ "$btype" == "full" ]] && color="$C_BGREEN"
+        [[ "$btype" == "incremental" ]] && color="$C_YELLOW"
+        [[ "$btype" == "batch" ]] && color="$C_BCYAN"
+
+        printf "  ${color}%-28s${C_RESET} %-10s %-8s %-10s ${C_DIM}%s${C_RESET}\n" \
+            "$bid" "$btype" "$bsize" "$bcs" "$bdep"
+    done
+
+    echo ""
+    msg_ok "共 ${C_BOLD}$backup_count${C_RESET} 个备份记录"
+    return 0
 }
 
 # ============================================================
@@ -541,7 +653,7 @@ remove_backup_schedule() {
     msg_step "移除定时备份任务..."
 
     # 从 crontab 移除
-    run_privileged crontab -l 2>/dev/null | grep -v "$script_path" | run_privileged crontab - 2>/dev/null || true
+    rewrite_root_crontab_without_literal "$script_path" >/dev/null 2>&1 || true
 
     # 删除备份脚本
     if [[ -f "$script_path" ]]; then
@@ -576,7 +688,7 @@ show_backup_schedules() {
                 "$cron_time" "$sched_script" "$sched_user"
             has_tasks=1
         fi
-    done < <(run_privileged crontab -l 2>/dev/null)
+    done < <(read_root_crontab)
 
     echo ""
     if [[ $has_tasks -eq 0 ]]; then
@@ -584,111 +696,8 @@ show_backup_schedules() {
     fi
 }
 
-# ============================================================
-#  8. get_bio_exclude_patterns  —— 生物信息排除模式
-# ============================================================
-# ============================================================
-# get_bio_exclude_patterns - 获取生物信息学文件排除模式
-# ============================================================
-# 无参数函数，输出生物信息学大文件/中间文件的排除模式
-# 输出：每行一个排除模式（如 *.bam, *.fastq.gz 等）
-# Returns: 0 始终成功
-# ============================================================
-get_bio_exclude_patterns() {
-    # 无参数函数 — 仅输出排除模式列表
-    # 防御性检查：确保 cat 命令可用
-    command -v cat &>/dev/null || { msg_err "cat 命令不可用"; return 1; }
-    cat << 'EOF'
-*.bam
-*.bam.bai
-*.cram
-*.cram.crai
-*.fastq
-*.fastq.gz
-*.fq
-*.fq.gz
-*.sai
-*.sam
-*.sam.gz
-*.bcf
-*.vcf
-*.vcf.gz
-*.vcf.bgz
-*.tbi
-*.csi
-*.bed
-*.gff
-*.gff3
-*.gtf
-*.txt.gz
-*.pileup
-*.mpileup
-*.wig
-*.bedgraph
-*.bw
-*.bigwig
-*.hic
-*.cool
-*.mcool
-*.bai
-*.crai
-*.idx
-*.sra
-*.sra.lite
-*.ubam
-*.unmapped.bam
-*.sorted.bam
-*.dedup.bam
-*.recall.bam
-*.realigned.bam
-*.trimmed.fastq.gz
-*.trimmed.fq.gz
-*.paired.fq.gz
-*.unpaired.fq.gz
-*.R1.fastq.gz
-*.R2.fastq.gz
-*.fasta.fai
-*.dict
-*.amb
-*.ann
-*.bwt
-*.pac
-*.sa
-*.bt2
-*.bt2l
-*.hisat2
-*.ht2
-*.ht2l
-*.stidx
-*.stcoords
-.samtoolscache
-.gatk-cache
-.picard-tmp
-.bwa-cache
-.snakemake
-work/
-tmp/
-temp/
-intermediate/
-EOF
-}
-
-# ============================================================
-#  内部辅助 —— 构建 rsync 排除参数数组
-# ============================================================
-_build_rsync_exclude_args() {
-    local -n _arr=$1     # nameref
-    _arr+=( --exclude='.cache' )
-    _arr+=( --exclude='.local/share/Trash' )
-    _arr+=( --exclude='*.tmp' )
-    _arr+=( --exclude='__pycache__' )
-    _arr+=( --exclude='.git/objects' )
-    _arr+=( --exclude='.git/logs' )
-    while IFS= read -r pattern; do
-        [[ -z "$pattern" ]] && continue
-        _arr+=( --exclude="$pattern" )
-    done < <(get_bio_exclude_patterns)
-}
+# 排除模式管理已统一迁移至 lib/backup_excludes.sh
+# 参见: get_base_exclude_patterns / get_bio_exclude_patterns / build_rsync_exclude_args
 
 # ============================================================
 #  9. backup_all_users  —— 批量备份（安全，无 eval）
@@ -717,9 +726,7 @@ backup_all_users() {
     draw_info_card "批次目录:" "$batch_dir"
     echo ""
 
-    msg_info "将排除以下生物信息中间产物:"
-    get_bio_exclude_patterns | head -8 | sed 's/^/    /'
-    echo "    ... (共 $(get_bio_exclude_patterns | wc -l) 种模式)"
+    print_exclude_summary
     echo ""
 
     if ! confirm_action "确认开始备份？"; then
@@ -741,11 +748,11 @@ backup_all_users() {
         echo "用户数量: ${#all_users[@]}"
         echo "========================================="
         echo ""
-    } | run_privileged tee "$batch_log" > /dev/null
+    } | write_privileged_text_file "$batch_log" "0644" "root:root"
 
     # 预先构建排除数组（所有用户共用）
     local -a exclude_args=()
-    _build_rsync_exclude_args exclude_args
+    build_rsync_exclude_args exclude_args
 
     local total=${#all_users[@]}
     local current=0
@@ -760,7 +767,7 @@ backup_all_users() {
         # 检查用户存在
         if ! id "$username" &>/dev/null; then
             msg_warn "  用户不存在，跳过"
-            echo "[$current/$total] $username — 跳过: 用户不存在" | run_privileged tee -a "$batch_log" > /dev/null
+            echo "[$current/$total] $username — 跳过: 用户不存在" | priv_tee -a "$batch_log" > /dev/null
             ((failed_count+=1))
             failed_users+=("$username")
             continue
@@ -771,7 +778,7 @@ backup_all_users() {
         user_home=$(get_user_home "$username")
         if [[ -z "$user_home" || ! -d "$user_home" ]]; then
             msg_warn "  无法获取主目录，跳过"
-            echo "[$current/$total] $username — 跳过: 无法获取主目录" | run_privileged tee -a "$batch_log" > /dev/null
+            echo "[$current/$total] $username — 跳过: 无法获取主目录" | priv_tee -a "$batch_log" > /dev/null
             ((failed_count+=1))
             failed_users+=("$username")
             continue
@@ -780,7 +787,7 @@ backup_all_users() {
         local user_backup_dir="$batch_dir/$username"
         if ! priv_mkdir -p "$user_backup_dir"; then
             msg_err "  创建备份目录失败"
-            echo "[$current/$total] $username — 失败: 无法创建备份目录" | run_privileged tee -a "$batch_log" > /dev/null
+            echo "[$current/$total] $username — 失败: 无法创建备份目录" | priv_tee -a "$batch_log" > /dev/null
             ((failed_count+=1))
             failed_users+=("$username")
             continue
@@ -809,24 +816,26 @@ backup_all_users() {
 
         msg_info "  正在备份..."
 
-        if run_privileged rsync "${rsync_args[@]}" >> "$batch_log" 2>&1; then
+        if priv_rsync "${rsync_args[@]}" >> "$batch_log" 2>&1; then
             local backup_end elapsed bsize bsize_bytes
             backup_end=$(date +%s)
             elapsed=$((backup_end - backup_start))
-            bsize=$(run_privileged du -sh "$user_backup_dir" 2>/dev/null | cut -f1)
-            bsize_bytes=$(run_privileged du -sb "$user_backup_dir" 2>/dev/null | cut -f1)
+            bsize=$(priv_du -sh "$user_backup_dir" 2>/dev/null | cut -f1)
+            bsize_bytes=$(priv_du -sb "$user_backup_dir" 2>/dev/null | cut -f1)
             bsize_bytes=${bsize_bytes:-0}
 
             msg_ok "  备份完成 ${C_DIM}(大小: ${bsize}, 耗时: ${elapsed}s)${C_RESET}"
             echo "[$current/$total] $username — 成功 (大小: $bsize, 耗时: ${elapsed}s)" | \
-                run_privileged tee -a "$batch_log" > /dev/null
+                priv_tee -a "$batch_log" > /dev/null
 
             ((success_count+=1))
             total_bytes=$((total_bytes + bsize_bytes))
+            # 更新备份索引
+            update_backup_index "$username" "batch" "$user_backup_dir" "${last_user_backup:-}"
         else
             msg_err "  备份失败"
             echo "[$current/$total] $username — 失败: rsync 执行错误" | \
-                run_privileged tee -a "$batch_log" > /dev/null
+                priv_tee -a "$batch_log" > /dev/null
             ((failed_count+=1))
             failed_users+=("$username")
         fi
@@ -858,7 +867,7 @@ backup_all_users() {
         echo "汇总: 成功 $success_count, 失败 $failed_count, 总大小 $total_human"
         echo "完成时间: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "========================================="
-    } | run_privileged tee -a "$batch_log" > /dev/null
+    } | priv_tee -a "$batch_log" > /dev/null
 
     record_user_event "system" "batch_backup" "批量备份: 成功${success_count}, 失败${failed_count}"
     return 0
@@ -903,20 +912,12 @@ backup_all_users_parallel() {
     priv_mkdir -p "$batch_dir" || { rm -rf "$results_dir"; return 1; }
 
     echo "并行备份开始: $(date '+%Y-%m-%d %H:%M:%S'), 并行度: $parallel_jobs" | \
-        run_privileged tee "$batch_log" > /dev/null
+        write_privileged_text_file "$batch_log" "0644" "root:root"
 
     # ── 生成排除列表临时文件 ──
     local exclude_file
-    exclude_file=$(mktemp) || { rm -rf "$results_dir"; msg_err "无法创建临时文件"; return 1; }
-    {
-        echo ".cache"
-        echo ".local/share/Trash"
-        echo "*.tmp"
-        echo "__pycache__"
-        echo ".git/objects"
-        echo ".git/logs"
-        get_bio_exclude_patterns
-    } > "$exclude_file"
+    exclude_file=$(generate_exclude_file) || { rm -rf "$results_dir"; msg_err "无法生成排除文件"; return 1; }
+    register_exclude_temp_file "$exclude_file"
 
     # ── 生成并行备份子脚本（嵌入绝对路径，不用 sed 替换） ──
     local backup_script
@@ -926,6 +927,9 @@ backup_all_users_parallel() {
         msg_err "无法创建临时脚本"
         return 1
     }
+
+    # ── 注册临时文件清理 ──
+    trap '_cleanup_exclude_temp_files; rm -f "$backup_script"; rm -rf "$results_dir"' EXIT INT TERM
 
     cat > "$backup_script" << PEOF
 #!/bin/bash
@@ -990,7 +994,7 @@ PEOF
     if command -v parallel &>/dev/null; then
         msg_info "使用 GNU parallel (并行度: $parallel_jobs)"
         printf '%s\n' "${all_users[@]}" | \
-            run_privileged parallel -j "$parallel_jobs" --line-buffer \
+            priv_parallel -j "$parallel_jobs" --line-buffer \
                 bash "$backup_script" {} 2>&1 | while IFS= read -r line; do
             if [[ "$line" == OK* ]]; then
                 msg_ok "  $line"
@@ -1005,7 +1009,7 @@ PEOF
     else
         msg_info "使用 xargs -P (并行度: $parallel_jobs)"
         printf '%s\n' "${all_users[@]}" | \
-            run_privileged xargs -P "$parallel_jobs" -I {} \
+            priv_xargs -P "$parallel_jobs" -I {} \
                 bash "$backup_script" {} 2>&1 | while IFS= read -r line; do
             if [[ "$line" == OK* ]]; then
                 msg_ok "  $line"
@@ -1039,7 +1043,7 @@ PEOF
     done
 
     local batch_size
-    batch_size=$(run_privileged du -sh "$batch_dir" 2>/dev/null | cut -f1)
+    batch_size=$(priv_du -sh "$batch_dir" 2>/dev/null | cut -f1)
 
     draw_info_card "批次ID:" "$backup_batch_id"
     draw_info_card "成功:" "${C_BGREEN}${ok_count}${C_RESET}"
@@ -1054,7 +1058,8 @@ PEOF
     draw_info_card "备份位置:" "$batch_dir"
     draw_info_card "详细日志:" "$batch_log"
 
-    # 清理临时文件
+    # 清理临时文件（trap 已注册，此处显式清理并重置 trap）
+    trap - EXIT INT TERM
     rm -f "$backup_script" "$exclude_file"
     rm -rf "$results_dir"
 
@@ -1083,7 +1088,7 @@ show_backup_batches() {
         local ucount
         ucount=$(find "$batch_dir" -maxdepth 1 -type d ! -path "$batch_dir" ! -name '*.log' 2>/dev/null | wc -l)
         local tsize
-        tsize=$(run_privileged du -sh "$batch_dir" 2>/dev/null | cut -f1)
+        tsize=$(priv_du -sh "$batch_dir" 2>/dev/null | cut -f1)
 
         printf "  ${C_CYAN}%-30s${C_RESET} ${C_BOLD}%-10d${C_RESET} ${C_BGREEN}%s${C_RESET}\n" \
             "$bname" "$ucount" "$tsize"
@@ -1129,7 +1134,7 @@ restore_from_batch() {
     fi
 
     local bsize
-    bsize=$(run_privileged du -sh "$user_backup_dir" 2>/dev/null | cut -f1)
+    bsize=$(priv_du -sh "$user_backup_dir" 2>/dev/null | cut -f1)
 
     draw_header "从批次恢复 — $username"
     draw_info_card "批次ID:" "$batch_id"
@@ -1151,11 +1156,11 @@ restore_from_batch() {
     pre_restore="$BACKUP_ROOT/$username/pre_restore_$(date +%Y%m%d_%H%M%S)"
     msg_step "备份当前数据到: $pre_restore"
     priv_mkdir -p "$pre_restore"
-    run_privileged rsync -a "$user_home/" "$pre_restore/" 2>/dev/null || true
+    priv_rsync -a "$user_home/" "$pre_restore/" 2>/dev/null || true
 
     # 执行恢复
     msg_step "开始恢复..."
-    if run_privileged rsync -av --delete "$user_backup_dir/" "$user_home/"; then
+    if priv_rsync -av --delete "$user_backup_dir/" "$user_home/"; then
         local user_uid user_gid
         user_uid=$(id -u "$username")
         user_gid=$(id -g "$username")

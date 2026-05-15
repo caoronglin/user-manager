@@ -5,10 +5,10 @@
 set -uo pipefail
 
 # 颜色定义
-readonly C_RED='\033[0;31m'
-readonly C_GREEN='\033[0;32m'
-readonly C_YELLOW='\033[1;33m'
-readonly C_RESET='\033[0m'
+C_RED='\033[0;31m'
+C_GREEN='\033[0;32m'
+C_YELLOW='\033[1;33m'
+C_RESET='\033[0m'
 
 # 测试统计
 TESTS_RUN=0
@@ -224,20 +224,6 @@ assert_failure() {
     
     # 使用 bash -c 替代 eval，更安全
     if ! bash -c "$command" &>/dev/null; then
-        test_pass
-        return 0
-    else
-        test_fail "Command should have failed: $command. $message"
-        return 1
-    fi
-}
-
-# 断言命令失败
-assert_failure() {
-    local command="$1"
-    local message="${2:-}"
-    
-    if ! eval "$command" &>/dev/null; then
         test_pass
         return 0
     else

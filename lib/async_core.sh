@@ -46,8 +46,8 @@ async_init() {
     
     # 创建运行目录
     if declare -F run_privileged &>/dev/null; then
-        run_privileged mkdir -p "$ASYNC_RUN_DIR" "$ASYNC_SOCKET_DIR" "$ASYNC_PID_DIR" 2>/dev/null || true
-        run_privileged chmod 755 "$ASYNC_RUN_DIR" 2>/dev/null || true
+        priv_mkdir -p "$ASYNC_RUN_DIR" "$ASYNC_SOCKET_DIR" "$ASYNC_PID_DIR" 2>/dev/null || true
+        priv_chmod 755 "$ASYNC_RUN_DIR" 2>/dev/null || true
     else
         mkdir -p "$ASYNC_RUN_DIR" "$ASYNC_SOCKET_DIR" "$ASYNC_PID_DIR" 2>/dev/null || true
     fi

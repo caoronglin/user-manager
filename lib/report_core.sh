@@ -709,14 +709,33 @@ send_user_report_email() {
         return 1
     fi
 
+    if ! [[ "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        msg_err "用户邮箱格式无效: $email"
+        return 1
+    fi
+
+    if declare -F validate_email_config >/dev/null 2>&1 && ! validate_email_config; then
+        msg_err "邮件配置验证失败"
+        return 1
+    fi
+
     local from_name from_addr
     from_name=$(get_email_config "from_name")
     from_addr=$(get_email_config "from_address")
     from_name="${from_name:-用户管理系统}"
     from_addr="${from_addr:-noreply@example.com}"
 
+    if declare -F sanitize_mail_header_value >/dev/null 2>&1; then
+        from_name=$(sanitize_mail_header_value "$from_name")
+        from_addr=$(sanitize_mail_header_value "$from_addr")
+        email=$(sanitize_mail_header_value "$email")
+    fi
+
     local subject
     subject="[${from_name}] 个人使用报告 - $(date '+%Y-%m-%d')"
+    if declare -F sanitize_mail_header_value >/dev/null 2>&1; then
+        subject=$(sanitize_mail_header_value "$subject")
+    fi
 
     msg_step "正在发送报告至: ${email}"
 

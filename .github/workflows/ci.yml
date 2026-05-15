@@ -21,7 +21,7 @@ jobs:
             data/
             logs/
             templates/
-          ignore_names: regenerate_password_pool.sh
+          ignore_names: ""
           severity: error
 
   test:
@@ -33,15 +33,15 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq rsnapshot ufw htop
+          sudo apt-get install -y jq shellcheck rsnapshot ufw htop
           # Mock commands for testing
           sudo ln -sf /bin/true /usr/local/bin/setquota
           sudo ln -sf /bin/true /usr/local/bin/repquota
       
-      - name: Run Test Framework
+      - name: Run Regression Suite
         run: |
           chmod +x tests/*.sh
-          bash tests/test_framework.sh || echo "Tests pending implementation"
+          bash tests/run_regression.sh --level all
       
       - name: Validate Shell Syntax
         run: |
@@ -57,14 +57,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Check README exists
+      - name: Check required documentation exists
         run: |
-          test -f README.md || exit 1
-          grep -q "Quick Start\|快速开始" README.md || echo "Warning: README missing Quick Start section"
-          grep -q "Installation\|安装" README.md || echo "Warning: README missing Installation section"
-      
-      - name: Check AGENTS.md exists
-        run: test -f AGENTS.md || exit 1
+          required_docs=(README.md docs/DEEPWIKI.md)
+          for doc in "${required_docs[@]}"; do
+            test -f "$doc" || {
+              echo "Error: missing required documentation file: $doc"
+              exit 1
+            }
+          done
+
+      - name: Check README sections
+        run: |
+          grep -Eq "Quick Start|快速开始" README.md || echo "Warning: README missing Quick Start section"
+          grep -Eq "Installation|安装" README.md || echo "Warning: README missing Installation section"
+          grep -Eq "Documentation|文档" README.md || echo "Warning: README missing Documentation section"
 
   security:
     name: Security Scan
@@ -74,10 +81,7 @@ jobs:
       
       - name: Check for sensitive files
         run: |
-          ! git ls-files | grep -E "password_pool\.txt|email_config\.json|user_config\.json" || {
-            echo "Error: Sensitive files should not be committed"
-            exit 1
-          }
+          bash scripts/check_sensitive_files.sh .
       
       - name: Check file permissions
         run: |

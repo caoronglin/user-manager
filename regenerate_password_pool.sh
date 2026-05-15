@@ -68,6 +68,5 @@ fi
 # 列出密码池目录状态
 echo ""
 msg_info "密码池目录: ${C_CYAN}${PASSWORD_POOL_DIR}${C_RESET}"
-local count
 count=$(ls "$PASSWORD_POOL_DIR"/password_pool_*.txt 2>/dev/null | wc -l || echo 0)
 draw_info_card "当前池数量" "${count} 个"

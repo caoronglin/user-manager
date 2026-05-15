@@ -8,12 +8,17 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+export SUDO_NONINTERACTIVE="${SUDO_NONINTERACTIVE:-1}"
+export USER_MANAGER_DATA_BASE="${USER_MANAGER_DATA_BASE:-$PROJECT_ROOT/data}"
+export USER_MANAGER_BACKUP_ROOT="${USER_MANAGER_BACKUP_ROOT:-$PROJECT_ROOT/data/backup}"
+
 # 加载测试框架
 source "$SCRIPT_DIR/test_framework.sh"
 
 # 加载项目库
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/config.sh"
+source "$PROJECT_ROOT/lib/access_control.sh"
 source "$PROJECT_ROOT/lib/privilege.sh"
 source "$PROJECT_ROOT/lib/user_core.sh"
 
@@ -160,6 +165,58 @@ if [[ -z "$home" ]]; then
 else
     test_fail "不存在的用户应该返回空"
 fi
+
+# ------------------------------------------------------------
+# Shell proxy 配置测试
+# ------------------------------------------------------------
+
+test_start "ensure_user_proxy_function: 写入 bashrc 和 zshrc"
+proxy_home="$TEST_TMPDIR/proxy_home"
+mkdir -p "$proxy_home"
+PROXY_PRIV_CALL_LOG="$TEST_TMPDIR/proxy_priv_calls.log"
+priv_touch() { printf 'touch %s\n' "$*" >> "$PROXY_PRIV_CALL_LOG"; : > "$1"; }
+priv_tee() {
+    printf 'tee %s\n' "$*" >> "$PROXY_PRIV_CALL_LOG"
+    if [[ "${1:-}" == "-a" ]]; then
+        shift
+        cat >> "$1"
+    else
+        cat > "$1"
+    fi
+}
+priv_chown() { printf 'chown %s\n' "$*" >> "$PROXY_PRIV_CALL_LOG"; return 0; }
+priv_chmod() { printf 'chmod %s\n' "$*" >> "$PROXY_PRIV_CALL_LOG"; chmod "$@"; }
+if declare -F ensure_user_proxy_function >/dev/null && ensure_user_proxy_function "testuser" "$proxy_home" >/dev/null 2>&1 && \
+   grep -q 'proxy()' "$proxy_home/.bashrc" && \
+   grep -q 'proxy()' "$proxy_home/.zshrc" && \
+   grep -q 'http_proxy' "$proxy_home/.bashrc" && \
+   grep -q 'http_proxy' "$proxy_home/.zshrc"; then
+    test_pass
+else
+    test_fail "proxy() 未同时写入 .bashrc 和 .zshrc"
+fi
+
+test_start "ensure_user_proxy_function: 通过 priv_tee 追加 rc 文件"
+if grep -q "tee -a $proxy_home/.bashrc" "$PROXY_PRIV_CALL_LOG" && grep -q "tee -a $proxy_home/.zshrc" "$PROXY_PRIV_CALL_LOG"; then
+    test_pass
+else
+    test_fail "proxy helper 未通过 priv_tee -a 写入 rc 文件"
+fi
+
+test_start "ensure_user_proxy_function: 重复执行不重复写入"
+if declare -F ensure_user_proxy_function >/dev/null; then
+    ensure_user_proxy_function "testuser" "$proxy_home" >/dev/null 2>&1 || true
+    bash_count=$(grep -c '# >>> user-manager proxy helper >>>' "$proxy_home/.bashrc" 2>/dev/null || echo 0)
+    zsh_count=$(grep -c '# >>> user-manager proxy helper >>>' "$proxy_home/.zshrc" 2>/dev/null || echo 0)
+    if [[ "$bash_count" == "1" && "$zsh_count" == "1" ]]; then
+        test_pass
+    else
+        test_fail "proxy helper 被重复写入: bash=$bash_count zsh=$zsh_count"
+    fi
+else
+    test_fail "ensure_user_proxy_function 函数不存在"
+fi
+unset -f priv_touch priv_tee priv_chown priv_chmod
 
 # ------------------------------------------------------------
 # 用户组管理测试

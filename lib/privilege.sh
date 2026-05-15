@@ -64,6 +64,7 @@ readonly -A PRIV_CMD_WHITELIST=(
     ["du"]="$ACL_LEVEL_ADMIN"
     ["parallel"]="$ACL_LEVEL_ADMIN"
     ["quota"]="$ACL_LEVEL_ADMIN"
+    ["virsh"]="$ACL_LEVEL_ADMIN"
     ["xargs"]="$ACL_LEVEL_ADMIN"
     ["mount"]="$ACL_LEVEL_ADMIN"
     ["umount"]="$ACL_LEVEL_ADMIN"
@@ -252,6 +253,7 @@ priv_pkill() { priv_exec pkill "$@"; }
 priv_killall() { priv_exec killall "$@"; }
 priv_setquota() { priv_exec setquota "$@"; }
 priv_quota() { priv_exec quota "$@"; }
+priv_virsh() { priv_exec virsh "$@"; }
 priv_edquota() { priv_exec edquota "$@"; }
 priv_repquota() { priv_exec repquota "$@"; }
 priv_tar() { priv_exec tar "$@"; }

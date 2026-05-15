@@ -1,21 +1,21 @@
 #!/bin/bash
-# miniforge_core.sh - Miniforge 安装与管理模块 v0.2.1
-# 提供自动安装、配置、卸载等功能
+# miniforge_core.sh - Miniforge/Mamba 配置管理模块 v0.2.1
+# 提供 Conda 配置、Shell 集成、状态验证与清理功能
 
 # ============================================================
 # 前置检查
 # ============================================================
 
-# 检查 Miniforge 安装器是否存在
+# 检查 Miniforge 配置介质是否存在
 check_miniforge_installer() {
     if [[ ! -f "$MINIFORGE_INSTALLER" ]]; then
-        msg_err "Miniforge 安装器不存在: $MINIFORGE_INSTALLER"
-        msg_info "请将 Miniforge.sh 安装器放置到项目根目录"
+        msg_err "Miniforge 配置介质不存在: $MINIFORGE_INSTALLER"
+        msg_info "请将 Miniforge.sh 放置到项目根目录"
         return 1
     fi
 
     if [[ ! -x "$MINIFORGE_INSTALLER" ]]; then
-        msg_warn "安装器文件不可执行，正在添加执行权限..."
+        msg_warn "配置介质不可执行，正在添加执行权限..."
         chmod +x "$MINIFORGE_INSTALLER" || {
             msg_err "无法添加执行权限"
             return 1
@@ -25,7 +25,7 @@ check_miniforge_installer() {
     # 如果是符号链接，解析真实路径
     if [[ -L "$MINIFORGE_INSTALLER" ]]; then
         MINIFORGE_INSTALLER=$(readlink -f "$MINIFORGE_INSTALLER")
-        msg_debug "安装器实际路径: $MINIFORGE_INSTALLER"
+        msg_debug "配置介质实际路径: $MINIFORGE_INSTALLER"
     fi
 
     return 0
@@ -60,10 +60,10 @@ check_disk_space_for_miniforge() {
 }
 
 # ============================================================
-# 安装功能
+# 配置功能
 # ============================================================
 
-# 为用户安装 Miniforge
+# 为用户启用 Miniforge/Mamba 配置
 # 参数: username, install_path (相对于用户主目录)
 install_miniforge_for_user() {
     local username="$1"
@@ -84,7 +84,7 @@ install_miniforge_for_user() {
         return 1
     fi
     
-    # 构建完整安装路径
+    # 构建完整配置路径
     local full_install_path
     if [[ "$install_path" == /* ]]; then
         # 绝对路径
@@ -94,7 +94,7 @@ install_miniforge_for_user() {
         full_install_path="${user_home}/${install_path}"
     fi
     
-    # 检查安装器
+    # 检查配置介质
     if ! check_miniforge_installer; then
         return 1
     fi
@@ -104,22 +104,22 @@ install_miniforge_for_user() {
         return 1
     fi
     
-    # 检查是否已存在安装
+    # 检查是否已存在配置目录
     if [[ -d "$full_install_path" ]]; then
-        msg_warn "检测到已有 Miniforge 安装: $full_install_path"
-        if ! confirm_action "是否覆盖安装？"; then
-            msg_info "跳过 Miniforge 安装"
+        msg_warn "检测到已有 Miniforge 配置: $full_install_path"
+        if ! confirm_action "是否覆盖配置？"; then
+            msg_info "跳过 Miniforge 配置"
             return 0
         fi
-        msg_step "删除旧安装..."
+        msg_step "删除旧配置目录..."
         rm -rf "$full_install_path"
     fi
-    
-    msg_step "为用户 ${C_BOLD}$username${C_RESET} 安装 Miniforge..."
-    msg_info "安装路径: $full_install_path"
-    
-    # 执行安装器（批量模式）
-    msg_info "执行安装器（这可能需要几分钟）..."
+
+    msg_step "为用户 ${C_BOLD}$username${C_RESET} 启用 Miniforge/Mamba 配置..."
+    msg_info "配置路径: $full_install_path"
+
+    # 执行配置介质（批量模式）
+    msg_info "准备 Miniforge/Mamba 文件（这可能需要几分钟）..."
     
     if ! bash "$MINIFORGE_INSTALLER" -b -p "$full_install_path" 2>&1 | while read -r line; do
         # 只显示关键信息
@@ -127,21 +127,21 @@ install_miniforge_for_user() {
             msg_info "  $line"
         fi
     done; then
-        msg_err "Miniforge 安装失败"
+        msg_err "Miniforge/Mamba 配置失败"
         rm -rf "$full_install_path"
         return 1
     fi
-    
-    # 验证安装
+
+    # 验证配置
     if [[ ! -f "${full_install_path}/bin/conda" ]]; then
-        msg_err "安装验证失败: conda 命令不存在"
+        msg_err "配置验证失败: conda 命令不存在"
         rm -rf "$full_install_path"
         return 1
     fi
     
     # 设置正确的所有者和权限
     priv_chown -R "$username:$username" "$full_install_path"
-    msg_ok "Miniforge 安装完成"
+    msg_ok "Miniforge/Mamba 文件准备完成"
     
     # 配置 .condarc
     configure_condarc_for_user "$username" "$full_install_path"
@@ -152,7 +152,7 @@ install_miniforge_for_user() {
     # 记录事件
     record_user_event "$username" "miniforge_install" "Miniforge" "" "$full_install_path"
     
-    msg_ok "Miniforge 已为用户 $username 安装成功"
+    msg_ok "Miniforge/Mamba 已为用户 $username 配置成功"
     msg_info "用户需要重启 shell 或运行: source ~/.bashrc"
     
     return 0
@@ -267,7 +267,7 @@ EOF
     chmod +x "$init_script"
     
     # 以用户身份执行
-    if run_privileged -u "$username" bash "$init_script" &>/dev/null; then
+    if run_as_user "$username" bash "$init_script" &>/dev/null; then
         msg_ok "Shell 集成完成 ($shell_name)"
     else
         # 如果失败，尝试手动添加
@@ -301,7 +301,7 @@ EOF
 # 验证功能
 # ============================================================
 
-# 验证 Miniforge 安装
+# 验证 Miniforge/Mamba 配置
 verify_miniforge_installation() {
     local username="$1"
     
@@ -316,19 +316,19 @@ verify_miniforge_installation() {
     local miniforge_path="${user_home}/${MINIFORGE_DEFAULT_PATH}"
     
     echo ""
-    draw_header "Miniforge 安装验证"
+    draw_header "Miniforge/Mamba 配置验证"
     draw_info_card "用户:" "$username" "$C_BOLD"
-    draw_info_card "安装路径:" "$miniforge_path"
+    draw_info_card "配置路径:" "$miniforge_path"
     
     local all_ok=true
     
-    # 检查安装目录
+    # 检查配置目录
     echo ""
-    msg_info "检查安装目录..."
+    msg_info "检查配置目录..."
     if [[ -d "$miniforge_path" ]]; then
-        msg_ok "安装目录存在"
+        msg_ok "配置目录存在"
     else
-        msg_err "安装目录不存在"
+        msg_err "配置目录不存在"
         all_ok=false
     fi
     
@@ -375,19 +375,19 @@ verify_miniforge_installation() {
     # 总结
     echo ""
     if [[ "$all_ok" == true ]]; then
-        msg_ok "✓ Miniforge 安装验证通过"
+        msg_ok "✓ Miniforge/Mamba 配置验证通过"
     else
-        msg_err "✗ Miniforge 安装存在问题"
+        msg_err "✗ Miniforge/Mamba 配置存在问题"
     fi
     
     return 0
 }
 
 # ============================================================
-# 卸载功能
+# 清理功能
 # ============================================================
 
-# 为用户卸载 Miniforge
+# 为用户清理 Miniforge/Mamba 配置
 uninstall_miniforge_for_user() {
     local username="$1"
     
@@ -407,14 +407,14 @@ uninstall_miniforge_for_user() {
     local miniforge_path="${user_home}/${MINIFORGE_DEFAULT_PATH}"
     
     if [[ ! -d "$miniforge_path" ]]; then
-        msg_warn "Miniforge 未安装: $miniforge_path"
+        msg_warn "Miniforge/Mamba 配置不存在: $miniforge_path"
         return 0
     fi
     
-    msg_step "卸载用户 $username 的 Miniforge..."
+    msg_step "清理用户 $username 的 Miniforge/Mamba 配置..."
     
-    # 删除安装目录
-    msg_info "删除安装目录: $miniforge_path"
+    # 删除配置目录
+    msg_info "删除配置目录: $miniforge_path"
     rm -rf "$miniforge_path"
     
     # 清理 shell 配置
@@ -428,7 +428,7 @@ uninstall_miniforge_for_user() {
     # 记录事件
     record_user_event "$username" "miniforge_uninstall" "Miniforge" "" "$miniforge_path"
     
-    msg_ok "Miniforge 已卸载"
+    msg_ok "Miniforge/Mamba 配置已清理"
     return 0
 }
 
@@ -436,7 +436,7 @@ uninstall_miniforge_for_user() {
 # 信息查询
 # ============================================================
 
-# 检查用户是否安装了 Miniforge
+# 检查用户是否已有 Miniforge/Mamba 配置
 has_miniforge_installed() {
     local username="$1"
     
@@ -452,7 +452,7 @@ has_miniforge_installed() {
     [[ -d "$miniforge_path" ]] && [[ -x "${miniforge_path}/bin/conda" ]]
 }
 
-# 获取用户的 Miniforge 安装路径
+# 获取用户的 Miniforge/Mamba 配置路径
 get_user_miniforge_path() {
     local username="$1"
     

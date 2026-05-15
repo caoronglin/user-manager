@@ -129,6 +129,8 @@ set_user_ulimit() {
     fi
     
     # 写入新配置
+    local rendered_config
+    rendered_config=$(
     {
         echo "# 由 user-manager 自动生成 - 用户 $username 的资源限制"
         echo "# 更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -141,7 +143,9 @@ set_user_ulimit() {
         # 添加新的限制
         echo "$username    ${soft_limit}    ${resource}"
         [[ "$soft_limit" != "$hard_limit" ]] && echo "$username    ${hard_limit}    ${resource}"
-    } | run_privileged tee "$limits_file" > /dev/null
+    })
+
+    printf '%s' "$rendered_config" | write_privileged_text_file "$limits_file" "0644" "root:root" || return 1
     
     msg_ok "ulimit 已设置: $username - $resource (soft: $soft_limit, hard: $hard_limit)"
     msg_warn "用户需要重新登录才能生效"
@@ -163,14 +167,17 @@ remove_user_ulimit() {
     
     if [[ -n "$resource" ]]; then
         # 删除特定资源的配置
-        local temp_file
-        temp_file=$(mktemp)
-        grep -v "^${username}\s*\(soft\|hard\)\s*${resource}\s*$" "$limits_file" > "$temp_file"
-        run_privileged mv "$temp_file" "$limits_file"
+        local filtered_config
+        filtered_config=$(grep -v "^${username}\s*\(soft\|hard\)\s*${resource}\s*$" "$limits_file" 2>/dev/null || true)
+        if [[ -n "${filtered_config//[[:space:]]/}" ]]; then
+            printf '%s' "$filtered_config" | write_privileged_text_file "$limits_file" "0644" "root:root" || return 1
+        else
+            priv_rm -f "$limits_file" || return 1
+        fi
         msg_ok "已移除资源 $resource 的 ulimit 配置"
     else
         # 删除整个配置文件
-        run_privileged rm -f "$limits_file"
+        priv_rm -f "$limits_file"
         msg_ok "已移除用户 $username 的所有 ulimit 配置"
     fi
     
@@ -353,16 +360,19 @@ configure_resource_limits() {
         return 0
     fi
 
-    run_privileged mkdir -p "$unit_dir" || {
+    priv_mkdir -p "$unit_dir" || {
         msg_err "无法创建配置目录: $unit_dir"
         return 1
     }
 
-    {
+    if ! {
         echo "[Service]"
         [[ -n "$cpu_quota" ]]     && echo "CPUQuota=$cpu_quota"
         [[ -n "$memory_limit" ]]  && echo "MemoryMax=$memory_limit"
-    } | run_privileged tee "$config_file" > /dev/null
+    } | write_privileged_text_file "$config_file" "0644" "root:root"; then
+        msg_err "无法写入配置文件: $config_file"
+        return 1
+    fi
 
     priv_systemctl daemon-reload 2>/dev/null || true
 
@@ -383,12 +393,12 @@ remove_resource_limits() {
     local config_file="$unit_dir/$RESOURCE_LIMIT_FILENAME"
 
     if [[ -f "$config_file" ]]; then
-        run_privileged rm -f "$config_file"
+        priv_rm -f "$config_file"
         if [[ -d "$unit_dir" ]]; then
             local remaining
             remaining=$(find "$unit_dir" -mindepth 1 2>/dev/null | head -1)
             if [[ -z "$remaining" ]]; then
-                run_privileged rmdir "$unit_dir" 2>/dev/null || true
+                priv_rmdir "$unit_dir" 2>/dev/null || true
             fi
         fi
         priv_systemctl daemon-reload 2>/dev/null || true

@@ -6,6 +6,28 @@
 # ============================================================
 #  1. 创建用户符号链接
 # ============================================================
+
+validate_safe_link_name() {
+    local link_name="$1"
+
+    if [[ -z "$link_name" ]]; then
+        msg_err "链接名称不能为空"
+        return 1
+    fi
+
+    if [[ ! "$link_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        msg_err "链接名称仅允许字母、数字、点、下划线和连字符"
+        return 1
+    fi
+
+    if [[ "$link_name" == .* || "$link_name" == *..* || "$link_name" == *"/"* || "$link_name" == -* ]]; then
+        msg_err "链接名称包含不安全路径片段"
+        return 1
+    fi
+
+    return 0
+}
+
 create_user_symlink() {
     local username="$1"
     local link_name="$2"
@@ -21,10 +43,7 @@ create_user_symlink() {
         return 1
     fi
 
-    if [[ -z "$link_name" ]]; then
-        msg_err "链接名称不能为空"
-        return 1
-    fi
+    validate_safe_link_name "$link_name" || return 1
 
     if [[ -z "$target_path" ]]; then
         msg_err "目标路径不能为空"
@@ -44,6 +63,9 @@ create_user_symlink() {
         return 1
     fi
 
+    local resolved_target
+    resolved_target=$(realpath -e "$target_path" 2>/dev/null || printf '%s' "$target_path")
+
     local link_path="$user_home/$link_name"
 
     # 防止覆盖已存在的文件/目录
@@ -55,7 +77,7 @@ create_user_symlink() {
     # 安全检查：不允许链接到敏感路径
     local -a forbidden_paths=( "/etc" "/boot" "/root" "/proc" "/sys" "/dev" )
     for fp in "${forbidden_paths[@]}"; do
-        if [[ "$target_path" == "$fp" || "$target_path" == "$fp/"* ]]; then
+        if [[ "$resolved_target" == "$fp" || "$resolved_target" == "$fp/"* ]]; then
             msg_err "不允许创建指向系统关键目录的链接: $fp"
             return 1
         fi
@@ -67,11 +89,11 @@ create_user_symlink() {
     fi
 
     # 创建符号链接
-    if run_privileged ln -s "$target_path" "$link_path"; then
+    if priv_ln -s "$resolved_target" "$link_path"; then
         # 设置所有权（符号链接本身）
-        run_privileged chown -h "$username:$username" "$link_path" 2>/dev/null || true
-        msg_ok "符号链接已创建: ${C_BOLD}$link_name${C_RESET} → ${C_CYAN}$target_path${C_RESET}"
-        record_user_event "$username" "symlink_create" "$link_name -> $target_path"
+        priv_chown -h "$username:$username" "$link_path" 2>/dev/null || true
+        msg_ok "符号链接已创建: ${C_BOLD}$link_name${C_RESET} → ${C_CYAN}$resolved_target${C_RESET}"
+        record_user_event "$username" "symlink_create" "$link_name -> $resolved_target"
         return 0
     else
         msg_err "创建符号链接失败"
@@ -219,6 +241,8 @@ delete_user_symlink() {
         msg_err "链接名称不能为空"
         return 1
     fi
+
+    validate_safe_link_name "$link_name" || return 1
 
     local user_home
     user_home=$(get_user_home "$username")

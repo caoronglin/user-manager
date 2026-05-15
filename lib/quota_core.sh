@@ -73,23 +73,29 @@ get_managed_usernames() {
         done < <(collect_quota_users "$mp")
     done
 
-    # 构建结果并更新缓存
-    local result=""
+    # 构建结果并更新缓存（按行输出，兼容 mapfile 调用方）
+    local -a result_list=()
     for candidate in "${!users_seen[@]}"; do
         if getent passwd "$candidate" >/dev/null 2>&1; then
             home=$(get_user_home "$candidate")
             if [[ "$home" =~ ^${DATA_BASE}/data[0-9]{2}/ ]]; then
-                [[ -n "$result" ]] && result+=" "
-                result+="$candidate"
+                result_list+=("$candidate")
             fi
         fi
     done
 
+    local sorted_result=""
+    if (( ${#result_list[@]} > 0 )); then
+        sorted_result=$(printf '%s\n' "${result_list[@]}" | sort)
+    fi
+
     # 更新缓存
-    USERNAMES_CACHE="$result"
+    USERNAMES_CACHE="$sorted_result"
     USERNAMES_CACHE_TIME=$current_time
 
-    echo "$result"
+    if [[ -n "$sorted_result" ]]; then
+        printf '%s\n' "$sorted_result"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -108,7 +114,7 @@ get_user_quota_info() {
         local device quota_output
         device=$(df "$mp" 2>/dev/null | awk 'NR==2 {print $1}')
         if [[ -n "$device" ]]; then
-            quota_output=$(run_privileged quota -u "$username" 2>/dev/null \
+            quota_output=$(priv_quota -u "$username" 2>/dev/null \
                 | grep -E "^[[:space:]]*(${device}|${mp})" || true)
             if [[ -n "$quota_output" ]]; then
                 used_kb=$(echo "$quota_output" | awk '{print $2}')

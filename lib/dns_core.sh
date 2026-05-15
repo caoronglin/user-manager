@@ -209,21 +209,21 @@ apply_dns_restrictions() {
     # --- 清理旧规则（如果存在）---
     msg_step "清理已有规则..."
     # 删除 OUTPUT 链中对该自定义链的引用
-    run_privileged iptables -D OUTPUT -m owner --uid-owner "$uid" -j "$chain" 2>/dev/null || true
+    priv_iptables -D OUTPUT -m owner --uid-owner "$uid" -j "$chain" 2>/dev/null || true
     # 清空并删除自定义链
-    run_privileged iptables -F "$chain" 2>/dev/null || true
-    run_privileged iptables -X "$chain" 2>/dev/null || true
+    priv_iptables -F "$chain" 2>/dev/null || true
+    priv_iptables -X "$chain" 2>/dev/null || true
 
     # --- 创建自定义链 ---
     msg_step "创建自定义规则链: ${C_CYAN}$chain${C_RESET}"
-    run_privileged iptables -N "$chain"
+    priv_iptables -N "$chain"
 
     # --- 允许已建立连接 ---
     msg_step "允许已建立的连接..."
-    run_privileged iptables -A "$chain" -m state --state ESTABLISHED,RELATED -j ACCEPT
+    priv_iptables -A "$chain" -m state --state ESTABLISHED,RELATED -j ACCEPT
 
     # --- 允许本地回环 ---
-    run_privileged iptables -A "$chain" -o lo -j ACCEPT
+    priv_iptables -A "$chain" -o lo -j ACCEPT
 
     # --- 解析白名单域名并添加放行规则 ---
     msg_step "解析白名单域名并添加放行规则..."
@@ -243,10 +243,10 @@ apply_dns_restrictions() {
         while IFS= read -r ip; do
             [[ -z "$ip" ]] && continue
             # 允许到该 IP 的 HTTP/HTTPS/DNS 流量
-            run_privileged iptables -A "$chain" -d "$ip" -p tcp --dport 80  -j ACCEPT
-            run_privileged iptables -A "$chain" -d "$ip" -p tcp --dport 443 -j ACCEPT
-            run_privileged iptables -A "$chain" -d "$ip" -p udp --dport 53  -j ACCEPT
-            run_privileged iptables -A "$chain" -d "$ip" -p tcp --dport 53  -j ACCEPT
+            priv_iptables -A "$chain" -d "$ip" -p tcp --dport 80  -j ACCEPT
+            priv_iptables -A "$chain" -d "$ip" -p tcp --dport 443 -j ACCEPT
+            priv_iptables -A "$chain" -d "$ip" -p udp --dport 53  -j ACCEPT
+            priv_iptables -A "$chain" -d "$ip" -p tcp --dport 53  -j ACCEPT
             ((ip_count+=1))
         done <<< "$ip_list"
 
@@ -256,14 +256,14 @@ apply_dns_restrictions() {
 
     # --- 阻止该用户所有出站 DNS/HTTP/HTTPS ---
     msg_step "添加默认阻止规则..."
-    run_privileged iptables -A "$chain" -p tcp --dport 80  -j DROP
-    run_privileged iptables -A "$chain" -p tcp --dport 443 -j DROP
-    run_privileged iptables -A "$chain" -p udp --dport 53  -j DROP
-    run_privileged iptables -A "$chain" -p tcp --dport 53  -j DROP
+    priv_iptables -A "$chain" -p tcp --dport 80  -j DROP
+    priv_iptables -A "$chain" -p tcp --dport 443 -j DROP
+    priv_iptables -A "$chain" -p udp --dport 53  -j DROP
+    priv_iptables -A "$chain" -p tcp --dport 53  -j DROP
 
     # --- 将自定义链挂载到 OUTPUT ---
     msg_step "应用规则到 OUTPUT 链..."
-    run_privileged iptables -A OUTPUT -m owner --uid-owner "$uid" -j "$chain"
+    priv_iptables -A OUTPUT -m owner --uid-owner "$uid" -j "$chain"
 
     echo ""
     msg_ok "DNS 限制已应用 — 用户: ${C_BOLD}$username${C_RESET}"
@@ -296,13 +296,13 @@ remove_dns_restrictions() {
 
     # 从 OUTPUT 中移除引用（可能有多条，循环删除）
     local removed=0
-    while run_privileged iptables -D OUTPUT -m owner --uid-owner "$uid" -j "$chain" 2>/dev/null; do
+    while priv_iptables -D OUTPUT -m owner --uid-owner "$uid" -j "$chain" 2>/dev/null; do
         ((removed+=1))
     done
 
     # 清空并删除自定义链
-    if run_privileged iptables -F "$chain" 2>/dev/null; then
-        run_privileged iptables -X "$chain" 2>/dev/null
+    if priv_iptables -F "$chain" 2>/dev/null; then
+        priv_iptables -X "$chain" 2>/dev/null
     fi
 
     if (( removed > 0 )); then
@@ -340,17 +340,17 @@ show_dns_status() {
     draw_info_card "UID:" "$uid"
 
     # 检查自定义链是否存在
-    if run_privileged iptables -L "$chain" -n &>/dev/null; then
+    if priv_iptables -L "$chain" -n &>/dev/null; then
         draw_info_card "限制状态:" "${C_BRED}已启用${C_RESET}" "$C_RESET"
         echo ""
 
         # 统计规则
         local total_rules
-        total_rules=$(run_privileged iptables -L "$chain" -n 2>/dev/null | grep -cE '^(ACCEPT|DROP)')
+        total_rules=$(priv_iptables -L "$chain" -n 2>/dev/null | grep -cE '^(ACCEPT|DROP)')
         local accept_rules
-        accept_rules=$(run_privileged iptables -L "$chain" -n 2>/dev/null | grep -c '^ACCEPT')
+        accept_rules=$(priv_iptables -L "$chain" -n 2>/dev/null | grep -c '^ACCEPT')
         local drop_rules
-        drop_rules=$(run_privileged iptables -L "$chain" -n 2>/dev/null | grep -c '^DROP')
+        drop_rules=$(priv_iptables -L "$chain" -n 2>/dev/null | grep -c '^DROP')
 
         draw_info_card "总规则数:" "$total_rules"
         draw_info_card "放行规则:" "$accept_rules"
@@ -361,7 +361,7 @@ show_dns_status() {
         draw_line 70
 
         # 显示规则（彩色）
-        run_privileged iptables -L "$chain" -n --line-numbers 2>/dev/null | while IFS= read -r line; do
+        priv_iptables -L "$chain" -n --line-numbers 2>/dev/null | while IFS= read -r line; do
             if [[ "$line" =~ ^[0-9] ]]; then
                 if [[ "$line" =~ ACCEPT ]]; then
                     echo -e "  ${C_BGREEN}$line${C_RESET}"
@@ -447,7 +447,7 @@ refresh_dns_rules() {
 
     # 查找所有 DNS_WL_ 开头的自定义链，提取用户名
     local chains
-    chains=$(run_privileged iptables -S 2>/dev/null | grep -oP '(?<=-N DNS_WL_)\S+' | sort -u)
+    chains=$(priv_iptables -S 2>/dev/null | grep -oP '(?<=-N DNS_WL_)\S+' | sort -u)
 
     if [[ -z "$chains" ]]; then
         msg_warn "当前没有任何用户启用了 DNS 限制"

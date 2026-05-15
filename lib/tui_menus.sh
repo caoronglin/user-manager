@@ -116,7 +116,7 @@ _TUI_MENU_STATUS_RIGHT["report"]="↑/↓ 导航  Enter 选择  q 返回"
 
 # 系统维护
 _TUI_MENU_TITLE["system"]="系统维护"
-_TUI_MENU_ITEMS["system"]="系统信息概览|内存信息|硬件健康检查|系统日志分析|Ubuntu APT/重启维护|网络栈诊断|Systemd Timers|更多系统选项|返回主菜单"
+_TUI_MENU_ITEMS["system"]="系统信息概览|内存信息|硬件健康检查|系统日志分析|Ubuntu APT/重启维护|网络栈诊断|Systemd Timers|更多系统选项|虚拟机与显卡管理|返回主菜单"
 _TUI_MENU_WIDTH["system"]=52
 _TUI_MENU_STATUS_LEFT["system"]="系统维护"
 _TUI_MENU_STATUS_RIGHT["system"]="↑/↓ 导航  Enter 选择  q 返回"
@@ -135,6 +135,13 @@ _TUI_MENU_ITEMS["systemd_timer"]="列出 timers|安装 timer profile|查看 time
 _TUI_MENU_WIDTH["systemd_timer"]=50
 _TUI_MENU_STATUS_LEFT["systemd_timer"]="Systemd Timers"
 _TUI_MENU_STATUS_RIGHT["systemd_timer"]="↑/↓ 导航  Enter 选择  q 返回"
+
+# 虚拟机与显卡管理
+_TUI_MENU_TITLE["compute"]="虚拟机与显卡管理"
+_TUI_MENU_ITEMS["compute"]="列出虚拟机|查看虚拟机状态|显卡状态|列出显卡设备|GPU 进程|返回上级"
+_TUI_MENU_WIDTH["compute"]=52
+_TUI_MENU_STATUS_LEFT["compute"]="虚拟机与显卡管理"
+_TUI_MENU_STATUS_RIGHT["compute"]="↑/↓ 导航  Enter 选择  q 返回"
 
 # 审计与日志
 _TUI_MENU_TITLE["audit"]="审计与日志"
@@ -175,6 +182,7 @@ _tui_menu_icon() {
         system)  echo "🖥" ;;
         system_details) echo "🔧" ;;
         systemd_timer) echo "⏰" ;;
+        compute) echo "🧮" ;;
         audit)   echo "📝" ;;
         audit_advanced) echo "🔍" ;;
         *)       echo "▸" ;;
