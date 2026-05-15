@@ -26,19 +26,78 @@ if ! declare -F journalctl_normalize_unit_name >/dev/null 2>&1; then
     _logs_core_source_optional "journalctl_core.sh"
 fi
 
+_logs_encode_value() {
+    local value="${1:-}"
+    local encoded=""
+    local byte ch i
+    local LC_ALL=C
+    local LANG=C
+
+    for ((i = 0; i < ${#value}; i++)); do
+        ch="${value:i:1}"
+        case "$ch" in
+            [-A-Za-z0-9._~/])
+                encoded+="$ch"
+                ;;
+            *)
+                printf -v byte '%%%02X' "'$ch"
+                encoded+="$byte"
+                ;;
+        esac
+    done
+
+    printf '%s' "$encoded"
+}
+
+_logs_format_pair() {
+    local pair="${1:-}"
+    local key value
+
+    [[ -n "$pair" ]] || return 0
+
+    if [[ "$pair" == *=* ]]; then
+        key="${pair%%=*}"
+        value="${pair#*=}"
+        printf '%s=%s' "$key" "$(_logs_encode_value "$value")"
+    else
+        printf '%s=%s' "$pair" "$(_logs_encode_value "$pair")"
+    fi
+}
+
+_logs_require_function() {
+    local func="${1:-}"
+    local code="${2:-missing-env-core}"
+    local message="${3:-}"
+
+    [[ -n "$func" ]] || return 1
+
+    if declare -F "$func" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [[ -z "$message" ]]; then
+        message="$func is not available"
+    fi
+
+    logs_error "$code" "$message"
+}
+
 logs_meta() {
     local status="${1:-ok}"
     local source_name="${2:-unknown}"
     local title="${3:-Logs}"
     local pair
 
-    printf '__LOGS_META__ status=%s source=%s title=%s' "$status" "$source_name" "$title"
+    printf '__LOGS_META__ status=%s source=%s title=%s' \
+        "$(_logs_encode_value "$status")" \
+        "$(_logs_encode_value "$source_name")" \
+        "$(_logs_encode_value "$title")"
 
     if (($# > 3)); then
         shift 3
         for pair in "$@"; do
             [[ -n "$pair" ]] || continue
-            printf ' %s' "$pair"
+            printf ' %s' "$(_logs_format_pair "$pair")"
         done
     fi
 
@@ -53,8 +112,10 @@ logs_error() {
     local code="${1:-error}"
     local message="${2:-unknown error}"
 
-    printf '__LOGS_META__ status=error source=none title=Log error\n'
-    printf '__LOGS_ERROR__ code=%s message=%s\n' "$code" "$message"
+    logs_meta error none "Log error"
+    printf '__LOGS_ERROR__ code=%s message=%s\n' \
+        "$(_logs_encode_value "$code")" \
+        "$(_logs_encode_value "$message")"
     return 1
 }
 
@@ -91,6 +152,10 @@ _logs_tail_file() {
 }
 
 logs_get_capability_status() {
+    if ! _logs_require_function env_capability_summary missing-env-core "env capability summary is not available"; then
+        return 1
+    fi
+
     logs_meta ok env "Log capabilities"
     logs_body_marker
     env_capability_summary
@@ -98,6 +163,10 @@ logs_get_capability_status() {
 
 logs_get_boot_entries() {
     local boot_ref lines
+
+    if ! _logs_require_function env_has_command missing-env-core "env capability helper is not available"; then
+        return 1
+    fi
 
     boot_ref="$(_logs_arg_value --boot "$@" || printf '0')"
     lines="$(_logs_arg_value --lines "$@" || printf '100')"
@@ -115,6 +184,10 @@ logs_get_boot_entries() {
 }
 
 logs_get_failed_units() {
+    if ! _logs_require_function env_has_command missing-env-core "env capability helper is not available"; then
+        return 1
+    fi
+
     if ! env_has_command "$SYSTEMCTL_BIN"; then
         logs_error missing-systemctl "systemctl is not available"
         return 1
@@ -128,6 +201,13 @@ logs_get_failed_units() {
 logs_get_service_recent() {
     local unit="${1:-}"
     local lines normalized_unit
+
+    if ! _logs_require_function env_has_command missing-env-core "env capability helper is not available"; then
+        return 1
+    fi
+    if ! _logs_require_function journalctl_normalize_unit_name missing-journalctl-core "journalctl unit normalizer is not available"; then
+        return 1
+    fi
 
     shift || true
     lines="$(_logs_arg_value --lines "$@" || printf '80')"
@@ -155,6 +235,16 @@ logs_get_service_recent() {
 
 logs_get_boot_error_diff() {
     local lines current_errors previous_errors summary
+
+    if ! _logs_require_function env_has_command missing-env-core "env capability helper is not available"; then
+        return 1
+    fi
+    if ! _logs_require_function journalctl_collect_boot_errors missing-journalctl-core "journalctl boot error collector is not available"; then
+        return 1
+    fi
+    if ! _logs_require_function journalctl_summarize_error_diff missing-journalctl-core "journalctl error diff summarizer is not available"; then
+        return 1
+    fi
 
     lines="$(_logs_arg_value --lines "$@" || printf '100')"
     lines="${lines:-100}"
@@ -199,6 +289,10 @@ logs_get_system_file_tail() {
 
 logs_get_auth_failures() {
     local lines candidate
+
+    if ! _logs_require_function env_has_command missing-env-core "env capability helper is not available"; then
+        return 1
+    fi
 
     lines="$(_logs_arg_value --lines "$@" || printf '50')"
     lines="${lines:-50}"
