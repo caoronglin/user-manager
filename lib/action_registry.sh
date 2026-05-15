@@ -15,6 +15,7 @@ action_registry_reset() {
     _ACTION_REQUIRES=()
     _ACTION_MODES=()
     _ACTION_RISK=()
+    ACTION_DEFAULTS_REGISTERED=0
 }
 
 action_register() {
@@ -135,4 +136,25 @@ action_describe() {
     printf 'requires=%s\n' "${_ACTION_REQUIRES[$id]}"
     printf 'modes=%s\n' "${_ACTION_MODES[$id]}"
     printf 'risk=%s\n' "${_ACTION_RISK[$id]}"
+}
+
+action_register_defaults() {
+    action_register "logs.boot" "查看 Boot 日志" "logs" logs_action_cli "journalctl" "both" "safe"
+    action_register "logs.failed_services" "列出失败服务" "logs" logs_action_cli "systemctl" "both" "safe"
+    action_register "logs.service_recent" "查看服务近期日志" "logs" logs_action_cli "journalctl" "both" "safe"
+    action_register "logs.boot_error_diff" "启动错误对比" "logs" logs_action_cli "journalctl" "both" "safe"
+    action_register "logs.system_file_tail" "查看系统日志文件" "logs" logs_action_cli "none" "both" "safe"
+    action_register "logs.auth_failures" "查看认证失败" "logs" logs_action_cli "none" "both" "safe"
+    action_register "system.timers.list" "列出 systemd timers" "system" systemd_timer_list_timers "systemctl" "both" "safe"
+    action_register "system.timers.logs" "查看 timer 日志" "system" systemd_timer_show_logs "journalctl" "both" "safe"
+    action_register "users.list" "查看托管用户" "users" list_managed_users "none" "both" "safe"
+    action_register "audit.view" "查看审计日志" "audit" view_audit_log "none" "both" "safe"
+}
+
+action_register_defaults_once() {
+    if [[ "${ACTION_DEFAULTS_REGISTERED:-0}" == "1" ]]; then
+        return 0
+    fi
+    ACTION_DEFAULTS_REGISTERED=1
+    action_register_defaults
 }

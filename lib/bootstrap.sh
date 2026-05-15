@@ -76,6 +76,7 @@ um_load_profile() {
                 "system_core.sh"
                 "journalctl_core.sh"
                 "logs_core.sh"
+                "logs_presenter.sh"
                 "vm_core.sh"
                 "gpu_core.sh"
             )
@@ -94,6 +95,7 @@ um_load_profile() {
                 "journalctl_core.sh"
                 "systemd_timer_core.sh"
                 "logs_core.sh"
+                "logs_presenter.sh"
             )
             ;;
         *)
