@@ -57,6 +57,8 @@ um_load_profile() {
                 "common.sh"
                 "ui_modern.sh"
                 "config.sh"
+                "env_core.sh"
+                "action_registry.sh"
                 "access_control.sh"
                 "privilege.sh"
                 "quota_core.sh"
@@ -80,6 +82,8 @@ um_load_profile() {
             modules=(
                 "common.sh"
                 "config.sh"
+                "env_core.sh"
+                "action_registry.sh"
                 "access_control.sh"
                 "privilege.sh"
                 "quota_core.sh"
