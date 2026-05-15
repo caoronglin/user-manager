@@ -136,6 +136,12 @@ run_p1() {
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
         bash "$SCRIPT_DIR/test_action_registry.sh"
 
+    run_step "P1 logs core" env \
+        SUDO_NONINTERACTIVE=1 \
+        USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
+        USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        bash "$SCRIPT_DIR/test_logs_core.sh"
+
     run_step "P1 ubuntu maintenance" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
