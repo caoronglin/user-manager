@@ -74,6 +74,13 @@ else
     test_fail "missing user should fail"
 fi
 
+test_start "verify_shell_config rejects missing argument without crash"
+if ! verify_shell_config; then
+    test_pass
+else
+    test_fail "missing argument should fail"
+fi
+
 test_start "verify_shell_config rejects empty home"
 if ! verify_shell_config emptyhome; then
     test_pass

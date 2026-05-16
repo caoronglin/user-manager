@@ -209,7 +209,8 @@ end
 
 # 验证Shell配置
 verify_shell_config() {
-    local username="$1"
+    local username="${1:-}"
+    [[ -n "$username" ]] || return 1
     
     if ! id "$username" &>/dev/null; then
         return 1
