@@ -35,6 +35,10 @@ source "$LIB_DIR/controller_submenus.sh"
 source "$LIB_DIR/controller_main_menu.sh"
 
 main() {
+    if declare -F action_register_defaults_once >/dev/null 2>&1; then
+        action_register_defaults_once
+    fi
+
     controller_start
 }
 

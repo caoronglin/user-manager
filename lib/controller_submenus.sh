@@ -430,17 +430,17 @@ _handle_system() {
         16)
             read_input "boot 引用 (0=当前, -1=上次)" "0"; local boot_ref="$REPLY_INPUT"
             read_input "最近日志行数" "100"; local lines="$REPLY_INPUT"
-            journalctl_show_boot_logs "${boot_ref:-0}" "${lines:-100}"
+            action_run logs.boot cli --boot "${boot_ref:-0}" --lines "${lines:-100}"
             ;;
-        17) journalctl_list_failed_services ;;
+        17) action_run logs.failed_services cli ;;
         18)
             read_input "服务名 (如 ssh / docker.service)"; local unit="$REPLY_INPUT"
             read_input "最近日志行数" "80"; local lines="$REPLY_INPUT"
-            [[ -n "$unit" ]] && journalctl_diagnose_service "$unit" "${lines:-80}"
+            [[ -n "$unit" ]] && action_run logs.service_recent cli "$unit" --lines "${lines:-80}"
             ;;
         19)
             read_input "对比最近 err..alert 日志条数" "100"; local lines="$REPLY_INPUT"
-            journalctl_compare_boot_errors "${lines:-100}"
+            action_run logs.boot_error_diff cli --lines "${lines:-100}"
             ;;
         20) show_network_stack_panel ;;
         21) systemd_timer_menu ;;
@@ -602,7 +602,7 @@ ssh_fail2ban_menu() {
 _handle_systemd_timers() {
     local opt="$1"
     case $opt in
-        1) systemd_timer_list_timers ;;
+        1) action_run system.timers.list cli ;;
         2)
             read_input "profile (weekly-report/account-health-check)" "weekly-report"; local profile="$REPLY_INPUT"
             systemd_timer_install_profile "${profile:-weekly-report}"
@@ -610,7 +610,7 @@ _handle_systemd_timers() {
         3)
             read_input "timer 名称" "weekly-report"; local timer_name="$REPLY_INPUT"
             read_input "最近日志行数" "50"; local lines="$REPLY_INPUT"
-            systemd_timer_show_logs "${timer_name:-weekly-report}" "${lines:-50}"
+            action_run system.timers.logs cli "${timer_name:-weekly-report}" "${lines:-50}"
             ;;
         4)
             read_input "要删除的 timer 名称" "weekly-report"; local timer_name="$REPLY_INPUT"
