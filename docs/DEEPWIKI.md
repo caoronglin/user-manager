@@ -29,7 +29,7 @@
 - `lib/logs_presenter.sh`：封装日志结果的文本化展示适配。
 - `lib/tui_views_logs.sh`：提供 TUI 日志视图，复用共享日志 action。
 
-日志和 systemd timer 是第一批迁移对象。其他业务模块暂时保留现有实现，后续再逐步注册到 action registry，减少 TUI / CLI 双写与读取逻辑分叉。
+日志和 systemd timer 是第一批完整迁移对象。目前少量 users / audit 查询类 action 已作为示例接入，其他业务工作流仍保留现有实现，后续再逐步迁移到 action registry，减少 TUI / CLI 双写与读取逻辑分叉。
 
 ### 1) 加载层
 
