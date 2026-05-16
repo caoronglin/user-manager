@@ -3,6 +3,7 @@
 # ============================================================
 data/password_pool.txt
 data/password_pools/
+data/condarc.template
 data/email_config.json
 data/user_config.json
 data/created_users.txt
@@ -69,3 +70,6 @@ desktop.txt
 # ============================================================
 data/acl_*.txt
 data/privilege_*.txt
+
+# 本地维护脚本（会生成密码池，禁止入库）
+regenerate_password_pool.sh
