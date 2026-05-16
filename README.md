@@ -14,7 +14,7 @@
 - `./run.sh`：进入原生 Bash TUI。
 - `./run.sh --no-tui` 或 `./run.sh --cli`：进入无 TUI 菜单。
 - 第一阶段优化后，日志相关能力通过共享 action ID 运行。TUI 和 CLI 使用同一套读取逻辑，只是展示方式不同。
-- 缺少 `journalctl` / `systemctl` 时，依赖这些命令的 action 会显示能力缺失或错误；`logs.system_file_tail` 和 `logs.auth_failures` 会尝试传统日志文件或显示空状态；程序不会自动安装依赖。
+- 缺少 `journalctl` / `systemctl` 时，依赖这些命令的 action 会显示能力缺失或错误；`logs.system_file_tail` 和 `logs.auth_failures` 会尝试传统日志文件或显示空状态；程序不会自动补齐系统命令。
 
 以下仅列第一批日志与 systemd timer action ID，不代表完整 registry：
 

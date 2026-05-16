@@ -39,6 +39,9 @@ while IFS= read -r -d '' file_path; do
     full_path="$REPO_ROOT/$file_path"
     [[ -f "$full_path" ]] || continue
 
+    # Test fixtures intentionally include synthetic secret markers to verify this scanner.
+    [[ "$file_path" == "tests/test_security_scan.sh" ]] && continue
+
     for pattern in "${patterns[@]}"; do
         while IFS= read -r match_line; do
             [[ -n "$match_line" ]] || continue
