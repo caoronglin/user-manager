@@ -320,9 +320,9 @@ else
     test_fail "VM/GPU 菜单未正确执行 GPU 状态动作，输出为: $compute_action_output"
 fi
 
-test_start "原生 TUI Timers 菜单执行列出动作时正确 cleanup/init"
-timer_action_output="$(env TUI_MANAGER_NO_MAIN=1 bash -c 'set -uo pipefail; source "$1/tui_manager.sh"; tui_menu_handle_key() { echo 0; }; tui_cleanup() { printf "cleanup\\n"; }; tui_init() { printf "init\\n"; }; systemd_timer_list_timers() { printf "timers-list\\n"; }; handle_tui_systemd_timer_menu_key ENTER' _ "$PROJECT_ROOT" 2>/dev/null || true)"
-if [[ "$timer_action_output" == $'cleanup\ntimers-list\ninit' ]]; then
+test_start "原生 TUI Timers 菜单经 action registry 执行列出动作"
+timer_action_output="$(env TUI_MANAGER_NO_MAIN=1 bash -c 'set -uo pipefail; source "$1/tui_manager.sh"; tui_menu_handle_key() { echo 0; }; tui_cleanup() { printf "cleanup\\n"; }; tui_init() { printf "init\\n"; }; action_run() { printf "action:%s:%s\\n" "$1" "$2"; }; handle_tui_systemd_timer_menu_key ENTER' _ "$PROJECT_ROOT" 2>/dev/null || true)"
+if [[ "$timer_action_output" == $'cleanup\naction:system.timers.list:tui\ninit' ]]; then
     test_pass
 else
     test_fail "原生 TUI Timers 菜单未正确执行动作，输出为: $timer_action_output"

@@ -47,6 +47,12 @@ _tui_load_mainline_modules
 # 加载数据驱动菜单引擎
 # shellcheck disable=SC1091
 source "$LIB_DIR/tui_menus.sh"
+# shellcheck disable=SC1091
+source "$LIB_DIR/tui_views_logs.sh"
+
+if declare -F action_register_defaults_once >/dev/null 2>&1; then
+    action_register_defaults_once
+fi
 
 get_tui_managed_user_count() {
     if ! declare -F get_managed_usernames >/dev/null 2>&1; then
@@ -88,6 +94,22 @@ tui_run_workflow_action() {
 
     tui_cleanup
     "$workflow_func"
+    local rc=$?
+    tui_init
+    return $rc
+}
+
+tui_run_action() {
+    local action_id="$1"
+    shift || true
+
+    if ! declare -F action_run >/dev/null 2>&1; then
+        tui_message "错误" "action registry 不可用"
+        return 1
+    fi
+
+    tui_cleanup
+    action_run "$action_id" tui "$@"
     local rc=$?
     tui_init
     return $rc
@@ -924,9 +946,16 @@ handle_tui_systemd_timer_menu_key() {
     [[ -z "$result" ]] && return 0
 
     case "$result" in
-        0) tui_run_workflow_action systemd_timer_list_timers ;;
+        0) tui_run_action system.timers.list ;;
         1) tui_run_prompt_sequence_action systemd_timer_install_profile "profile (weekly-report/account-health-check)|weekly-report" ;;
-        2) tui_run_prompt_sequence_action systemd_timer_show_logs "timer 名称|weekly-report" "最近日志行数|50" ;;
+        2)
+            if tui_prompt_input "Timer 日志" "timer 名称" "weekly-report"; then
+                local timer_name="$REPLY_INPUT"
+                if tui_prompt_input "Timer 日志" "最近日志行数" "50"; then
+                    tui_run_action system.timers.logs "$timer_name" "$REPLY_INPUT"
+                fi
+            fi
+            ;;
         3) tui_run_prompt_sequence_action systemd_timer_remove "要删除的 timer 名称|weekly-report" ;;
         4|-1) TUI_SUBMENU_EXIT=1 ;;
     esac
@@ -954,10 +983,14 @@ handle_tui_system_details_menu_key() {
         2) tui_run_workflow_action show_disk_info ;;
         3) tui_run_workflow_action show_network_hardware_info ;;
         4) tui_run_workflow_action run_full_hardware_check ;;
-        5) tui_run_prompt_sequence_action journalctl_show_boot_logs "boot 引用 (0=当前, -1=上次)|0" "最近日志行数|100" ;;
-        6) tui_run_workflow_action journalctl_list_failed_services ;;
-        7) tui_run_prompt_sequence_action journalctl_diagnose_service "服务名 (如 ssh / docker.service)" "最近日志行数|80" ;;
-        8) tui_run_prompt_sequence_action journalctl_compare_boot_errors "对比最近 err..alert 日志条数|100" ;;
+        5) tui_logs_open_action logs.boot --boot 0 --lines 100 ;;
+        6) tui_logs_open_action logs.failed_services ;;
+        7)
+            if tui_prompt_input "服务日志" "服务名 (如 ssh / docker.service)" "ssh"; then
+                tui_logs_open_action logs.service_recent "$REPLY_INPUT" --lines 80
+            fi
+            ;;
+        8) tui_logs_open_action logs.boot_error_diff --lines 100 ;;
         9) tui_run_workflow_action launch_btop_monitor ;;
         10) tui_run_workflow_action launch_htop_monitor ;;
         11) tui_run_workflow_action analyze_crash_causes ;;
@@ -1165,60 +1198,6 @@ run_monitor_view() {
             q|ESC)
                 running=false
                 ;;
-        esac
-    done
-}
-
-run_log_viewer() {
-    local log_file="${SYSTEM_LOG:-${LOG_DIR:-./logs}/system.log}"
-    local scroll_pos=0
-    local running=true
-
-    while $running; do
-        tui_clear
-
-        tui_draw_fill 0 0 "$TUI_COLS" 3 235
-        tui_fg 0
-        tui_move 1 $(( (TUI_COLS - 20) / 2 ))
-        tui_bold
-        echo "日志查看器"
-        tui_reset
-
-        if [[ -f "$log_file" ]]; then
-            local lines display_lines
-            lines=$(wc -l < "$log_file")
-            display_lines=$((TUI_LINES - 5))
-
-            tail -n $((lines - scroll_pos)) "$log_file" 2>/dev/null | head -n "$display_lines" | while IFS= read -r line; do
-                if [[ "$line" =~ ERROR|FAIL ]]; then
-                    tui_fg "$TUI_COLOR_ERROR"
-                elif [[ "$line" =~ WARN ]]; then
-                    tui_fg "$TUI_COLOR_WARNING"
-                elif [[ "$line" =~ SUCCESS|OK ]]; then
-                    tui_fg "$TUI_COLOR_SUCCESS"
-                fi
-                echo "$line"
-                tui_reset
-            done
-        else
-            tui_move 5 $(( (TUI_COLS - 20) / 2 ))
-            tui_fg "$TUI_COLOR_MUTED"
-            echo "日志文件不存在: $log_file"
-            tui_reset
-        fi
-
-        tui_move $((TUI_LINES - 1)) 0
-        tui_statusbar_draw $((TUI_LINES - 1)) \
-            "日志: $log_file" \
-            "↑/↓ 滚动  q 返回"
-
-        local key
-        key=$(tui_read_key 2>/dev/null) || continue
-
-        case "$key" in
-            UP) ((scroll_pos > 0)) && ((scroll_pos--)) ;;
-            DOWN) ((scroll_pos++)) ;;
-            q|ESC) running=false ;;
         esac
     done
 }
