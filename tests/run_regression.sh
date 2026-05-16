@@ -142,6 +142,8 @@ run_p1() {
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
         bash "$SCRIPT_DIR/test_logs_core.sh"
 
+    run_step "P1 shell config core" bash "$SCRIPT_DIR/test_shell_config_core.sh"
+
     run_step "P1 logs presenter" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \

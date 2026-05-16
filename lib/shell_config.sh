@@ -217,7 +217,12 @@ verify_shell_config() {
     
     local user_home
     user_home=$(getent passwd "$username" | cut -d: -f6)
+    if [[ -z "$user_home" ]]; then
+        return 1
+    fi
     
     # 检查配置文件
-    [[ -f "$user_home/.bashrc" ]] || [[ -f "$user_home/.zshrc" ]]
+    [[ -f "$user_home/.bashrc" ]] || \
+        [[ -f "$user_home/.zshrc" ]] || \
+        [[ -f "$user_home/.config/fish/config.fish" ]]
 }

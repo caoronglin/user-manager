@@ -84,6 +84,9 @@ init_log_file() {
     fi
 }
 
+# load_config 是入口初始化步骤，不是纯读取函数。
+# 它会创建项目本地目录、初始化日志头、检查敏感文件权限，
+# 并按配置清理旧密码池。调用方应在程序启动早期执行一次。
 load_config() {
     init_directories || return 1
     init_groups || return 1
