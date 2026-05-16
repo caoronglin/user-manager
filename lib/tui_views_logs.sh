@@ -68,26 +68,91 @@ tui_logs_render_text() {
     printf '\n%s\n' "↑/↓ 滚动  r 刷新  q 返回"
 }
 
+_tui_logs_read_key() {
+    local key rest
+    TUI_LOGS_KEY=""
+
+    if [[ -n "${TUI_LOGS_TEST_KEYS:-}" ]]; then
+        if [[ "$TUI_LOGS_TEST_KEYS" == *$'\n'* ]]; then
+            key="${TUI_LOGS_TEST_KEYS%%$'\n'*}"
+            rest="${TUI_LOGS_TEST_KEYS#*$'\n'}"
+        else
+            key="$TUI_LOGS_TEST_KEYS"
+            rest=""
+        fi
+        TUI_LOGS_TEST_KEYS="$rest"
+        TUI_LOGS_KEY="$key"
+        return 0
+    fi
+
+    if declare -F tui_read_key >/dev/null 2>&1; then
+        TUI_LOGS_KEY="$(tui_read_key 2>/dev/null)" || return 1
+        return $?
+    fi
+
+    IFS= read -rsn1 key || return 1
+    case "$key" in
+        $'\e')
+            TUI_LOGS_KEY="ESC"
+            ;;
+        *)
+            TUI_LOGS_KEY="$key"
+            ;;
+    esac
+}
+
 tui_logs_open_action() {
     local action_id="${1:-}"
-    local output rc max_rows
+    local output rc=0 last_rc=0 max_rows scroll_offset=0 key
+    local -a action_args=()
 
     shift || true
+    action_args=("$@")
     if ! declare -F logs_present_tui >/dev/null 2>&1; then
         printf 'logs_present_tui 不可用\n' >&2
         return 1
     fi
 
-    if output="$(logs_present_tui "$action_id" "$@")"; then
-        rc=0
-    else
-        rc=$?
-    fi
-
     max_rows=$((${TUI_LINES:-24} - 6))
     (( max_rows < 1 )) && max_rows=1
-    tui_logs_render_text "$action_id" "$output" 0 "$max_rows"
-    return "$rc"
+
+    while true; do
+        if output="$(logs_present_tui "$action_id" "${action_args[@]}" 2>&1)"; then
+            rc=0
+        else
+            rc=$?
+            [[ -n "$output" ]] || output="日志 action 执行失败 (rc=$rc)"
+        fi
+        last_rc=$rc
+
+        tui_logs_render_text "$action_id" "$output" "$scroll_offset" "$max_rows"
+
+        while true; do
+            if _tui_logs_read_key; then
+                key="$TUI_LOGS_KEY"
+            else
+                key="q"
+            fi
+            case "$key" in
+                q|Q|ESC)
+                    return "$last_rc"
+                    ;;
+                r|R)
+                    break
+                    ;;
+                UP|k|K)
+                    (( scroll_offset > 0 )) && ((scroll_offset--))
+                    tui_logs_render_text "$action_id" "$output" "$scroll_offset" "$max_rows"
+                    ;;
+                DOWN|j|J)
+                    ((scroll_offset++))
+                    tui_logs_render_text "$action_id" "$output" "$scroll_offset" "$max_rows"
+                    ;;
+                *)
+                    ;;
+            esac
+        done
+    done
 }
 
 run_log_viewer() {
