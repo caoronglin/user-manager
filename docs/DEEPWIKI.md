@@ -19,6 +19,18 @@
 
 ## 关键架构
 
+### 第一阶段优化骨架
+
+第一阶段新增共享层，用于把日志读取、展示适配和 action 调度从具体入口中拆出：
+
+- `lib/env_core.sh`：集中处理运行环境探测与能力判断。
+- `lib/action_registry.sh`：注册共享 action ID，并为 TUI / CLI 提供统一调用入口。
+- `lib/logs_core.sh`：沉淀日志与 systemd timer 的核心读取逻辑。
+- `lib/logs_presenter.sh`：封装日志结果的文本化展示适配。
+- `lib/tui_views_logs.sh`：提供 TUI 日志视图，复用共享日志 action。
+
+日志和 systemd timer 是第一批迁移对象。其他业务模块暂时保留现有实现，后续再逐步注册到 action registry，减少 TUI / CLI 双写与读取逻辑分叉。
+
 ### 1) 加载层
 
 - lib/bootstrap.sh
