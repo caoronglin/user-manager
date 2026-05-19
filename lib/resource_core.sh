@@ -29,7 +29,7 @@ readonly ULIMIT_TYPES=(
 
 # 以指定用户身份执行命令（最小权限封装）
 # 用法：as_user <username> <command> [args...]
-# 优先使用：sudo -u（非交互式环境）或 priv_sudo（交互式环境）
+# 使用受控 sudo -u 切换到已存在用户，不暴露通用 priv_sudo trampoline。
 as_user() {
     local username="$1"
     shift
@@ -46,15 +46,9 @@ as_user() {
     
     # 执行命令
     if [[ "${SUDO_NONINTERACTIVE:-0}" == "1" ]]; then
-        # 非交互式环境，使用 sudo -u
         sudo -n -u "$username" "$@" 2>&1
     else
-        # 交互式环境，优先使用 priv_sudo（如果可用）
-        if declare -F priv_sudo &>/dev/null; then
-            priv_sudo -u "$username" "$@" 2>&1
-        else
-            sudo -u "$username" "$@" 2>&1
-        fi
+        sudo -u "$username" "$@" 2>&1
     fi
 }
 
@@ -210,13 +204,13 @@ show_user_ulimits() {
         if [[ "$soft_val" == "unlimited" || "$soft_val" == "N/A" ]]; then
             display_soft="${C_DIM}$soft_val${C_RESET}"
         else
-            display_soft="${C_BCYAN}$soft_val${C_RESET}"
+            display_soft="${C_RESET}$soft_val${C_RESET}"
         fi
         
         if [[ "$hard_val" == "unlimited" || "$hard_val" == "N/A" ]]; then
             display_hard="${C_DIM}$hard_val${C_RESET}"
         else
-            display_hard="${C_BCYAN}$hard_val${C_RESET}"
+            display_hard="${C_RESET}$hard_val${C_RESET}"
         fi
         
         printf "  %-18s %b %b\n" "$resource" "$display_soft" "$display_hard"
@@ -313,7 +307,7 @@ show_user_process_resources() {
     total_procs=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
     total_threads=$(ps -u "$username" -o nlwp --no-headers 2>/dev/null | awk '{sum+=$1} END {print sum}')
     
-    msg_info "进程总数: ${C_BCYAN}${total_procs}${C_RESET}  线程总数: ${C_BCYAN}${total_threads}${C_RESET}"
+    msg_info "进程总数: ${C_RESET}${total_procs}${C_RESET}  线程总数: ${C_RESET}${total_threads}${C_RESET}"
     
     return 0
 }
@@ -322,12 +316,26 @@ show_user_process_resources() {
 # 查询资源限制
 # ============================================================
 
-# 获取当前资源限制（通过systemd配置）
+# 获取当前资源限制（通过 systemd cgroup v2 slice drop-in 配置）
+rl_resource_unit_base() {
+    printf '%s\n' "${USER_MANAGER_RESOURCE_LIMIT_UNIT_BASE:-${RL_RESOURCE_LIMIT_UNIT_BASE:-/etc/systemd/system}}"
+}
+
+rl_resource_slice_dir() {
+    local rl_uid="$1"
+    printf '%s/user-%s.slice.d\n' "$(rl_resource_unit_base)" "$rl_uid"
+}
+
+rl_resource_config_file() {
+    local rl_uid="$1"
+    printf '%s/%s\n' "$(rl_resource_slice_dir "$rl_uid")" "${RESOURCE_LIMIT_FILENAME:-90-user-manager-limits.conf}"
+}
+
 get_current_resource_limits() {
     local username="$1"
     local uid config_file
     uid=$(id -u "$username" 2>/dev/null) || return 1
-    config_file="/etc/systemd/system/user@${uid}.service.d/$RESOURCE_LIMIT_FILENAME"
+    config_file="$(rl_resource_config_file "$uid")"
 
     if [[ -f "$config_file" ]]; then
         local cpu memory
@@ -352,8 +360,8 @@ configure_resource_limits() {
         return 1
     }
 
-    unit_dir="/etc/systemd/system/user@${uid}.service.d"
-    config_file="$unit_dir/$RESOURCE_LIMIT_FILENAME"
+    unit_dir="$(rl_resource_slice_dir "$uid")"
+    config_file="$(rl_resource_config_file "$uid")"
 
     if [[ -z "$cpu_quota" && -z "$memory_limit" ]]; then
         remove_resource_limits "$uid"
@@ -365,10 +373,26 @@ configure_resource_limits() {
         return 1
     }
 
+    local rl_memory_high rl_tasks_max rl_io_read_bandwidth_max rl_io_write_bandwidth_max
+    rl_memory_high="${USER_MANAGER_RESOURCE_MEMORY_HIGH:-${RL_RESOURCE_MEMORY_HIGH:-}}"
+    rl_tasks_max="${USER_MANAGER_RESOURCE_TASKS_MAX:-${RL_RESOURCE_TASKS_MAX:-4096}}"
+    rl_io_read_bandwidth_max="${USER_MANAGER_RESOURCE_IO_READ_BANDWIDTH_MAX:-${RL_RESOURCE_IO_READ_BANDWIDTH_MAX:-}}"
+    rl_io_write_bandwidth_max="${USER_MANAGER_RESOURCE_IO_WRITE_BANDWIDTH_MAX:-${RL_RESOURCE_IO_WRITE_BANDWIDTH_MAX:-}}"
+
     if ! {
-        echo "[Service]"
+        echo "[Slice]"
+        echo "CPUAccounting=yes"
         [[ -n "$cpu_quota" ]]     && echo "CPUQuota=$cpu_quota"
+        echo "MemoryAccounting=yes"
+        [[ -n "$rl_memory_high" ]] && echo "MemoryHigh=$rl_memory_high"
         [[ -n "$memory_limit" ]]  && echo "MemoryMax=$memory_limit"
+        echo "TasksAccounting=yes"
+        [[ -n "$rl_tasks_max" ]] && echo "TasksMax=$rl_tasks_max"
+        if [[ -n "$rl_io_read_bandwidth_max" || -n "$rl_io_write_bandwidth_max" ]]; then
+            echo "IOAccounting=yes"
+            [[ -n "$rl_io_read_bandwidth_max" ]] && echo "IOReadBandwidthMax=$rl_io_read_bandwidth_max"
+            [[ -n "$rl_io_write_bandwidth_max" ]] && echo "IOWriteBandwidthMax=$rl_io_write_bandwidth_max"
+        fi
     } | write_privileged_text_file "$config_file" "0644" "root:root"; then
         msg_err "无法写入配置文件: $config_file"
         return 1
@@ -377,8 +401,8 @@ configure_resource_limits() {
     priv_systemctl daemon-reload 2>/dev/null || true
 
     msg_ok "资源限制已配置: ${C_BOLD}$username${C_RESET}"
-    [[ -n "$cpu_quota" ]]     && msg_step "CPU 配额: ${C_BCYAN}$cpu_quota${C_RESET}"
-    [[ -n "$memory_limit" ]]  && msg_step "内存限制: ${C_BCYAN}$memory_limit${C_RESET}"
+    [[ -n "$cpu_quota" ]]     && msg_step "CPU 配额: ${C_RESET}$cpu_quota${C_RESET}"
+    [[ -n "$memory_limit" ]]  && msg_step "内存限制: ${C_RESET}$memory_limit${C_RESET}"
 
     return 0
 }
@@ -389,8 +413,10 @@ configure_resource_limits() {
 
 remove_resource_limits() {
     local uid="$1"
-    local unit_dir="/etc/systemd/system/user@${uid}.service.d"
-    local config_file="$unit_dir/$RESOURCE_LIMIT_FILENAME"
+    local unit_dir
+    local config_file
+    unit_dir="$(rl_resource_slice_dir "$uid")"
+    config_file="$(rl_resource_config_file "$uid")"
 
     if [[ -f "$config_file" ]]; then
         priv_rm -f "$config_file"
@@ -444,12 +470,12 @@ show_resource_overview() {
 
         printf "  %-18s " "$username"
         if [[ -n "$cpu" ]]; then
-            printf "${C_BCYAN}%-12s${C_RESET} " "$cpu"
+            printf "${C_RESET}%-12s${C_RESET} " "$cpu"
         else
             printf "${C_DIM}%-12s${C_RESET} " "-"
         fi
         if [[ -n "$memory" ]]; then
-            printf "${C_BCYAN}%-12s${C_RESET} " "$memory"
+            printf "${C_RESET}%-12s${C_RESET} " "$memory"
         else
             printf "${C_DIM}%-12s${C_RESET} " "-"
         fi
@@ -458,4 +484,68 @@ show_resource_overview() {
 
     echo ""
     msg_info "共 ${#managed_users[@]} 个用户，${configured} 个已配置资源限制"
+}
+
+# 列出 Linux 组成员（stub 用 getent group）
+rl_resource_list_group_members() {
+    local rl_group="$1"
+    if [[ -z "$rl_group" ]]; then
+        return 1
+    fi
+    getent group "$rl_group" 2>/dev/null | cut -d: -f4 | tr ',' '\n' | sort -u
+}
+
+# 对组成员逐个写入资源限制配置
+# 用法：rl_resource_policy_apply_group <groupname> <cpu_quota> <memory_limit>
+rl_resource_policy_apply_group() {
+    local rl_group="$1"
+    local rl_cpu="$2"
+    local rl_memory="$3"
+    if [[ -z "$rl_group" || -z "$rl_cpu" || -z "$rl_memory" ]]; then
+        msg_err "rl_resource_policy_apply_group: 参数不足"
+        return 1
+    fi
+    local rl_members
+    rl_members="$(rl_resource_list_group_members "$rl_group")"
+    if [[ -z "$rl_members" ]]; then
+        msg_warn "组 $rl_group 没有成员"
+        return 1
+    fi
+    local rl_applied=0
+    local rl_uid
+    local rl_user
+    while IFS= read -r rl_user; do
+        [[ -z "$rl_user" ]] && continue
+        rl_uid=$(id -u "$rl_user" 2>/dev/null || echo "")
+        if [[ -n "$rl_uid" ]]; then
+            configure_resource_limits "$rl_user" "$rl_cpu" "$rl_memory"
+            ((rl_applied++))
+        fi
+    done <<< "$rl_members"
+    msg_ok "已为组 $rl_group 的 $rl_applied 个成员应用资源配置"
+    return 0
+}
+
+# 移除组内所有成员的资源限制配置
+rl_resource_policy_remove_group() {
+    local rl_group="$1"
+    if [[ -z "$rl_group" ]]; then
+        msg_err "rl_resource_policy_remove_group: 组名不能为空"
+        return 1
+    fi
+    local rl_members
+    rl_members="$(rl_resource_list_group_members "$rl_group")"
+    local rl_removed=0
+    local rl_user
+    while IFS= read -r rl_user; do
+        [[ -z "$rl_user" ]] && continue
+        local rl_uid
+        rl_uid=$(id -u "$rl_user" 2>/dev/null || echo "")
+        if [[ -n "$rl_uid" ]]; then
+            remove_resource_limits "$rl_uid"
+            ((rl_removed++))
+        fi
+    done <<< "$rl_members"
+    msg_ok "已移除组 $rl_group 的 $rl_removed 个成员资源配置"
+    return 0
 }

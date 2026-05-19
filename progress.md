@@ -1,5 +1,28 @@
 # Progress - 用户管理工具完善
 
+## 2026-05-16 v2 整体优化 (完成)
+
+### 全部 8 阶段完成
+
+**Phase 0** 基线回归: all 26/0/1 (P2 skipped)
+**Phase 1** 入口+权限: bash run.sh 默认 noTUI CLI (54/54), rl_priv_* 6 函数 (6/6 PASS)
+**Phase 2** 颜色按键: 只留绿/红配色, rl_read_menu_key() 0 键返回 (56/56 PASS)
+**Phase 3** 组模式: cgroup v2 组策略展开 + quota 组配额 (7/7 + 4/4 PASS)
+**Phase 4** 邮件拆分: email_core.sh→rl_mail_{config,template,sender,queue,events,audit}.sh 6文件 <200行, 去JSON (9/9 PASS)
+**Phase 5** 独立脚本: 7 scripts/rl-*.sh + rl-system-overview.sh (10/10 PASS)
+**Phase 6** 去nginx: lib/tui/security 全部移除, grep零残留 (10/10 + 56/56 PASS)
+**Phase 7** README更新: 默认入口说明, 独立脚本表格, --tui 文档
+**Phase 8** glances: rl-system-overview.sh (--web/--processes/--quick)
+
+**最终验证**:
+- `bash tests/run_regression.sh --level all`: Passed 28, Failed 0, Skipped 1 (P2)
+- `bash -n` 全量自有 .sh 通过 (唯一失败: 第三方 Miniforge.sh 二进制 installer)
+- `shellcheck -S error` 全量自有 .sh 通过
+
+**未提交代码** — 分支 `feat/vm-gpu-proxy-management`
+
+---
+
 ## 2026-05-02 会话 (完成)
 
 ### 审计

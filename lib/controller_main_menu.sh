@@ -20,7 +20,7 @@ main_menu() {
         draw_menu_submenu  7 "审计与日志"
         draw_menu_exit "退出"
         draw_prompt
-        read -r opt
+        opt="$(rl_read_menu_key)"
 
         case $opt in
             1)  safe_run user_management_menu ;;

@@ -478,7 +478,7 @@ show_network_info() {
     if [[ -n "$public_ip" ]]; then
         echo -e "  ${C_BGREEN}$public_ip${C_RESET}"
     else
-        echo -e "  ${C_BYELLOW}无法检测（可能无网络连接）${C_RESET}"
+        echo -e "  ${C_RESET}无法检测（可能无网络连接）${C_RESET}"
     fi
     
     local tailscale_ip
@@ -487,9 +487,9 @@ show_network_info() {
     msg_info "Tailscale IP 地址 (远程连接):"
     if [[ -n "$tailscale_ip" ]]; then
         echo -e "  ${C_BGREEN}$tailscale_ip${C_RESET}"
-        echo -e "  ${C_CYAN}这是您的 Tailscale VPN IP，用于远程连接${C_RESET}"
+        echo -e "  ${C_RESET}这是您的 Tailscale VPN IP，用于远程连接${C_RESET}"
     else
-        echo -e "  ${C_BYELLOW}未检测到 Tailscale${C_RESET}"
+        echo -e "  ${C_RESET}未检测到 Tailscale${C_RESET}"
     fi
     
     echo ""

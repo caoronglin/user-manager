@@ -10,27 +10,85 @@ source "$SCRIPT_DIR/test_framework.sh"
 
 test_suite_start "TUI Mainline"
 
-test_start "run.sh 默认进入 TUI 主线"
-if grep -q 'exec bash tui_manager.sh "\$@"' "$PROJECT_ROOT/run.sh"; then
+test_start "run.sh 默认进入 noTUI CLI（经典 user_manager.sh）"
+if grep -q 'exec bash user_manager.sh "\$@"' "$PROJECT_ROOT/run.sh"; then
     test_pass
 else
-    test_fail "run.sh 未指向 tui_manager.sh"
+    test_fail "run.sh 默认未进入 user_manager.sh 经典 CLI"
 fi
 
-test_start "run.sh 支持 --no-tui 进入经典入口"
-if grep -Eq '(^|[[:space:]])--no-tui([|)]|[[:space:]])' "$PROJECT_ROOT/run.sh" \
-    && grep -q 'exec bash user_manager.sh' "$PROJECT_ROOT/run.sh"; then
+test_start "run.sh 支持 --tui 显式进入 TUI 主线"
+if grep -Eq '(^|[[:space:]])--tui([|)]|[[:space:]])' "$PROJECT_ROOT/run.sh" \
+    && grep -q 'exec bash tui_manager.sh' "$PROJECT_ROOT/run.sh"; then
     test_pass
 else
-    test_fail "run.sh 未提供 --no-tui 到 user_manager.sh 的分流"
+    test_fail "run.sh 未提供 --tui 到 tui_manager.sh 的分流"
 fi
 
-test_start "run.sh 支持 --cli 作为无 TUI 别名"
-if grep -Eq '(^|[[:space:]|])--cli([|)]|[[:space:]])' "$PROJECT_ROOT/run.sh" \
-    && grep -q 'exec bash user_manager.sh' "$PROJECT_ROOT/run.sh"; then
+test_start "run.sh 支持 --no-tui 兼容进入 noTUI CLI"
+if grep -q 'exec bash user_manager.sh' "$PROJECT_ROOT/run.sh"; then
     test_pass
 else
-    test_fail "run.sh 未提供 --cli 到 user_manager.sh 的分流"
+    test_fail "run.sh 默认未进入 user_manager.sh CLI"
+fi
+
+test_start "run.sh 支持 --cli 作为无 TUI 别名兼容"
+if grep -q 'exec bash user_manager.sh' "$PROJECT_ROOT/run.sh"; then
+    test_pass
+else
+    test_fail "run.sh 默认未进入 user_manager.sh CLI"
+fi
+
+test_start "user_manager.sh 支持每周报告非交互入口"
+weekly_cli_output="$(env USER_MANAGER_NO_MAIN=1 bash -c 'set -uo pipefail; source "$1/user_manager.sh"; check_dependencies(){ return 0; }; load_config(){ return 0; }; setup_trap_handler(){ return 0; }; send_all_user_reports(){ printf "send-all-user-reports\n"; }; controller_start(){ printf "controller-start\n"; }; user_manager_handle_cli --weekly-report' _ "$PROJECT_ROOT" 2>/dev/null || true)"
+if [[ "$weekly_cli_output" == "send-all-user-reports" ]]; then
+    test_pass
+else
+    test_fail "--weekly-report 未分发到 send_all_user_reports，输出为: $weekly_cli_output"
+fi
+
+test_start "user_manager.sh 支持账户健康检查非交互入口"
+health_cli_output="$(env USER_MANAGER_NO_MAIN=1 bash -c 'set -uo pipefail; source "$1/user_manager.sh"; check_dependencies(){ return 0; }; load_config(){ return 0; }; setup_trap_handler(){ return 0; }; check_expired_suspensions(){ printf "check-expired-suspensions\n"; }; controller_start(){ printf "controller-start\n"; }; user_manager_handle_cli --account-health-check' _ "$PROJECT_ROOT" 2>/dev/null || true)"
+if [[ "$health_cli_output" == "check-expired-suspensions" ]]; then
+    test_pass
+else
+    test_fail "--account-health-check 未分发到 check_expired_suspensions，输出为: $health_cli_output"
+fi
+
+test_start "user_manager.sh 非交互入口执行初始化并传播业务退出码"
+cli_init_output="$(env USER_MANAGER_NO_MAIN=1 bash -c 'set -uo pipefail; source "$1/user_manager.sh"; check_dependencies(){ printf "deps\n"; return 0; }; load_config(){ printf "load\n"; return 0; }; setup_trap_handler(){ printf "trap\n"; return 0; }; send_all_user_reports(){ printf "send\n"; return 7; }; controller_start(){ printf "controller-start\n"; }; user_manager_handle_cli --weekly-report; printf "rc=%s\n" "$?"' _ "$PROJECT_ROOT" 2>/dev/null || true)"
+if [[ "$cli_init_output" == $'deps\nload\ntrap\nsend\nrc=7' ]]; then
+    test_pass
+else
+    test_fail "非交互入口未按 deps/load/trap/send 顺序执行或未传播退出码，输出为: $cli_init_output"
+fi
+
+test_start "send_all_user_reports: 任一用户失败时返回非零"
+report_fail_rc="$(env USER_MANAGER_NO_MAIN=1 bash -c 'set -uo pipefail; source "$1/user_manager.sh"; get_managed_usernames(){ printf "alice\n"; }; generate_user_personal_report(){ return 1; }; msg_err(){ return 0; }; msg_warn(){ return 0; }; msg_info(){ return 0; }; send_all_user_reports >/dev/null 2>&1; printf "%s" "$?"' _ "$PROJECT_ROOT" 2>/dev/null || true)"
+if [[ "$report_fail_rc" == "1" ]]; then
+    test_pass
+else
+    test_fail "send_all_user_reports 在报告生成失败时应返回 1，实际: $report_fail_rc"
+fi
+
+test_start "common.sh 及所有 lib 文件不再使用蓝/青/黄色"
+rl_color_violations=$(grep -rn '\bC_BLUE\b\|\bC_CYAN\b\|\bC_YELLOW\b\|\bC_MAGENTA\b\|\bC_BBLUE\b\|\bC_BCYAN\b\|\bC_BYELLOW\b\|\bC_BMAGENTA\b' "$PROJECT_ROOT/lib/" --include='*.sh' 2>/dev/null || true)
+if [[ -z "$rl_color_violations" ]]; then
+    test_pass
+else
+    test_fail "仍有文件使用蓝/青/黄色: $rl_color_violations"
+fi
+
+test_start "rl_read_menu_key 函数存在且支持 0/q 立即返回"
+if source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null && declare -F rl_read_menu_key &>/dev/null; then
+    rl_key="$(echo -n 0 | rl_read_menu_key)"
+    if [[ "$rl_key" == "0" ]]; then
+        test_pass
+    else
+        test_fail "rl_read_menu_key 未正确读取 '0' 键，得到: $rl_key"
+    fi
+else
+    test_fail "rl_read_menu_key 函数不存在"
 fi
 
 test_start "TUI 主循环中断 trap 不输出 return 噪声"

@@ -75,7 +75,7 @@ show_dns_whitelist() {
             echo -e "  ${C_DIM}$line${C_RESET}"
         else
             ((idx+=1))
-            printf "  ${C_BGREEN}%3d${C_RESET}  ${C_BCYAN}%s${C_RESET}\n" "$idx" "$line"
+            printf "  ${C_BGREEN}%3d${C_RESET}  ${C_RESET}%s${C_RESET}\n" "$idx" "$line"
         fi
     done < "$DNS_CONFIG_FILE"
 
@@ -105,12 +105,12 @@ add_dns_entry() {
 
     # 检查是否重复
     if grep -qxF "$domain" "$DNS_CONFIG_FILE" 2>/dev/null; then
-        msg_warn "域名 ${C_BCYAN}$domain${C_RESET} 已存在于白名单中"
+        msg_warn "域名 ${C_RESET}$domain${C_RESET} 已存在于白名单中"
         return 1
     fi
 
     echo "$domain" >> "$DNS_CONFIG_FILE"
-    msg_ok "已添加域名: ${C_BCYAN}$domain${C_RESET}"
+    msg_ok "已添加域名: ${C_RESET}$domain${C_RESET}"
     msg_info "提示: 执行 ${C_BOLD}refresh_dns_rules${C_RESET} 使更改生效"
     return 0
 }
@@ -131,12 +131,12 @@ remove_dns_entry() {
     fi
 
     if ! grep -qxF "$domain" "$DNS_CONFIG_FILE" 2>/dev/null; then
-        msg_warn "域名 ${C_BCYAN}$domain${C_RESET} 不在白名单中"
+        msg_warn "域名 ${C_RESET}$domain${C_RESET} 不在白名单中"
         return 1
     fi
 
     remove_file_entry "$DNS_CONFIG_FILE" "^${domain}$"
-    msg_ok "已移除域名: ${C_BCYAN}$domain${C_RESET}"
+    msg_ok "已移除域名: ${C_RESET}$domain${C_RESET}"
     msg_info "提示: 执行 ${C_BOLD}refresh_dns_rules${C_RESET} 使更改生效"
     return 0
 }
@@ -215,7 +215,7 @@ apply_dns_restrictions() {
     priv_iptables -X "$chain" 2>/dev/null || true
 
     # --- 创建自定义链 ---
-    msg_step "创建自定义规则链: ${C_CYAN}$chain${C_RESET}"
+    msg_step "创建自定义规则链: ${C_RESET}$chain${C_RESET}"
     priv_iptables -N "$chain"
 
     # --- 允许已建立连接 ---
@@ -251,7 +251,7 @@ apply_dns_restrictions() {
         done <<< "$ip_list"
 
         ((resolved_count+=1))
-        msg_info "  ${C_BCYAN}$domain${C_RESET} → ${C_BGREEN}$ip_count${C_RESET} 个 IP"
+        msg_info "  ${C_RESET}$domain${C_RESET} → ${C_BGREEN}$ip_count${C_RESET} 个 IP"
     done < <(_get_whitelist_domains)
 
     # --- 阻止该用户所有出站 DNS/HTTP/HTTPS ---

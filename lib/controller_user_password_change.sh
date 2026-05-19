@@ -99,7 +99,7 @@ _change_all_users_password() {
 
     msg_info "将为以下 ${C_BOLD}${#managed_users[@]}${C_RESET} 个用户重新生成密码:"
     for u in "${managed_users[@]}"; do
-        echo "    ${C_CYAN}• $u${C_RESET}"
+        echo "    ${C_RESET}• $u${C_RESET}"
     done
     echo ""
 

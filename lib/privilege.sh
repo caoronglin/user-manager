@@ -21,6 +21,10 @@ readonly -A PRIV_CMD_WHITELIST=(
     ["useradd"]="$ACL_LEVEL_ADMIN"
     ["usermod"]="$ACL_LEVEL_ADMIN"
     ["userdel"]="$ACL_LEVEL_ADMIN"
+    ["deluser"]="$ACL_LEVEL_ADMIN"
+    ["chpasswd"]="$ACL_LEVEL_ADMIN"
+    ["passwd"]="$ACL_LEVEL_ADMIN"
+    ["chage"]="$ACL_LEVEL_ADMIN"
     ["groupadd"]="$ACL_LEVEL_ADMIN"
     ["groupmod"]="$ACL_LEVEL_ADMIN"
     ["groupdel"]="$ACL_LEVEL_ADMIN"
@@ -52,6 +56,8 @@ readonly -A PRIV_CMD_WHITELIST=(
     # 备份命令 - 需要 admin 级别
     ["rsnapshot"]="$ACL_LEVEL_ADMIN"
     ["tar"]="$ACL_LEVEL_ADMIN"
+    ["gzip"]="$ACL_LEVEL_ADMIN"
+    ["gunzip"]="$ACL_LEVEL_ADMIN"
     ["rsync"]="$ACL_LEVEL_ADMIN"
     
     # 网络/防火墙命令 - 需要 admin 级别
@@ -72,7 +78,6 @@ readonly -A PRIV_CMD_WHITELIST=(
     ["pkill"]="$ACL_LEVEL_ADMIN"
     ["killall"]="$ACL_LEVEL_ADMIN"
     ["visudo"]="$ACL_LEVEL_ROOT"
-    ["sudo"]="$ACL_LEVEL_USER"
     
     # 硬件信息命令 - 需要 admin 级别
     ["dmidecode"]="$ACL_LEVEL_ADMIN"
@@ -222,6 +227,7 @@ priv_capture_state() {
 priv_useradd() { priv_exec useradd "$@"; }
 priv_usermod() { priv_exec usermod "$@"; }
 priv_userdel() { priv_exec userdel "$@"; }
+priv_deluser() { priv_exec deluser "$@"; }
 priv_groupadd() { priv_exec groupadd "$@"; }
 priv_groupmod() { priv_exec groupmod "$@"; }
 priv_groupdel() { priv_exec groupdel "$@"; }
@@ -262,8 +268,8 @@ priv_gzip() { priv_exec gzip "$@"; }
 priv_gunzip() { priv_exec gunzip "$@"; }
 priv_chpasswd() { priv_exec chpasswd "$@"; }
 priv_passwd() { priv_exec passwd "$@"; }
+priv_chage() { priv_exec chage "$@"; }
 priv_visudo() { priv_exec visudo "$@"; }
-priv_sudo() { priv_exec sudo "$@"; }
 
 # 硬件信息命令封装
 priv_dmidecode() { priv_exec dmidecode "$@"; }
@@ -335,21 +341,21 @@ priv_init
 
 # 权限矩阵定义
 declare -A PERMISSION_MATRIX=(
-    ["user:create"]="admin"
-    ["user:delete"]="admin"
-    ["user:update"]="user"
-    ["user:read"]="guest"
-    ["quota:set"]="admin"
-    ["quota:read"]="user"
-    ["firewall:add"]="admin"
-    ["firewall:delete"]="admin"
-    ["firewall:list"]="user"
-    ["backup:create"]="user"
-    ["backup:restore"]="admin"
-    ["backup:delete"]="admin"
-    ["email:send"]="user"
-    ["system:modify"]="admin"
-    ["system:read"]="guest"
+    ["user:create"]="$ACL_LEVEL_ADMIN"
+    ["user:delete"]="$ACL_LEVEL_ADMIN"
+    ["user:update"]="$ACL_LEVEL_USER"
+    ["user:read"]="$ACL_LEVEL_GUEST"
+    ["quota:set"]="$ACL_LEVEL_ADMIN"
+    ["quota:read"]="$ACL_LEVEL_USER"
+    ["firewall:add"]="$ACL_LEVEL_ADMIN"
+    ["firewall:delete"]="$ACL_LEVEL_ADMIN"
+    ["firewall:list"]="$ACL_LEVEL_USER"
+    ["backup:create"]="$ACL_LEVEL_USER"
+    ["backup:restore"]="$ACL_LEVEL_ADMIN"
+    ["backup:delete"]="$ACL_LEVEL_ADMIN"
+    ["email:send"]="$ACL_LEVEL_USER"
+    ["system:modify"]="$ACL_LEVEL_ADMIN"
+    ["system:read"]="$ACL_LEVEL_GUEST"
 )
 
 # 权限检查统一入口
@@ -359,11 +365,11 @@ check_permission() {
     local context="${3:-}"
     
     local key="${resource}:${action}"
-    local required_level="${PERMISSION_MATRIX[$key]:-admin}"
+    local required_level="${PERMISSION_MATRIX[$key]:-$ACL_LEVEL_ADMIN}"
     local current_level
     current_level=$(get_current_permission_level)
     
-    if (( current_level >= required_level )); then
+    if (( current_level <= required_level )); then
         return 0
     fi
     
@@ -399,10 +405,56 @@ run_with_permission() {
 get_current_permission_level() {
     if is_root; then
         echo "$ACL_LEVEL_ROOT"
+    elif declare -F acl_get_current_level &>/dev/null; then
+        acl_get_current_level
     elif declare -F get_acl_level &>/dev/null; then
         get_acl_level
     else
         echo "$ACL_LEVEL_GUEST"
     fi
+}
+
+# ============================================================
+# 统一 rl_ 前缀权限封装层（新增 v2）
+# ============================================================
+
+# 检查 sudo 是否可用（非 root 时）
+rl_priv_can_sudo() {
+    if is_root; then
+        return 0
+    fi
+    command -v sudo &>/dev/null || return 1
+}
+
+# 统一特权执行入口（兼容现有 priv_exec）
+rl_priv_exec() {
+    priv_exec "$@"
+}
+
+# 安全写系统文件（通过 tee）
+# 用法：rl_priv_write_file <path> <content>
+rl_priv_write_file() {
+    local rl_target="$1"
+    local rl_content="$2"
+    if [[ -z "$rl_target" ]]; then
+        msg_err "rl_priv_write_file: 目标路径不能为空"
+        return 1
+    fi
+    printf '%s\n' "$rl_content" | priv_exec tee "$rl_target" >/dev/null
+}
+
+# 统一 systemctl 封装
+rl_priv_systemctl() {
+    priv_exec systemctl "$@"
+}
+
+# 统一 setquota 封装
+rl_priv_setquota() {
+    priv_exec setquota "$@"
+}
+
+# 统一 repquota 封装
+rl_priv_repquota() {
+    priv_exec repquota "$@"
 }
 fi

@@ -52,11 +52,11 @@ ICON_HISTORY="📚"
 # ============================================================
 
 # 图标颜色
-C_ICON="${C_CYAN}"
+C_ICON="${C_RESET}"
 C_LABEL="${C_WHITE}"
 C_DESC="${C_DIM}"
-C_HOTKEY="${C_YELLOW}"
-C_BORDER="${C_BLUE}"
+C_HOTKEY="${C_RESET}"
+C_BORDER="${C_RESET}"
 C_HIGHLIGHT="${C_BGREEN}"
 
 # 状态颜色
@@ -105,7 +105,7 @@ draw_menu_submenu_icon() {
     local num="$1" 
     local label="$2"
     
-    printf "  ${C_DIM}[%s]${C_RESET} ${C_BYELLOW}%s${C_RESET} ${C_BYELLOW}›${C_RESET}\n" \
+    printf "  ${C_DIM}[%s]${C_RESET} ${C_RESET}%s${C_RESET} ${C_RESET}›${C_RESET}\n" \
         "$num" "$label"
 }
 
@@ -113,7 +113,7 @@ draw_menu_submenu_icon() {
 draw_menu_exit_icon() {
     local label="${1:-返回}"
     
-    printf "\n  ${C_DIM}[%s]${C_RESET} ${C_BYELLOW}%s${C_RESET} ${C_BYELLOW}⏎${C_RESET}\n\n" \
+    printf "\n  ${C_DIM}[%s]${C_RESET} ${C_RESET}%s${C_RESET} ${C_RESET}⏎${C_RESET}\n\n" \
         "0" "$label"
 }
 
@@ -198,9 +198,9 @@ draw_progress_bar() {
     if (( percent >= 80 )); then
         color="${C_BGREEN}"
     elif (( percent >= 60 )); then
-        color="${C_BYELLOW}"
+        color="${C_RESET}"
     else
-        color="${C_CYAN}"
+        color="${C_RESET}"
     fi
 
     echo -e "${C_ICON}${C_BOLD}$label: ${C_BOLD}${percent}%${C_RESET} ${color}${bar_filled}${C_RESET}${C_MUTED}${bar_empty}${C_RESET} ● ●"
@@ -241,7 +241,7 @@ interactive_menu() {
     local -a filtered_indices=()
     
     while true; do
-        echo -e "${C_ICON}$ICON_SEARCH${C_RESET} ${C_DIM}搜索:_${C_RESET} ${search} ${C_DIM}[0]${C_RESET}${C_CYAN} | ESC${C_RESET}"
+        echo -e "${C_ICON}$ICON_SEARCH${C_RESET} ${C_DIM}搜索:_${C_RESET} ${search} ${C_DIM}[0]${C_RESET}${C_RESET} | ESC${C_RESET}"
         if ! read -rs -n 1; then
             break
         fi
@@ -305,11 +305,11 @@ search_menu_items() {
     done
     
     if [[ ${#matches[@]} -eq 0 ]]; then
-        echo -e "${C_BYELLOW}无${ICON_WARNING} 匹配项: $desc${C_RESET}"
+        echo -e "${C_RESET}无${ICON_WARNING} 匹配项: $desc${C_RESET}"
         return 1
     fi
     
-    echo -e "${C_BYELLOW}找到 ${#matches[@]} 个匹配项:${C_RESET}"
+    echo -e "${C_RESET}找到 ${#matches[@]} 个匹配项:${C_RESET}"
 }
 
 # ============================================================

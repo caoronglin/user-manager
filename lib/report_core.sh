@@ -812,7 +812,8 @@ send_all_user_reports() {
     done
 
     echo ""
-    msg_info "发送完成: ${C_BGREEN}成功 ${sent}${C_RESET}, ${C_BRED}失败 ${failed}${C_RESET}, ${C_BYELLOW}跳过 ${skipped}${C_RESET}"
+    msg_info "发送完成: ${C_BGREEN}成功 ${sent}${C_RESET}, ${C_BRED}失败 ${failed}${C_RESET}, ${C_RESET}跳过 ${skipped}${C_RESET}"
+    [[ $failed -eq 0 ]]
 }
 
 # ============================================================
@@ -911,7 +912,7 @@ analyze_operation_trends() {
         local action count
         action=$(echo "$line" | awk '{print $1}')
         count=$(echo "$line" | awk '{print $2}')
-        printf "  ${C_CYAN}%-20s${C_RESET} ${C_BOLD}%d${C_RESET}\n" "$action" "$count"
+        printf "  ${C_RESET}%-20s${C_RESET} ${C_BOLD}%d${C_RESET}\n" "$action" "$count"
     done
 
     # 2. 按日期统计（最近 14 天）
@@ -932,7 +933,7 @@ analyze_operation_trends() {
         for (( i = 0; i < count && i < 40; i++ )); do
             bar="${bar}█"
         done
-        printf "  ${C_DIM}%-12s${C_RESET} ${C_BCYAN}%-40s${C_RESET} ${C_BOLD}%d${C_RESET}\n" "$date" "$bar" "$count"
+        printf "  ${C_DIM}%-12s${C_RESET} ${C_RESET}%-40s${C_RESET} ${C_BOLD}%d${C_RESET}\n" "$date" "$bar" "$count"
     done
 
     # 3. 最活跃用户 TOP 10
@@ -944,7 +945,7 @@ analyze_operation_trends() {
     } END {
         for (u in users) printf "%d %s\n", users[u], u
     }' | sort -rn | head -10 | while read -r count username; do
-        printf "  ${C_BOLD}%-16s${C_RESET} ${C_CYAN}%d 次操作${C_RESET}\n" "$username" "$count"
+        printf "  ${C_BOLD}%-16s${C_RESET} ${C_RESET}%d 次操作${C_RESET}\n" "$username" "$count"
     done
 
     # 4. 操作时段(小时)分布
@@ -1056,7 +1057,7 @@ analyze_anomalies() {
 
     if [[ -n "$unknown_ops" ]]; then
         echo "$unknown_ops" | while IFS= read -r op; do
-            msg_warn "  未知操作: ${C_BYELLOW}$op${C_RESET}"
+            msg_warn "  未知操作: ${C_RESET}$op${C_RESET}"
         done
     else
         msg_ok "  所有操作类型均已知"
@@ -1107,8 +1108,8 @@ generate_log_summary() {
     echo ""
     draw_info_card "创建操作:" "${C_BGREEN}$creates${C_RESET}"
     draw_info_card "删除操作:" "${C_BRED}$deletes${C_RESET}"
-    draw_info_card "更新操作:" "${C_BYELLOW}$updates${C_RESET}"
-    draw_info_card "密码修改:" "${C_BCYAN}$pwd_changes${C_RESET}"
+    draw_info_card "更新操作:" "${C_RESET}$updates${C_RESET}"
+    draw_info_card "密码修改:" "${C_RESET}$pwd_changes${C_RESET}"
 
     # 唯一用户数
     local unique_users
@@ -1147,9 +1148,9 @@ show_user_creation_log() {
         case "$action" in
             *create*|*CREATE*) action_color="$C_BGREEN" ;;
             *delete*|*DELETE*) action_color="$C_BRED" ;;
-            *update*|*UPDATE*|*modify*) action_color="$C_BYELLOW" ;;
+            *update*|*UPDATE*|*modify*) action_color="$C_RESET" ;;
             *suspend*|*disable*) action_color="$C_BRED" ;;
-            *enable*|*restore*) action_color="$C_BCYAN" ;;
+            *enable*|*restore*) action_color="$C_RESET" ;;
         esac
 
         printf "  ${C_DIM}%-20s${C_RESET} ${C_BOLD}%-14s${C_RESET} ${action_color}%-10s${C_RESET} %-10s %-16s %-20s %s\n" \
@@ -1188,9 +1189,9 @@ query_user_history() {
         case "$action" in
             *create*|*CREATE*) action_color="$C_BGREEN" ;;
             *delete*|*DELETE*) action_color="$C_BRED" ;;
-            *update*|*UPDATE*|*modify*) action_color="$C_BYELLOW" ;;
+            *update*|*UPDATE*|*modify*) action_color="$C_RESET" ;;
             *suspend*|*disable*) action_color="$C_BRED" ;;
-            *enable*|*restore*) action_color="$C_BCYAN" ;;
+            *enable*|*restore*) action_color="$C_RESET" ;;
         esac
 
         printf "  ${C_DIM}%-20s${C_RESET} ${action_color}%-10s${C_RESET} %-10s %-16s %-20s %s\n" \
@@ -1232,7 +1233,7 @@ query_by_date_range() {
             case "$action" in
                 *create*|*CREATE*) action_color="$C_BGREEN" ;;
                 *delete*|*DELETE*) action_color="$C_BRED" ;;
-                *update*|*UPDATE*|*modify*) action_color="$C_BYELLOW" ;;
+                *update*|*UPDATE*|*modify*) action_color="$C_RESET" ;;
             esac
 
             printf "  ${C_DIM}%-20s${C_RESET} ${C_BOLD}%-14s${C_RESET} ${action_color}%-10s${C_RESET} %-10s %-16s %-20s %s\n" \
@@ -1253,14 +1254,14 @@ generate_user_statistics() {
     echo ""
 
     # 用户数概览
-    draw_info_card "托管用户总数:" "$user_count" "$C_BBLUE"
+    draw_info_card "托管用户总数:" "$user_count" "$C_RESET"
 
     # 暂停用户统计
     local suspended_count=0
     if [[ -f "$DISABLED_USERS_FILE" ]]; then
         suspended_count=$(grep -c '.' "$DISABLED_USERS_FILE" 2>/dev/null || echo 0)
     fi
-    draw_info_card "暂停用户:" "$suspended_count" "$C_BYELLOW"
+    draw_info_card "暂停用户:" "$suspended_count" "$C_RESET"
 
     # 操作日志统计
     if [[ -f "$USER_CREATION_LOG" ]]; then
@@ -1278,7 +1279,7 @@ generate_user_statistics() {
         draw_info_card "总操作次数:" "$total_ops" "$C_BOLD"
         draw_info_card "创建操作:" "$create_ops" "$C_BGREEN"
         draw_info_card "删除操作:" "$delete_ops" "$C_BRED"
-        draw_info_card "更新操作:" "$update_ops" "$C_BYELLOW"
+        draw_info_card "更新操作:" "$update_ops" "$C_RESET"
     fi
 
     # 磁盘分布统计
@@ -1302,7 +1303,7 @@ generate_user_statistics() {
         done
 
         local color="$C_RESET"
-        (( disk_user_count > 0 )) && color="$C_BCYAN"
+        (( disk_user_count > 0 )) && color="$C_RESET"
         printf "  ${C_DIM}data${idx}${C_RESET}  ${color}%3d 个用户${C_RESET}\n" "$disk_user_count"
     done
 
@@ -1392,12 +1393,12 @@ generate_resource_report() {
 
         printf "  %-18s " "$username"
         if [[ -n "$cpu" ]]; then
-            printf "${C_BCYAN}%-12s${C_RESET} " "$cpu"
+            printf "${C_RESET}%-12s${C_RESET} " "$cpu"
         else
             printf "${C_DIM}%-12s${C_RESET} " "-"
         fi
         if [[ -n "$memory" ]]; then
-            printf "${C_BCYAN}%-12s${C_RESET} " "$memory"
+            printf "${C_RESET}%-12s${C_RESET} " "$memory"
         else
             printf "${C_DIM}%-12s${C_RESET} " "-"
         fi
@@ -1475,7 +1476,7 @@ show_user_resource_usage() {
         if (( cpu_val >= 80 )); then
             cpu_color="$C_BRED"
         elif (( cpu_val >= 50 )); then
-            cpu_color="$C_BYELLOW"
+            cpu_color="$C_RESET"
         fi
 
         printf "  ${C_BOLD}%-16s${C_RESET} %-8s ${cpu_color}%-10s${C_RESET} %-12s %-12s " \
@@ -1530,7 +1531,7 @@ show_single_user_resource() {
     sessions=$(who 2>/dev/null | grep "^${username} " || true)
     if [[ -n "$sessions" ]]; then
         echo "$sessions" | while IFS= read -r line; do
-            echo "  ${C_CYAN}$line${C_RESET}"
+            echo "  ${C_RESET}$line${C_RESET}"
         done
     else
         msg_info "  当前无活跃会话"

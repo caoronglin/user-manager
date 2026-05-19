@@ -76,6 +76,16 @@ run_p1() {
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
         bash "$SCRIPT_DIR/test_user_core.sh"
 
+    run_step "P1 resource core" env \
+        SUDO_NONINTERACTIVE=1 \
+        USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
+        USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        bash "$SCRIPT_DIR/test_resource_core.sh"
+
+    run_step "P1 rl_privilege" bash "$SCRIPT_DIR/test_rl_privilege.sh"
+
+    run_step "P1 standalone scripts" bash "$SCRIPT_DIR/test_scripts.sh"
+
     run_step "P1 audit integration" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \

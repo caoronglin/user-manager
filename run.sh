@@ -1,12 +1,13 @@
 #!/bin/bash
-# run.sh - TUI 主线启动入口
+# run.sh - 用户管理主线入口
+# 默认进入 noTUI/CLI 经典界面；--tui 显式进入 TUI
 cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 
 case "${1:-}" in
-    --no-tui|--cli)
+    --tui)
         shift
-        exec bash user_manager.sh "$@"
+        exec bash tui_manager.sh "$@"
         ;;
 esac
 
-exec bash tui_manager.sh "$@"
+exec bash user_manager.sh "$@"

@@ -46,7 +46,7 @@ if [[ "$1" == "status" && $# -eq 1 ]]; then
     cat <<'OUT'
 Status
 |- Number of jail: 3
-`- Jail list: sshd, nginx-badbots, recidive
+`- Jail list: sshd, recidive
 OUT
 elif [[ "$1" == "status" && "$2" == "sshd" ]]; then
     cat <<'OUT'
@@ -57,16 +57,6 @@ Status for the jail: sshd
 `- Actions
    |- Currently banned: 1
    `- Total banned: 3
-OUT
-elif [[ "$1" == "status" && "$2" == "nginx-badbots" ]]; then
-    cat <<'OUT'
-Status for the jail: nginx-badbots
-|- Filter
-|  |- Currently failed: 4
-|  `- Total failed: 20
-`- Actions
-   |- Currently banned: 2
-   `- Total banned: 6
 OUT
 else
     exit 1
@@ -109,8 +99,7 @@ test_start "模块可加载并导出核心函数"
 if declare -F security_baseline_get_sshd_effective_value >/dev/null && \
    declare -F security_baseline_show_fail2ban_status >/dev/null && \
    declare -F security_baseline_write_fail2ban_sshd_jail >/dev/null && \
-   declare -F security_baseline_fail2ban_list_jails >/dev/null && \
-   declare -F security_baseline_write_fail2ban_nginx_jail >/dev/null; then
+   declare -F security_baseline_fail2ban_list_jails >/dev/null; then
     test_pass
 else
     test_fail "security_baseline_core.sh 未正确导出核心函数"
@@ -169,15 +158,15 @@ fi
 
 test_start "列出全部 fail2ban jail 名称"
 jail_list_output="$(security_baseline_fail2ban_list_jails)"
-if [[ "$jail_list_output" == $'sshd\nnginx-badbots\nrecidive' ]]; then
+if [[ "$jail_list_output" == $'sshd\nrecidive' ]]; then
     test_pass
 else
     test_fail "jail 列表解析不正确: $jail_list_output"
 fi
 
 test_start "查看指定 fail2ban jail 状态"
-target_jail_output="$(security_baseline_fail2ban_show_jail_status nginx-badbots)"
-if [[ "$target_jail_output" == *"Status for the jail: nginx-badbots"* ]] && [[ "$target_jail_output" == *"Currently banned: 2"* ]]; then
+target_jail_output="$(security_baseline_fail2ban_show_jail_status sshd)"
+if [[ "$target_jail_output" == *"Status for the jail: sshd"* ]] && [[ "$target_jail_output" == *"Currently banned: 1"* ]]; then
     test_pass
 else
     test_fail "指定 jail 状态输出不正确"
@@ -189,39 +178,6 @@ if [[ "$sshd_status_output" == *"Status for the jail: sshd"* ]]; then
     test_pass
 else
     test_fail "sshd jail helper 未返回预期状态"
-fi
-
-test_start "查看 nginx jail 状态 helper"
-nginx_status_output="$(security_baseline_fail2ban_show_nginx_status)"
-if [[ "$nginx_status_output" == *"Status for the jail: nginx-badbots"* ]] && [[ "$nginx_status_output" == *"Currently banned: 2"* ]]; then
-    test_pass
-else
-    test_fail "nginx jail helper 未返回预期状态"
-fi
-
-test_start "写入最小 fail2ban nginx jail 配置"
-if security_baseline_write_fail2ban_nginx_jail >/dev/null 2>&1; then
-    nginx_jail_file="$SECURITY_BASELINE_FAIL2BAN_JAIL_DIR/nginx-badbots.local"
-    if [[ -f "$nginx_jail_file" ]] && grep -q '^enabled = true$' "$nginx_jail_file" && grep -q '^filter = nginx-badbots$' "$nginx_jail_file"; then
-        test_pass
-    else
-        test_fail "nginx jail 文件不存在或内容不正确"
-    fi
-else
-    test_fail "写入 fail2ban nginx jail 失败"
-fi
-
-test_start "应用 nginx jail 时触发 fail2ban enable 与 restart"
-rm -f "$TEST_TMPDIR/systemctl.log"
-if security_baseline_configure_fail2ban_nginx_jail >/dev/null 2>&1; then
-    nginx_systemctl_log="$(<"$TEST_TMPDIR/systemctl.log")"
-    if [[ "$nginx_systemctl_log" == *"enable enable fail2ban"* ]] && [[ "$nginx_systemctl_log" == *"restart restart fail2ban"* ]]; then
-        test_pass
-    else
-        test_fail "nginx jail 应用时未记录预期的 systemctl enable/restart"
-    fi
-else
-    test_fail "配置 fail2ban nginx jail 失败"
 fi
 
 test_start "查看最近认证失败优先读取 journalctl"

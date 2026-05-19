@@ -10,6 +10,22 @@ source "$SCRIPT_DIR/test_framework.sh"
 
 test_suite_start "TUI Core"
 
+test_start "draw_usage_bar 在 C locale 下使用 ASCII 避免进度条乱码"
+usage_bar_output="$(env LC_ALL=C LANG=C bash -c 'set -uo pipefail; source "$1/lib/common.sh"; C_BGREEN=""; C_DIM=""; C_RESET=""; draw_usage_bar 1 12' _ "$PROJECT_ROOT")"
+if [[ "$usage_bar_output" == *"-"* ]] && [[ "$usage_bar_output" != *"▓"* ]] && [[ "$usage_bar_output" != *"░"* ]]; then
+    test_pass
+else
+    test_fail "C locale 下 draw_usage_bar 仍输出 Unicode 块字符，输出为: $usage_bar_output"
+fi
+
+test_start "tui_progress_draw 在非 UTF-8 终端下使用 ASCII"
+tui_progress_ascii_output="$(env LC_ALL=C LANG=C bash -c 'set -uo pipefail; source "$1/lib/tui_core.sh"; TUI_HAS_UTF8=false; TUI_COLOR_SUCCESS=2; TUI_COLOR_MUTED=8; tui_move(){ :; }; tui_fg(){ :; }; tui_reset(){ :; }; tui_progress_draw 1 1 12 10 CPU' _ "$PROJECT_ROOT")"
+if [[ "$tui_progress_ascii_output" == *"#"* ]] && [[ "$tui_progress_ascii_output" == *"-"* ]] && [[ "$tui_progress_ascii_output" != *"█"* ]] && [[ "$tui_progress_ascii_output" != *"░"* ]]; then
+    test_pass
+else
+    test_fail "非 UTF-8 TUI 进度条仍输出 Unicode 块字符，输出为: $tui_progress_ascii_output"
+fi
+
 test_start "长菜单会根据终端高度启用分页"
 menu_paging_output="$(bash -c 'set -uo pipefail; source "$1/lib/tui_core.sh"; TUI_LINES=12; TUI_COLS=80; TUI_COLOR_HIGHLIGHT=51; TUI_COLOR_FG=255; TUI_COLOR_MUTED=242; tui_draw_box(){ :; }; tui_move(){ :; }; tui_fg(){ :; }; tui_reset(){ :; }; tui_reverse(){ :; }; tui_statusbar_draw(){ :; }; tui_menu_create "超长菜单" A B C D E F G H I J K L; tui_menu_draw 2 2 40; printf "visible=%s offset=%s total=%s" "$TUI_MENU_VISIBLE_ITEMS" "$TUI_MENU_SCROLL_OFFSET" "${#TUI_MENU_ITEMS[@]}"' _ "$PROJECT_ROOT")"
 if [[ "$menu_paging_output" == *"visible="* ]] && [[ "$menu_paging_output" != *"visible=12"* ]] && [[ "$menu_paging_output" == *"total=12"* ]]; then

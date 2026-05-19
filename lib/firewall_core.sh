@@ -16,7 +16,7 @@ check_ufw_status() {
     local status
     status=$(priv_ufw status 2>/dev/null | head -n1)
     if [[ "$status" =~ inactive ]]; then
-        msg_warn "UFW 防火墙当前状态: ${C_BYELLOW}未启用${C_RESET}"
+        msg_warn "UFW 防火墙当前状态: ${C_RESET}未启用${C_RESET}"
         return 2
     fi
 
@@ -27,13 +27,13 @@ check_ufw_status() {
 init_ufw() {
     draw_header "初始化 UFW 防火墙"
 
-    msg_step "设置默认策略: ${C_CYAN}拒绝所有入站${C_RESET}"
+    msg_step "设置默认策略: ${C_RESET}拒绝所有入站${C_RESET}"
     priv_ufw default deny incoming
 
-    msg_step "设置默认策略: ${C_CYAN}允许所有出站${C_RESET}"
+    msg_step "设置默认策略: ${C_RESET}允许所有出站${C_RESET}"
     priv_ufw default allow outgoing
 
-    msg_step "添加安全规则: ${C_CYAN}允许 SSH 连接${C_RESET}"
+    msg_step "添加安全规则: ${C_RESET}允许 SSH 连接${C_RESET}"
     priv_ufw allow ssh
 
     msg_step "启用 UFW 防火墙..."
@@ -67,7 +67,7 @@ add_port_rule() {
 
     # 验证协议
     if [[ "$protocol" != "tcp" && "$protocol" != "udp" ]]; then
-        msg_err "无效的协议: ${C_BOLD}$protocol${C_RESET}，只支持 ${C_CYAN}tcp${C_RESET} 或 ${C_CYAN}udp${C_RESET}"
+        msg_err "无效的协议: ${C_BOLD}$protocol${C_RESET}，只支持 ${C_RESET}tcp${C_RESET} 或 ${C_RESET}udp${C_RESET}"
         return 1
     fi
 
@@ -83,7 +83,7 @@ add_port_rule() {
     local rule_desc="Port $port/$protocol for user $username"
 
     if [[ -n "$from_ip" ]]; then
-        msg_step "添加规则: 允许 ${C_BCYAN}$from_ip${C_RESET} → 端口 ${C_BGREEN}$port${C_RESET}/${C_CYAN}$protocol${C_RESET} (用户: ${C_BOLD}$username${C_RESET})"
+        msg_step "添加规则: 允许 ${C_RESET}$from_ip${C_RESET} → 端口 ${C_BGREEN}$port${C_RESET}/${C_RESET}$protocol${C_RESET} (用户: ${C_BOLD}$username${C_RESET})"
         if priv_ufw allow from "$from_ip" to any port "$port" proto "$protocol" comment "$rule_desc"; then
             msg_ok "规则添加成功"
         else
@@ -91,7 +91,7 @@ add_port_rule() {
             return 1
         fi
     else
-        msg_step "添加规则: 允许 ${C_BCYAN}任意来源${C_RESET} → 端口 ${C_BGREEN}$port${C_RESET}/${C_CYAN}$protocol${C_RESET} (用户: ${C_BOLD}$username${C_RESET})"
+        msg_step "添加规则: 允许 ${C_RESET}任意来源${C_RESET} → 端口 ${C_BGREEN}$port${C_RESET}/${C_RESET}$protocol${C_RESET} (用户: ${C_BOLD}$username${C_RESET})"
         if priv_ufw allow "$port/$protocol" comment "$rule_desc"; then
             msg_ok "规则添加成功"
         else
@@ -146,7 +146,7 @@ delete_port_rule() {
 
     check_ufw_status || return 1
 
-    msg_step "删除防火墙规则: 端口 ${C_BGREEN}$port${C_RESET}/${C_CYAN}$protocol${C_RESET} (用户: ${C_BOLD}$username${C_RESET})"
+    msg_step "删除防火墙规则: 端口 ${C_BGREEN}$port${C_RESET}/${C_RESET}$protocol${C_RESET} (用户: ${C_BOLD}$username${C_RESET})"
 
     # 查找匹配的规则编号（从大到小排序避免编号偏移）
     local rule_nums
@@ -250,9 +250,9 @@ list_firewall_rules() {
         elif [[ "$line" =~ DENY ]]; then
             echo -e "  ${C_BRED}$line${C_RESET}"
         elif [[ "$line" =~ REJECT ]]; then
-            echo -e "  ${C_BYELLOW}$line${C_RESET}"
+            echo -e "  ${C_RESET}$line${C_RESET}"
         elif [[ "$line" =~ LIMIT ]]; then
-            echo -e "  ${C_BCYAN}$line${C_RESET}"
+            echo -e "  ${C_RESET}$line${C_RESET}"
         else
             echo -e "  ${C_DIM}$line${C_RESET}"
         fi
@@ -293,9 +293,9 @@ list_user_firewall_rules() {
     local found=0
     while IFS=: read -r user port protocol source date; do
         if [[ "$user" == "$username" ]]; then
-            local proto_color="$C_CYAN"
-            [[ "$protocol" == "udp" ]] && proto_color="$C_YELLOW"
-            printf "  ${C_BGREEN}%-12s${C_RESET} ${proto_color}%-10s${C_RESET} ${C_BCYAN}%-18s${C_RESET} ${C_DIM}%-14s${C_RESET}\n" \
+            local proto_color="$C_RESET"
+            [[ "$protocol" == "udp" ]] && proto_color="$C_RESET"
+            printf "  ${C_BGREEN}%-12s${C_RESET} ${proto_color}%-10s${C_RESET} ${C_RESET}%-18s${C_RESET} ${C_DIM}%-14s${C_RESET}\n" \
                 "$port" "$protocol" "$source" "$date"
             ((found+=1))
         fi
@@ -328,9 +328,9 @@ show_port_usage() {
     local total=0
     while IFS=: read -r user port protocol source date; do
         [[ -z "$user" ]] && continue
-        local proto_color="$C_CYAN"
-        [[ "$protocol" == "udp" ]] && proto_color="$C_YELLOW"
-        printf "  ${C_BOLD}%-16s${C_RESET} ${C_BGREEN}%-12s${C_RESET} ${proto_color}%-10s${C_RESET} ${C_BCYAN}%-18s${C_RESET} ${C_DIM}%-14s${C_RESET}\n" \
+        local proto_color="$C_RESET"
+        [[ "$protocol" == "udp" ]] && proto_color="$C_RESET"
+        printf "  ${C_BOLD}%-16s${C_RESET} ${C_BGREEN}%-12s${C_RESET} ${proto_color}%-10s${C_RESET} ${C_RESET}%-18s${C_RESET} ${C_DIM}%-14s${C_RESET}\n" \
             "$user" "$port" "$protocol" "$source" "$date"
         ((total+=1))
     done < "$USER_PORT_MAP_FILE"
@@ -386,7 +386,7 @@ add_port_range() {
 
     check_ufw_status || return 1
 
-    msg_step "为用户 ${C_BOLD}$username${C_RESET} 添加端口范围: ${C_BGREEN}$start_port-$end_port${C_RESET}/${C_CYAN}$protocol${C_RESET}"
+    msg_step "为用户 ${C_BOLD}$username${C_RESET} 添加端口范围: ${C_BGREEN}$start_port-$end_port${C_RESET}/${C_RESET}$protocol${C_RESET}"
 
     local rule_desc="Port range $start_port:$end_port/$protocol for user $username"
     if priv_ufw allow "$start_port:$end_port/$protocol" comment "$rule_desc"; then
@@ -444,11 +444,11 @@ apply_service_template() {
             draw_header "应用数据库服务模板"
             echo ""
             msg_info "选择数据库类型:"
-            echo -e "  ${C_DIM}[${C_RESET}${C_BCYAN} 1${C_RESET}${C_DIM}]${C_RESET}  MySQL      ${C_DIM}(3306/tcp)${C_RESET}"
-            echo -e "  ${C_DIM}[${C_RESET}${C_BCYAN} 2${C_RESET}${C_DIM}]${C_RESET}  PostgreSQL ${C_DIM}(5432/tcp)${C_RESET}"
-            echo -e "  ${C_DIM}[${C_RESET}${C_BCYAN} 3${C_RESET}${C_DIM}]${C_RESET}  MongoDB    ${C_DIM}(27017/tcp)${C_RESET}"
+            echo -e "  ${C_DIM}[${C_RESET}${C_RESET} 1${C_RESET}${C_DIM}]${C_RESET}  MySQL      ${C_DIM}(3306/tcp)${C_RESET}"
+            echo -e "  ${C_DIM}[${C_RESET}${C_RESET} 2${C_RESET}${C_DIM}]${C_RESET}  PostgreSQL ${C_DIM}(5432/tcp)${C_RESET}"
+            echo -e "  ${C_DIM}[${C_RESET}${C_RESET} 3${C_RESET}${C_DIM}]${C_RESET}  MongoDB    ${C_DIM}(27017/tcp)${C_RESET}"
             echo ""
-            echo -ne "  ${C_BYELLOW}❯${C_RESET} "
+            echo -ne "  ${C_RESET}❯${C_RESET} "
             read -r db_choice
             case "$db_choice" in
                 1|mysql)
@@ -471,7 +471,7 @@ apply_service_template() {
             ;;
         ssh)
             draw_header "应用 SSH 服务模板"
-            echo -ne "  ${C_BYELLOW}❯${C_RESET} 输入 SSH 端口 ${C_DIM}(默认 22)${C_RESET}: "
+            echo -ne "  ${C_RESET}❯${C_RESET} 输入 SSH 端口 ${C_DIM}(默认 22)${C_RESET}: "
             read -r ssh_port
             ssh_port="${ssh_port:-22}"
             if ! [[ "$ssh_port" =~ ^[0-9]+$ ]] || (( ssh_port < 1 || ssh_port > 65535 )); then
@@ -488,7 +488,7 @@ apply_service_template() {
             ;;
         *)
             msg_err "未知的服务类型: ${C_BOLD}$service${C_RESET}"
-            msg_info "支持的类型: ${C_CYAN}web${C_RESET} | ${C_CYAN}database${C_RESET} | ${C_CYAN}ssh${C_RESET} | ${C_CYAN}jupyter${C_RESET}"
+            msg_info "支持的类型: ${C_RESET}web${C_RESET} | ${C_RESET}database${C_RESET} | ${C_RESET}ssh${C_RESET} | ${C_RESET}jupyter${C_RESET}"
             return 1
             ;;
     esac
@@ -663,7 +663,7 @@ delete_port_rule_safe() {
         sort -rn)
     
     if [[ -z "$rule_nums" ]]; then
-        msg_warn "未找到用户 ${C_BOLD}$username${C_RESET} 的端口 ${C_BGREEN}$port${C_RESET}/${C_CYAN}$protocol${C_RESET} 规则"
+        msg_warn "未找到用户 ${C_BOLD}$username${C_RESET} 的端口 ${C_BGREEN}$port${C_RESET}/${C_RESET}$protocol${C_RESET} 规则"
         return 0
     fi
     

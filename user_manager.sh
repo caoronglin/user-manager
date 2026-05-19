@@ -39,7 +39,44 @@ main() {
         action_register_defaults_once
     fi
 
+    local cli_status=0
+    user_manager_handle_cli "$@"
+    cli_status=$?
+    if [[ $cli_status -ne 2 ]]; then
+        return "$cli_status"
+    fi
+
     controller_start
 }
 
-main "$@"
+user_manager_cli_init() {
+    check_dependencies || return 1
+    load_config || return 1
+    setup_trap_handler
+    return 0
+}
+
+user_manager_handle_cli() {
+    case "${1:-}" in
+        --weekly-report|--send-reports)
+            user_manager_cli_init || return $?
+            send_all_user_reports
+            return $?
+            ;;
+        --account-health-check)
+            user_manager_cli_init || return $?
+            check_expired_suspensions
+            return $?
+            ;;
+        "")
+            return 2
+            ;;
+        *)
+            return 2
+            ;;
+    esac
+}
+
+if [[ "${USER_MANAGER_NO_MAIN:-0}" != "1" ]]; then
+    main "$@"
+fi

@@ -166,7 +166,7 @@ set_user_quota() {
     if [[ -z "$username" ]]; then
         msg_err "用户名不能为空"; return 1
     fi
-    if [[ -z "$quota_bytes" ]] || ! [[ "$quota_bytes" =~ ^[0-9]+$ ]]; then
+    if [[ -z "$quota_bytes" ]] || ! [[ "$quota_bytes" =~ ^[0-9]+$ ]] || (( quota_bytes <= 0 )); then
         msg_err "配额值无效: ${quota_bytes:-<空>}"; return 1
     fi
     if [[ -z "$mp" ]]; then
@@ -179,15 +179,23 @@ set_user_quota() {
         msg_err "用户 ${C_BOLD}${username}${C_RESET} 不存在"; return 1
     fi
 
-    local quota_kb=$((quota_bytes / 1024))
+    local quota_kb=$(((quota_bytes + 1023) / 1024))
     local human_size
     human_size=$(bytes_to_human "$quota_bytes")
 
-    msg_step "设置配额: ${C_BOLD}${username}${C_RESET} → ${C_BCYAN}${human_size}${C_RESET}  (${mp})"
+    msg_step "设置配额: ${C_BOLD}${username}${C_RESET} → ${C_RESET}${human_size}${C_RESET}  (${mp})"
 
     local result
     if result=$(priv_setquota -u "$username" "$quota_kb" "$quota_kb" 0 0 "$mp" 2>&1); then
         msg_ok "配额已生效: ${C_BOLD}${username}${C_RESET} = ${C_BGREEN}${human_size}${C_RESET}"
+        if declare -F send_quota_hard_limit_email >/dev/null 2>&1 && declare -F get_user_email >/dev/null 2>&1; then
+            local email
+            email=$(get_user_email "$username" 2>/dev/null || true)
+            if [[ -n "$email" ]]; then
+                send_quota_hard_limit_email "$username" "$email" "$human_size" "system" >/dev/null 2>&1 || \
+                    msg_warn "配额已生效，但硬配额通知发送失败"
+            fi
+        fi
         return 0
     else
         msg_err "配额设置失败: ${result}"
@@ -284,7 +292,7 @@ show_disk_overview() {
         elif (( pct >= DISK_WARNING_THRESHOLD )); then
             badge="${C_BG_YELLOW}${C_BOLD} 警告 ${C_RESET}"
         elif (( pct >= 70 )); then
-            badge="${C_BYELLOW}正常${C_RESET}"
+            badge="${C_RESET}正常${C_RESET}"
         else
             badge="${C_BGREEN}良好${C_RESET}"
         fi
@@ -318,7 +326,7 @@ show_disk_overview() {
         elif (( overall_pct >= DISK_WARNING_THRESHOLD )); then
             badge="${C_BG_YELLOW}${C_BOLD} 警告 ${C_RESET}"
         elif (( overall_pct >= 70 )); then
-            badge="${C_BYELLOW}正常${C_RESET}"
+            badge="${C_RESET}正常${C_RESET}"
         else
             badge="${C_BGREEN}良好${C_RESET}"
         fi
@@ -341,4 +349,34 @@ get_all_quota_usage() {
         quota_info=$(get_user_quota_info "$username" "$mp")
         echo "${username}:${quota_info}"
     done < <(get_managed_usernames)
+}
+
+# 设置组磁盘配额
+rl_quota_set_group() {
+    local rl_group="$1"
+    local rl_bytes="$2"
+    local rl_mp="${3:-/home}"
+    if [[ -z "$rl_group" || -z "$rl_bytes" ]]; then
+        msg_err "rl_quota_set_group: 组名和限额不能为空"
+        return 1
+    fi
+    if ! [[ "$rl_bytes" =~ ^[0-9]+$ ]]; then
+        msg_err "rl_quota_set_group: 限额必须为字节数字"
+        return 1
+    fi
+
+    local rl_kb=$(((rl_bytes + 1023) / 1024))
+
+    rl_priv_setquota -g "$rl_group" "$rl_kb" "$rl_kb" 0 0 "$rl_mp"
+}
+
+# 查询组磁盘配额
+rl_quota_get_group() {
+    local rl_group="$1"
+    local rl_mp="${2:-/home}"
+    if [[ -z "$rl_group" ]]; then
+        msg_err "rl_quota_get_group: 组名不能为空"
+        return 1
+    fi
+    rl_priv_repquota -g "$rl_mp" | grep "^${rl_group} "
 }
