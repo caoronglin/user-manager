@@ -4,17 +4,32 @@
 
 ## Overview
 
-- 统一入口：`run.sh`（默认进入 TUI 主线）
-- TUI 主程序：`tui_manager.sh`
-- 经典后端入口：`user_manager.sh`
+- 统一入口：`run.sh`（默认进入 noTUI CLI 菜单）
+- CLI 主程序：`user_manager.sh`
+- TUI 可选界面：`tui_manager.sh`（通过 `--tui` 启用）
 - 分级回归：`tests/run_regression.sh`
 
-## TUI 与无 TUI 模式
+## 入口模式
 
-- `./run.sh`：进入原生 Bash TUI。
-- `./run.sh --no-tui` 或 `./run.sh --cli`：进入无 TUI 菜单。
-- 第一阶段优化后，日志相关能力通过共享 action ID 运行。TUI 和 CLI 使用同一套读取逻辑，只是展示方式不同。
-- 缺少 `journalctl` / `systemctl` 时，依赖这些命令的 action 会显示能力缺失或错误；`logs.system_file_tail` 和 `logs.auth_failures` 会尝试传统日志文件或显示空状态；程序不会自动补齐系统命令。
+- `bash run.sh`：默认进入 noTUI 经典 CLI 菜单。
+- `bash run.sh --tui`：进入原生 Bash TUI 界面。
+- `bash run.sh --no-tui` 或 `bash run.sh --cli`：兼容显式进入 noTUI。
+- 无 TUI 模式下，压 0 或 q 直接返回上级菜单，无需回车。
+
+## 独立 CLI 脚本
+
+常用功能提供独立脚本，可直接调用无需启动完整菜单：
+
+| 脚本 | 说明 |
+| --- | --- |
+| `scripts/rl-user-list.sh` | 列出所有托管用户 |
+| `scripts/rl-user-create.sh` | 创建新用户 |
+| `scripts/rl-user-quota.sh` | 磁盘配额设置/查询 |
+| `scripts/rl-user-resource.sh` | cgroup v2 资源限制 |
+| `scripts/rl-mail-test.sh` | 测试邮件发送 |
+| `scripts/rl-backup-run.sh` | 触发用户备份 |
+| `scripts/rl-audit-query.sh` | 审计日志查询 |
+| `scripts/rl-system-overview.sh` | 系统概览 (glances) |
 
 以下仅列第一批日志与 systemd timer action ID，不代表完整 registry：
 

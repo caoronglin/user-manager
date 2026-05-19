@@ -61,7 +61,7 @@ fi
 test_start "生成 weekly-report profile 的 service/timer 内容"
 unit_render_output="$(bash -c 'set -uo pipefail; source "$1/lib/common.sh"; run_privileged(){ "$@"; }; source "$1/lib/systemd_timer_core.sh"; printf "%s\n" "--SERVICE--"; systemd_timer_render_profile_service weekly-report; printf "%s\n" "--TIMER--"; systemd_timer_render_profile_timer weekly-report' _ "$PROJECT_ROOT")"
 if [[ "$unit_render_output" == *"Description=Managed User Weekly Report"* ]] && \
-   [[ "$unit_render_output" == *"ExecStart=/bin/bash -lc"* ]] && \
+   [[ "$unit_render_output" == *"ExecStart=/bin/bash"* ]] && \
    [[ "$unit_render_output" == *"OnCalendar=weekly"* ]] && \
    [[ "$unit_render_output" == *"Persistent=true"* ]]; then
     test_pass
@@ -77,6 +77,20 @@ if [[ "$health_render_output" == *"Description=Managed User Account Health Check
     test_pass
 else
     test_fail "account-health-check unit 内容未包含预期字段"
+fi
+
+test_start "profile ExecStart 使用项目内非交互入口而非 PATH 探测"
+weekly_service_output="$(bash -c 'set -uo pipefail; source "$1/lib/common.sh"; run_privileged(){ "$@"; }; source "$1/lib/systemd_timer_core.sh"; systemd_timer_render_profile_service weekly-report' _ "$PROJECT_ROOT")"
+health_service_output="$(bash -c 'set -uo pipefail; source "$1/lib/common.sh"; run_privileged(){ "$@"; }; source "$1/lib/systemd_timer_core.sh"; systemd_timer_render_profile_service account-health-check' _ "$PROJECT_ROOT")"
+if [[ "$weekly_service_output" == *"--weekly-report"* ]] && \
+   [[ "$health_service_output" == *"--account-health-check"* ]] && \
+   [[ "$weekly_service_output" == *"$PROJECT_ROOT/run.sh"* ]] && \
+   [[ "$health_service_output" == *"$PROJECT_ROOT/run.sh"* ]] && \
+   [[ "$weekly_service_output" != *"command -v user_manager.sh"* ]] && \
+   [[ "$health_service_output" != *"command -v user_manager.sh"* ]]; then
+    test_pass
+else
+    test_fail "profile ExecStart 未使用项目内 run.sh 非交互入口，或仍依赖 command -v user_manager.sh"
 fi
 
 test_start "安装 profile 写入 unit 文件并触发 daemon-reload/enable/start"

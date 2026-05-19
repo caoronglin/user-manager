@@ -65,12 +65,15 @@ _systemd_timer_profile_service_description() {
 }
 
 _systemd_timer_profile_service_exec_start() {
+    local manager_entry
+    manager_entry="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/run.sh"
+
     case "$1" in
         weekly-report)
-            printf "%s\n" "/bin/bash -lc 'if command -v user_manager.sh >/dev/null 2>&1; then user_manager.sh --weekly-report; else echo \"Generate weekly managed user report\"; fi'"
+            printf "/bin/bash %q --weekly-report\n" "$manager_entry"
             ;;
         account-health-check)
-            printf "%s\n" "/bin/bash -lc 'if command -v user_manager.sh >/dev/null 2>&1; then user_manager.sh --account-health-check; else echo \"Check managed user account health\"; fi'"
+            printf "/bin/bash %q --account-health-check\n" "$manager_entry"
             ;;
     esac
 }

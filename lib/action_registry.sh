@@ -116,6 +116,67 @@ action_run() {
     "$handler" "${args[@]}"
 }
 
+rl_action_run() {
+    action_run "$@"
+}
+
+rl_action_users_create_cli() {
+    if (( $# < 3 )); then
+        printf '用法: rl-user-create.sh <用户名> <密码> <主目录> [--miniforge]\n' >&2
+        return 1
+    fi
+
+    local rl_username="$1" rl_password="$2" rl_home="$3" rl_install_miniforge="false"
+    [[ "${4:-}" == "--miniforge" ]] && rl_install_miniforge="true"
+
+    create_user "$rl_username" "$rl_password" "$rl_home" "$rl_install_miniforge"
+}
+
+rl_action_users_quota_cli() {
+    local rl_mode="${1:-}" rl_username="${2:-}" rl_value="${3:-}" rl_mp="${4:-}"
+    [[ -n "$rl_username" ]] || { printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2; return 1; }
+    [[ -n "$rl_mp" ]] || rl_mp="$(get_user_mountpoint "$(get_user_home "$rl_username")")"
+
+    case "$rl_mode" in
+        --get) get_user_quota_info "$rl_username" "$rl_mp" ;;
+        --set)
+            local rl_bytes
+            rl_bytes="$(parse_quota_input "$rl_value")"
+            [[ -n "$rl_bytes" ]] || { printf '错误: 无效的配额格式\n' >&2; return 1; }
+            set_user_quota "$rl_username" "$rl_bytes" "$rl_mp"
+            ;;
+        *) printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2; return 1 ;;
+    esac
+}
+
+rl_action_users_resource_cli() {
+    local rl_mode="${1:-}" rl_username="${2:-}"
+    [[ -n "$rl_username" ]] || { printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --remove <用户名>\n' >&2; return 1; }
+
+    case "$rl_mode" in
+        --get) get_current_resource_limits "$rl_username" ;;
+        --set) configure_resource_limits "$rl_username" "${3:-}" "${4:-}" ;;
+        --remove) remove_resource_limits "$(id -u "$rl_username")" ;;
+        *) printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --remove <用户名>\n' >&2; return 1 ;;
+    esac
+}
+
+rl_action_mail_test_cli() {
+    local rl_email="${1:-}"
+    [[ -n "$rl_email" ]] || { printf '用法: rl-mail-test.sh <收件邮箱>\n' >&2; return 1; }
+    send_password_email "test" "TEST-PASSWORD" "$rl_email" "SMTP 测试" 1
+}
+
+rl_action_backup_run_cli() {
+    local rl_username="${1:-}"
+    [[ -n "$rl_username" ]] || { printf '用法: rl-backup-run.sh <用户名>\n' >&2; return 1; }
+    manual_backup_user "$rl_username"
+}
+
+rl_action_audit_query_cli() {
+    audit_query "${1:-}" "${2:-}" "${3:-}"
+}
+
 action_list_by_group() {
     local group="${1:-}" id
 
@@ -148,6 +209,12 @@ action_register_defaults() {
     action_register "system.timers.list" "列出 systemd timers" "system" systemd_timer_list_timers "systemctl" "both" "safe"
     action_register "system.timers.logs" "查看 timer 日志" "system" systemd_timer_show_logs "journalctl" "both" "safe"
     action_register "users.list" "查看托管用户" "users" list_managed_users "none" "both" "safe"
+    action_register "users.create" "创建用户" "users" rl_action_users_create_cli "none" "cli" "dangerous"
+    action_register "users.quota" "用户配额操作" "users" rl_action_users_quota_cli "none" "cli" "dangerous"
+    action_register "users.resource" "用户资源限制操作" "users" rl_action_users_resource_cli "none" "cli" "dangerous"
+    action_register "mail.test" "发送测试邮件" "mail" rl_action_mail_test_cli "none" "cli" "safe"
+    action_register "backup.run" "执行用户备份" "backup" rl_action_backup_run_cli "none" "cli" "dangerous"
+    action_register "audit.query" "查询审计日志" "audit" rl_action_audit_query_cli "none" "cli" "safe"
     action_register "audit.view" "查看审计日志" "audit" view_audit_log "none" "both" "safe"
 }
 

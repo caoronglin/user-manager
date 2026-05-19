@@ -9,23 +9,16 @@ C_BOLD='\033[1m'
 C_DIM='\033[2m'
 C_RED='\033[0;31m'
 C_GREEN='\033[0;32m'
-C_YELLOW='\033[1;33m'
-C_BLUE='\033[0;34m'
-C_MAGENTA='\033[0;35m'
-C_CYAN='\033[0;36m'
 C_WHITE='\033[1;37m'
 C_BRED='\033[1;31m'
 C_BGREEN='\033[1;32m'
-C_BYELLOW='\033[1;33m'
-C_BBLUE='\033[1;34m'
-C_BCYAN='\033[1;36m'
 C_BG_RED='\033[41m'
 C_BG_GREEN='\033[42m'
 C_BG_YELLOW='\033[43m'
 
 # 兼容旧变量名
 # shellcheck disable=SC2034
-Red="$C_RED"; Green="$C_GREEN"; Yellow="$C_YELLOW"; Color_Off="$C_RESET"
+Red="$C_RED"; Green="$C_GREEN"; Color_Off="$C_RESET"
 
 # === 语义化配色 ===
 # 根据终端能力自动选择 256 色或标准色
@@ -36,8 +29,8 @@ if [[ "${COLORTERM:-}" =~ ^(truecolor|24bit)$ ]] || [[ "${TERM:-}" == *"256color
     C_MUTED='\033[38;5;243m'       # 中灰 — 次要信息
     C_SUBTLE='\033[38;5;239m'      # 暗灰 — 边框
 else
-    C_PRIMARY="$C_BCYAN"
-    C_ACCENT="$C_BYELLOW"
+    C_PRIMARY="$C_GREEN"
+    C_ACCENT="$C_BOLD"
     C_MUTED="$C_DIM"
     C_SUBTLE="$C_DIM"
 fi
@@ -47,11 +40,11 @@ MENU_WIDTH=54
 
 # === 消息函数 ===
 msg()       { echo -e "$*"; }
-msg_info()  { echo -e " ${C_BBLUE}●${C_RESET} $*"; }
-msg_warn()  { echo -e " ${C_BYELLOW}▲${C_RESET} $*"; }
+msg_info()  { echo -e " ${C_GREEN}●${C_RESET} $*"; }
+msg_warn()  { echo -e " ${C_RED}▲${C_RESET} $*"; }
 msg_err()   { echo -e " ${C_BRED}✗${C_RESET} $*" >&2; }
 msg_ok()    { echo -e " ${C_BGREEN}✓${C_RESET} $*"; }
-msg_step()  { echo -e " ${C_BCYAN}→${C_RESET} $*"; }
+msg_step()  { echo -e " ${C_GREEN}→${C_RESET} $*"; }
 msg_debug() {
     if [[ "${DEBUG:-0}" == "1" ]]; then
         echo -e " ${C_DIM}[DEBUG] $*${C_RESET}" >&2
@@ -192,8 +185,8 @@ pause_continue() {
 get_usage_color() {
     local pct="$1"
     if (( pct >= 90 )); then   echo "$C_BRED"
-    elif (( pct >= 70 )); then echo "$C_BYELLOW"
-    elif (( pct >= 50 )); then echo "$C_YELLOW"
+    elif (( pct >= 70 )); then echo "$C_RED"
+    elif (( pct >= 50 )); then echo "$C_RESET"
     else                       echo "$C_BGREEN"
     fi
 }
@@ -206,10 +199,18 @@ draw_usage_bar() {
     local filled=$((pct * width / 100))
     [[ $filled -gt $width ]] && filled=$width
     local empty=$((width - filled))
+    local fill_char empty_char
+    if [[ "${LC_ALL:-${LANG:-}}" == *"UTF-8"* || "${LANG:-}" == *"UTF-8"* ]]; then
+        fill_char="▓"
+        empty_char="░"
+    else
+        fill_char="#"
+        empty_char="-"
+    fi
     printf "%s" "$color"
-    printf '%*s' "$filled" '' | tr ' ' '▓'
+    printf '%*s' "$filled" '' | tr ' ' "$fill_char"
     printf "%s" "$C_DIM"
-    printf '%*s' "$empty" '' | tr ' ' '░'
+    printf '%*s' "$empty" '' | tr ' ' "$empty_char"
     printf "%s %s%3d%%%s" "$C_RESET" "$color" "$pct" "$C_RESET"
 }
 
@@ -584,6 +585,13 @@ run_submenu() {
         safe_run "$handler" "$opt"
         pause_continue
     done
+}
+
+# 单键读取（0/q 立即返回，其它键原样输出）
+rl_read_menu_key() {
+    local rl_key
+    IFS= read -rsn1 rl_key
+    printf '%s\n' "$rl_key"
 }
 
 # ============================================================

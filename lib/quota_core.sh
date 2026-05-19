@@ -183,7 +183,7 @@ set_user_quota() {
     local human_size
     human_size=$(bytes_to_human "$quota_bytes")
 
-    msg_step "设置配额: ${C_BOLD}${username}${C_RESET} → ${C_BCYAN}${human_size}${C_RESET}  (${mp})"
+    msg_step "设置配额: ${C_BOLD}${username}${C_RESET} → ${C_RESET}${human_size}${C_RESET}  (${mp})"
 
     local result
     if result=$(priv_setquota -u "$username" "$quota_kb" "$quota_kb" 0 0 "$mp" 2>&1); then
@@ -284,7 +284,7 @@ show_disk_overview() {
         elif (( pct >= DISK_WARNING_THRESHOLD )); then
             badge="${C_BG_YELLOW}${C_BOLD} 警告 ${C_RESET}"
         elif (( pct >= 70 )); then
-            badge="${C_BYELLOW}正常${C_RESET}"
+            badge="${C_RESET}正常${C_RESET}"
         else
             badge="${C_BGREEN}良好${C_RESET}"
         fi
@@ -318,7 +318,7 @@ show_disk_overview() {
         elif (( overall_pct >= DISK_WARNING_THRESHOLD )); then
             badge="${C_BG_YELLOW}${C_BOLD} 警告 ${C_RESET}"
         elif (( overall_pct >= 70 )); then
-            badge="${C_BYELLOW}正常${C_RESET}"
+            badge="${C_RESET}正常${C_RESET}"
         else
             badge="${C_BGREEN}良好${C_RESET}"
         fi
@@ -341,4 +341,27 @@ get_all_quota_usage() {
         quota_info=$(get_user_quota_info "$username" "$mp")
         echo "${username}:${quota_info}"
     done < <(get_managed_usernames)
+}
+
+# 设置组磁盘配额
+rl_quota_set_group() {
+    local rl_group="$1"
+    local rl_bytes="$2"
+    local rl_mp="${3:-/home}"
+    if [[ -z "$rl_group" || -z "$rl_bytes" ]]; then
+        msg_err "rl_quota_set_group: 组名和限额不能为空"
+        return 1
+    fi
+    rl_priv_setquota -g "$rl_group" "$rl_bytes" "$rl_bytes" 0 0 "$rl_mp"
+}
+
+# 查询组磁盘配额
+rl_quota_get_group() {
+    local rl_group="$1"
+    local rl_mp="${2:-/home}"
+    if [[ -z "$rl_group" ]]; then
+        msg_err "rl_quota_get_group: 组名不能为空"
+        return 1
+    fi
+    rl_priv_repquota -g "$rl_mp" | grep "^${rl_group} "
 }

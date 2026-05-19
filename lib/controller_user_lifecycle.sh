@@ -61,7 +61,7 @@ rename_user_account() {
 
     echo ""
     draw_header "重命名确认"
-    draw_info_card "旧用户名:" "$old_username" "$C_BYELLOW"
+    draw_info_card "旧用户名:" "$old_username" "$C_RESET"
     draw_info_card "新用户名:" "$new_username" "$C_BGREEN"
     draw_info_card "旧主目录:" "$old_home"
     draw_info_card "新主目录:" "$new_home"
@@ -205,7 +205,7 @@ suspend_or_enable_user() {
             echo "$username,${reason:-无},$(date +%Y-%m-%d),${expiry_date}" >> "$DISABLED_USERS_FILE"
 
             msg_ok "用户 ${C_BOLD}$username${C_RESET} 已暂停"
-            [[ -n "$expiry_date" ]] && msg_info "将于 ${C_BYELLOW}$expiry_date${C_RESET} 自动启用"
+            [[ -n "$expiry_date" ]] && msg_info "将于 ${C_RESET}$expiry_date${C_RESET} 自动启用"
             record_user_event "$username" "suspend" "${reason:-无} (到期:${expiry_date:-永久})"
         fi
     fi

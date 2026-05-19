@@ -94,7 +94,7 @@ _handle_firewall() {
             ;;
         7)
             read_input "用户名"; local username="$REPLY_INPUT"
-            msg_info "服务类型: ${C_BCYAN}web${C_RESET}, ${C_BCYAN}database${C_RESET}, ${C_BCYAN}ssh${C_RESET}, ${C_BCYAN}jupyter${C_RESET}"
+            msg_info "服务类型: ${C_RESET}web${C_RESET}, ${C_RESET}database${C_RESET}, ${C_RESET}ssh${C_RESET}, ${C_RESET}jupyter${C_RESET}"
             read_input "选择服务"; local service="$REPLY_INPUT"
             apply_service_template "$username" "$service"
             ;;
@@ -577,13 +577,6 @@ _handle_ssh_fail2ban() {
             security_baseline_configure_fail2ban_sshd_jail "${bantime:-600}" "${findtime:-600}" "${maxretry:-5}"
             ;;
         5) security_baseline_fail2ban_list_jails ;;
-        6) security_baseline_fail2ban_show_nginx_status ;;
-        7)
-            read_input "nginx bantime 秒数" "3600"; local bantime="$REPLY_INPUT"
-            read_input "nginx findtime 秒数" "600"; local findtime="$REPLY_INPUT"
-            read_input "nginx maxretry 次数" "2"; local maxretry="$REPLY_INPUT"
-            security_baseline_configure_fail2ban_nginx_jail "${bantime:-3600}" "${findtime:-600}" "${maxretry:-2}"
-            ;;
         *) msg_err "无效的选项" ;;
     esac
 }
@@ -594,9 +587,7 @@ ssh_fail2ban_menu() {
         "2:最近认证失败" \
         "3:Fail2ban 状态" \
         "4:配置 sshd jail" \
-        "5:列出全部 jails" \
-        "6:查看 nginx jail 状态" \
-        "7:配置 nginx jail"
+        "5:列出全部 jails"
 }
 
 _handle_systemd_timers() {

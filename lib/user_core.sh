@@ -124,7 +124,8 @@ get_random_password() {
 
     # 如果没有密码池或最新池为空，生成新池
     if [[ -z "$pool_file" ]] || [[ ! -f "$pool_file" ]] || [[ $(wc -l < "$pool_file" 2>/dev/null) -lt 1 ]]; then
-        pool_file=$(generate_password_pool) || return 1
+        pool_file=$(generate_password_pool 2>/dev/null | tail -n 1) || return 1
+        [[ -f "$pool_file" ]] || return 1
     fi
 
     local used_file="${pool_file%.txt}.used"
@@ -139,8 +140,9 @@ get_random_password() {
 
     # 如果所有密码都已使用，生成新池
     if (( used_count >= total_passwords )); then
-        msg_warn "当前密码池已耗尽，生成新密码池..."
-        pool_file=$(generate_password_pool) || return 1
+        msg_warn "当前密码池已耗尽，生成新密码池..." >&2
+        pool_file=$(generate_password_pool 2>/dev/null | tail -n 1) || return 1
+        [[ -f "$pool_file" ]] || return 1
         used_file="${pool_file%.txt}.used"
         touch "$used_file" 2>/dev/null || true
         total_passwords=$(wc -l < "$pool_file")
@@ -168,8 +170,9 @@ get_random_password() {
     done
 
     if [[ -z "$selected_password" ]]; then
-        msg_err "无法获取未使用的密码，自动生成新密码池..."
-        pool_file=$(generate_password_pool) || return 1
+        msg_err "无法获取未使用的密码，自动生成新密码池..." >&2
+        pool_file=$(generate_password_pool 2>/dev/null | tail -n 1) || return 1
+        [[ -f "$pool_file" ]] || return 1
         used_file="${pool_file%.txt}.used"
         touch "$used_file" 2>/dev/null || true
         total_passwords=$(wc -l < "$pool_file")
@@ -745,10 +748,13 @@ source "\$MANAGER_DIR/lib/access_control.sh"
 # shellcheck disable=SC1091
 source "\$MANAGER_DIR/lib/privilege.sh"
 # shellcheck disable=SC1091
+source "\$MANAGER_DIR/lib/user_core.sh"
+# shellcheck disable=SC1091
+source "\$MANAGER_DIR/lib/email_core.sh"
+# shellcheck disable=SC1091
 source "\$MANAGER_DIR/lib/quota_core.sh"
 
 LOG_FILE="\${PASSWORD_ROTATE_LOG:-\$MANAGER_DIR/logs/password_rotate.log}"
-PASSWORD_POOL_FILE="\${PASSWORD_POOL_FILE:-\$MANAGER_DIR/data/password_pool.txt}"
 USER_CONFIG_FILE="\${USER_CONFIG_FILE:-\$MANAGER_DIR/data/user_config.json}"
 EMAIL_CONFIG_FILE="\${EMAIL_CONFIG_FILE:-\$MANAGER_DIR/data/email_config.json}"
 DATA_BASE="\${DATA_BASE:-/mnt}"
@@ -770,20 +776,12 @@ fi
 
 log_msg "待轮换用户数: \${#MANAGED_USERS[@]}"
 
-# 密码池
-if [[ ! -f "\$PASSWORD_POOL_FILE" ]] || [[ \$(wc -l < "\$PASSWORD_POOL_FILE") -lt 1 ]]; then
-    log_msg "错误: 密码池为空或不存在"
-    exit 1
-fi
-
-TOTAL_PASSWORDS=\$(wc -l < "\$PASSWORD_POOL_FILE")
 SUCCESS=0
 FAILED=0
 
 for username in "\${MANAGED_USERS[@]}"; do
-    # 随机密码
-    RAND_LINE=\$(( RANDOM % TOTAL_PASSWORDS + 1 ))
-    NEW_PASS=\$(sed -n "\${RAND_LINE}p" "\$PASSWORD_POOL_FILE")
+    # 随机密码（复用密码池生成、latest 与 .used 追踪逻辑）
+    NEW_PASS=\$(get_random_password 2>/dev/null || true)
 
     if [[ -z "\$NEW_PASS" ]]; then
         log_msg "错误: 无法获取密码 (\$username)"
@@ -792,42 +790,17 @@ for username in "\${MANAGED_USERS[@]}"; do
     fi
 
     # 修改密码
-    if echo "\$username:\$NEW_PASS" | chpasswd 2>/dev/null; then
+    if echo "\$username:\$NEW_PASS" | priv_chpasswd 2>/dev/null; then
         log_msg "成功: \$username 密码已更新"
         ((SUCCESS+=1))
 
-        # 尝试发送邮件通知
-        if command -v jq &>/dev/null && [[ -f "\$USER_CONFIG_FILE" ]]; then
-            EMAIL=\$(jq -r --arg u "\$username" '.[\$u].email // empty' "\$USER_CONFIG_FILE" 2>/dev/null)
-            if [[ -n "\$EMAIL" ]]; then
-                FROM_NAME="用户管理系统"
-                FROM_ADDR="noreply@example.com"
-                if [[ -f "\$EMAIL_CONFIG_FILE" ]]; then
-                    FROM_NAME=\$(jq -r '.from_name // "用户管理系统"' "\$EMAIL_CONFIG_FILE" 2>/dev/null)
-                    FROM_ADDR=\$(jq -r '.from_address // "noreply@example.com"' "\$EMAIL_CONFIG_FILE" 2>/dev/null)
-                fi
-
-                SUBJECT="【重要】定时密码更新通知 - \$username"
-                {
-                    echo "From: \$FROM_NAME <\$FROM_ADDR>"
-                    echo "To: \$EMAIL"
-                    echo "Subject: \$SUBJECT"
-                    echo "MIME-Version: 1.0"
-                    echo "Content-Type: text/html; charset=UTF-8"
-                    echo ""
-                    echo "<html><body style='font-family:Inter,-apple-system,sans-serif;padding:20px'>"
-                    echo "<h2 style='color:#2563eb'>密码更新通知</h2>"
-                    echo "<p>尊敬的 <strong>\$username</strong>，您好！</p>"
-                    echo "<p>您的密码已于 \$(date '+%Y-%m-%d %H:%M:%S') 自动更新。</p>"
-                    echo "<table style='border:1px solid #e2e8f0;border-radius:8px;padding:16px;background:#f8fafc'>"
-                    echo "<tr><td style='color:#6b7280'>用户名</td><td style='font-weight:600'>\$username</td></tr>"
-                    echo "<tr><td style='color:#6b7280'>新密码</td><td style='color:#2563eb;font-weight:600;font-family:monospace'>\$NEW_PASS</td></tr>"
-                    echo "</table>"
-                    echo "<p style='color:#92400e;background:#fffbeb;padding:12px;border-left:3px solid #f59e0b;margin-top:16px'>请妥善保管新密码。如非本人操作，请联系管理员。</p>"
-                    echo "</body></html>"
-                } | timeout 30 sendmail -t 2>/dev/null && \
-                    log_msg "邮件已发送: \$username -> \$EMAIL" || \
-                    log_msg "邮件发送失败: \$username -> \$EMAIL"
+        # 尝试发送邮件通知（复用邮件模块，避免内联邮件头拼接）
+        EMAIL=\$(get_user_email "\$username" 2>/dev/null || true)
+        if [[ -n "\$EMAIL" ]]; then
+            if send_password_email "\$username" "\$NEW_PASS" "\$EMAIL" "定时密码更新" 2>/dev/null; then
+                log_msg "邮件已发送: \$username -> \$EMAIL"
+            else
+                log_msg "邮件发送失败: \$username -> \$EMAIL"
             fi
         fi
     else

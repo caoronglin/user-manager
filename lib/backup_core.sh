@@ -44,10 +44,10 @@ show_backup_status() {
         bsize=$(du -sh "$backup_dir" 2>/dev/null | cut -f1)
 
         # 根据类型上色
-        local color="$C_CYAN"
+        local color="$C_RESET"
         [[ "$bname" == full_* ]]        && color="$C_BGREEN"
-        [[ "$bname" == inc_* ]]         && color="$C_YELLOW"
-        [[ "$bname" == pre_restore_* ]] && color="$C_MAGENTA"
+        [[ "$bname" == inc_* ]]         && color="$C_RESET"
+        [[ "$bname" == pre_restore_* ]] && color="$C_RESET"
 
         printf "  ${color}%-28s${C_RESET} %-22s ${C_BOLD}%s${C_RESET}\n" "$bname" "$btime" "$bsize"
         ((backup_count+=1))
@@ -87,7 +87,7 @@ list_backup_users() {
         local tsize
         tsize=$(du -sh "$user_dir" 2>/dev/null | cut -f1)
 
-        printf "  ${C_CYAN}%-24s${C_RESET} ${C_BOLD}%-10d${C_RESET} ${C_BGREEN}%s${C_RESET}\n" \
+        printf "  ${C_RESET}%-24s${C_RESET} ${C_BOLD}%-10d${C_RESET} ${C_BGREEN}%s${C_RESET}\n" \
             "$uname" "$bcount" "$tsize"
         ((user_count+=1))
     done < <(find "$BACKUP_ROOT" -maxdepth 1 -type d ! -path "$BACKUP_ROOT" -print0 2>/dev/null | sort -z)
@@ -140,9 +140,9 @@ manual_backup_user() {
     draw_info_card "源目录:" "$user_home"
     draw_info_card "备份到:" "$backup_dir"
     if [[ "$backup_type" == "incremental" ]]; then
-        draw_info_card "备份类型:" "增量 (基于 $(basename "$last_backup"))" "$C_BCYAN"
+        draw_info_card "备份类型:" "增量 (基于 $(basename "$last_backup"))" "$C_RESET"
     else
-        draw_info_card "备份类型:" "全量 (首次备份)" "$C_BYELLOW"
+        draw_info_card "备份类型:" "全量 (首次备份)" "$C_RESET"
     fi
     echo ""
 
@@ -621,10 +621,10 @@ show_backup_chain() {
         bcs=$(jq -r ".backups[$i].checksum" "$index_file")
         bdep=$(jq -r ".backups[$i].depends_on // \"-\"" "$index_file")
 
-        local color="$C_CYAN"
+        local color="$C_RESET"
         [[ "$btype" == "full" ]] && color="$C_BGREEN"
-        [[ "$btype" == "incremental" ]] && color="$C_YELLOW"
-        [[ "$btype" == "batch" ]] && color="$C_BCYAN"
+        [[ "$btype" == "incremental" ]] && color="$C_RESET"
+        [[ "$btype" == "batch" ]] && color="$C_RESET"
 
         printf "  ${color}%-28s${C_RESET} %-10s %-8s %-10s ${C_DIM}%s${C_RESET}\n" \
             "$bid" "$btype" "$bsize" "$bcs" "$bdep"
@@ -684,7 +684,7 @@ show_backup_schedules() {
             local sched_script
             sched_script=$(echo "$line" | awk '{print $6}')
 
-            printf "  ${C_CYAN}%-14s${C_RESET} %-28s ${C_BOLD}%s${C_RESET}\n" \
+            printf "  ${C_RESET}%-14s${C_RESET} %-28s ${C_BOLD}%s${C_RESET}\n" \
                 "$cron_time" "$sched_script" "$sched_user"
             has_tasks=1
         fi
@@ -762,7 +762,7 @@ backup_all_users() {
     for username in "${all_users[@]}"; do
         ((current+=1))
         echo ""
-        msg_step "[${C_BCYAN}${current}${C_RESET}/${C_BOLD}${total}${C_RESET}] 备份用户: ${C_BOLD}$username${C_RESET}"
+        msg_step "[${C_RESET}${current}${C_RESET}/${C_BOLD}${total}${C_RESET}] 备份用户: ${C_BOLD}$username${C_RESET}"
 
         # 检查用户存在
         if ! id "$username" &>/dev/null; then
@@ -1048,7 +1048,7 @@ PEOF
     draw_info_card "批次ID:" "$backup_batch_id"
     draw_info_card "成功:" "${C_BGREEN}${ok_count}${C_RESET}"
     [[ $fail_count -gt 0 ]] && draw_info_card "失败:" "${C_BRED}${fail_count}${C_RESET}"
-    [[ $skip_count -gt 0 ]] && draw_info_card "跳过:" "${C_BYELLOW}${skip_count}${C_RESET}"
+    [[ $skip_count -gt 0 ]] && draw_info_card "跳过:" "${C_RESET}${skip_count}${C_RESET}"
     if [[ ${#fail_list[@]} -gt 0 ]]; then
         for u in "${fail_list[@]}"; do
             draw_info_card "" "${C_RED}• $u${C_RESET}"
@@ -1090,7 +1090,7 @@ show_backup_batches() {
         local tsize
         tsize=$(priv_du -sh "$batch_dir" 2>/dev/null | cut -f1)
 
-        printf "  ${C_CYAN}%-30s${C_RESET} ${C_BOLD}%-10d${C_RESET} ${C_BGREEN}%s${C_RESET}\n" \
+        printf "  ${C_RESET}%-30s${C_RESET} ${C_BOLD}%-10d${C_RESET} ${C_BGREEN}%s${C_RESET}\n" \
             "$bname" "$ucount" "$tsize"
         found=1
     done < <(find "$BACKUP_ROOT" -maxdepth 1 -type d -name 'batch_*' -print0 2>/dev/null | sort -rz)

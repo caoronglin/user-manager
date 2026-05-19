@@ -43,10 +43,10 @@ _display_available_data_disks() {
         if (( pct_used >= 90 )); then
             disk_color="$C_BRED"
         elif (( pct_used >= 70 )); then
-            disk_color="$C_BYELLOW"
+            disk_color="$C_RESET"
         fi
 
-        printf "  ${C_BCYAN}[%s]${C_RESET}  %-14s %-10s %-10s ${disk_color}%-10s${C_RESET} %-6s " \
+        printf "  ${C_RESET}[%s]${C_RESET}  %-14s %-10s %-10s ${disk_color}%-10s${C_RESET} %-6s " \
             "$disk_num_iter" "data${idx_iter}" "$total_h" "$used_h" "$avail_h" "$user_count_on_disk"
         draw_usage_bar "$pct_used" 14
         echo ""
@@ -113,6 +113,6 @@ _render_provision_confirmation() {
     fi
     draw_info_card "主目录:" "$home"
     draw_info_card "配额:" "$(bytes_to_gb "$quota_bytes") GB" "$C_BGREEN"
-    draw_info_card "磁盘剩余:" "$sel_avail_h (data${idx})" "$C_BCYAN"
+    draw_info_card "磁盘剩余:" "$sel_avail_h (data${idx})" "$C_RESET"
     echo ""
 }

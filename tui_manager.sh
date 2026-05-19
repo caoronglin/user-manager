@@ -685,9 +685,7 @@ handle_tui_ssh_fail2ban_menu_key() {
         2) tui_run_workflow_action security_baseline_show_fail2ban_status ;;
         3) tui_run_prompt_sequence_action security_baseline_configure_fail2ban_sshd_jail "bantime 秒数|600" "findtime 秒数|600" "maxretry 次数|5" ;;
         4) tui_run_workflow_action security_baseline_fail2ban_list_jails ;;
-        5) tui_run_workflow_action security_baseline_fail2ban_show_nginx_status ;;
-        6) tui_run_prompt_sequence_action security_baseline_configure_fail2ban_nginx_jail "nginx bantime 秒数|3600" "nginx findtime 秒数|600" "nginx maxretry 次数|2" ;;
-        7|-1) TUI_SUBMENU_EXIT=1 ;;
+        5|-1) TUI_SUBMENU_EXIT=1 ;;
     esac
     return 0
 }

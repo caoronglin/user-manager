@@ -115,7 +115,7 @@ verify_backup_integrity() {
     draw_info_card "验证文件总数:" "$total"
     draw_info_card "通过:" "${C_BGREEN}$passed${C_RESET}"
     draw_info_card "失败:" "${C_BRED}$failed${C_RESET}"
-    draw_info_card "缺失:" "${C_BYELLOW}$missing${C_RESET}"
+    draw_info_card "缺失:" "${C_RESET}$missing${C_RESET}"
     
     if (( failed > 0 || missing > 0 )); then
         msg_err "备份验证失败"

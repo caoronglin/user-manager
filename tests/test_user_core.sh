@@ -114,6 +114,23 @@ else
     test_fail "应该返回有效的密码"
 fi
 
+test_start "get_random_password: 空密码池首跑只向 stdout 返回密码"
+first_run_pool_dir="$TEST_TMPDIR/first_run_password_pools"
+old_password_pool_dir="$PASSWORD_POOL_DIR"
+old_password_pool_file="$PASSWORD_POOL_FILE"
+PASSWORD_POOL_DIR="$first_run_pool_dir"
+PASSWORD_POOL_FILE="$PASSWORD_POOL_DIR/password_pool.txt"
+mkdir -p "$PASSWORD_POOL_DIR"
+first_run_password_output=$(get_random_password 2>/dev/null || true)
+first_run_line_count=$(printf '%s\n' "$first_run_password_output" | wc -l | tr -d ' ')
+if [[ "$first_run_line_count" == "1" && "$first_run_password_output" =~ ^[A-Z]{3}[a-z][0-9]{3}[!@#$%^\&*?]$ ]]; then
+    test_pass
+else
+    test_fail "空池首跑应只返回 1 行 8 位密码，实际输出: $first_run_password_output"
+fi
+PASSWORD_POOL_DIR="$old_password_pool_dir"
+PASSWORD_POOL_FILE="$old_password_pool_file"
+
 # ------------------------------------------------------------
 # 配置管理测试
 # ------------------------------------------------------------
@@ -217,6 +234,51 @@ else
     test_fail "ensure_user_proxy_function 函数不存在"
 fi
 unset -f priv_touch priv_tee priv_chown priv_chmod
+
+# ------------------------------------------------------------
+# 密码轮换脚本测试
+# ------------------------------------------------------------
+
+test_start "configure_password_rotation: 生成脚本使用当前密码池配置并通过权限封装改密"
+rotation_capture="$TEST_TMPDIR/password_rotate_generated.sh"
+write_privileged_text_file() {
+    local target_path="$1"
+    local file_mode="${2:-0644}"
+    local owner_group="${3:-root:root}"
+    local file_content
+    file_content="$(cat)"
+    printf '%s' "$file_content" > "$rotation_capture"
+    printf '%s|%s|%s\n' "$target_path" "$file_mode" "$owner_group" > "$TEST_TMPDIR/password_rotate_target.txt"
+    return 0
+}
+priv_chmod() { return 0; }
+priv_crontab() { cat >/dev/null; return 0; }
+draw_header() { return 0; }
+draw_info_card() { return 0; }
+msg_step() { return 0; }
+msg_ok() { return 0; }
+msg_err() { return 0; }
+PASSWORD_POOL_DIR="$TEST_TMPDIR/password_pools"
+PASSWORD_POOL_FILE="$PASSWORD_POOL_DIR/password_pool_current.txt"
+mkdir -p "$PASSWORD_POOL_DIR"
+if configure_password_rotation 30 >/dev/null 2>&1 && \
+   [[ -f "$rotation_capture" ]] && \
+   grep -q 'source "\$MANAGER_DIR/lib/user_core.sh"' "$rotation_capture" && \
+   grep -q 'source "\$MANAGER_DIR/lib/email_core.sh"' "$rotation_capture" && \
+   grep -q 'NEW_PASS=$(get_random_password' "$rotation_capture" && \
+   ! grep -q 'PASSWORD_POOL_FILE="${PASSWORD_POOL_FILE:-' "$rotation_capture" && \
+   ! grep -q 'TOTAL_PASSWORDS=' "$rotation_capture" && \
+   ! grep -q 'RAND_LINE=' "$rotation_capture" && \
+   grep -q 'priv_chpasswd' "$rotation_capture" && \
+   grep -q 'send_password_email "\$username" "\$NEW_PASS" "\$EMAIL" "定时密码更新"' "$rotation_capture" && \
+   ! grep -q '| chpasswd' "$rotation_capture" && \
+   ! grep -q 'sendmail -t' "$rotation_capture" && \
+   ! grep -q 'echo "From:' "$rotation_capture"; then
+    test_pass
+else
+    test_fail "轮换脚本未复用 get_random_password/邮件模块，或仍直接读取密码池/调用 chpasswd/sendmail"
+fi
+unset -f write_privileged_text_file priv_chmod priv_crontab draw_header draw_info_card msg_step msg_ok msg_err
 
 # ------------------------------------------------------------
 # 用户组管理测试

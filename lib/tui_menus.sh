@@ -66,7 +66,7 @@ _TUI_MENU_STATUS_RIGHT["symlink"]="↑/↓ 导航  Enter 选择  q 返回"
 
 # SSH 与 Fail2ban
 _TUI_MENU_TITLE["ssh_fail2ban"]="SSH 与 Fail2ban"
-_TUI_MENU_ITEMS["ssh_fail2ban"]="SSH 安全基线摘要|最近认证失败|Fail2ban 状态|配置 sshd jail|列出全部 jails|查看 nginx jail 状态|配置 nginx jail|返回上级"
+_TUI_MENU_ITEMS["ssh_fail2ban"]="SSH 安全基线摘要|最近认证失败|Fail2ban 状态|配置 sshd jail|列出全部 jails|返回上级"
 _TUI_MENU_WIDTH["ssh_fail2ban"]=52
 _TUI_MENU_STATUS_LEFT["ssh_fail2ban"]="SSH 与 Fail2ban"
 _TUI_MENU_STATUS_RIGHT["ssh_fail2ban"]="↑/↓ 导航  Enter 选择  q 返回"

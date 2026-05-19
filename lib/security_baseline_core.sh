@@ -9,8 +9,6 @@
 : "${SECURITY_BASELINE_JOURNALCTL_BIN:=journalctl}"
 : "${SECURITY_BASELINE_SSHD_BIN:=sshd}"
 : "${SECURITY_BASELINE_AUTH_LOG:=/var/log/auth.log}"
-: "${SECURITY_BASELINE_NGINX_ACCESS_LOG:=/var/log/nginx/access.log}"
-: "${SECURITY_BASELINE_FAIL2BAN_NGINX_JAIL:=nginx-badbots}"
 
 _security_baseline_msg_info() {
     if declare -F msg_info >/dev/null 2>&1; then
@@ -209,7 +207,6 @@ security_baseline_show_recent_auth_failures() {
 security_baseline_show_fail2ban_status() {
     local service_enabled="unknown"
     local service_active="unknown"
-    local nginx_jail="$SECURITY_BASELINE_FAIL2BAN_NGINX_JAIL"
 
     _security_baseline_require_fail2ban_client || return 1
 
@@ -223,11 +220,6 @@ security_baseline_show_fail2ban_status() {
     _security_baseline_fail2ban_client status
     echo ""
     _security_baseline_fail2ban_client status sshd
-
-    if security_baseline_fail2ban_list_jails 2>/dev/null | grep -Fxq "$nginx_jail"; then
-        echo ""
-        _security_baseline_fail2ban_client status "$nginx_jail"
-    fi
 }
 
 security_baseline_fail2ban_list_jails() {
@@ -262,12 +254,6 @@ security_baseline_fail2ban_show_jail_status() {
 
 security_baseline_fail2ban_show_sshd_status() {
     security_baseline_fail2ban_show_jail_status sshd
-}
-
-security_baseline_fail2ban_show_nginx_status() {
-    local jail_name="${1:-$SECURITY_BASELINE_FAIL2BAN_NGINX_JAIL}"
-
-    security_baseline_fail2ban_show_jail_status "$jail_name"
 }
 
 security_baseline_write_fail2ban_sshd_jail() {
@@ -310,62 +296,12 @@ security_baseline_write_fail2ban_sshd_jail() {
     printf '%s\n' "$jail_file"
 }
 
-security_baseline_write_fail2ban_nginx_jail() {
-    local bantime_seconds="${1:-3600}"
-    local findtime_seconds="${2:-600}"
-    local maxretry="${3:-2}"
-    local jail_name="$SECURITY_BASELINE_FAIL2BAN_NGINX_JAIL"
-    local jail_dir="$SECURITY_BASELINE_FAIL2BAN_JAIL_DIR"
-    local jail_file="$jail_dir/${jail_name}.local"
-
-    if [[ ! "$bantime_seconds" =~ ^[0-9]+$ ]] || [[ ! "$findtime_seconds" =~ ^[0-9]+$ ]]; then
-        _security_baseline_msg_err "bantime 与 findtime 需要是纯秒数"
-        return 1
-    fi
-
-    if [[ ! "$maxretry" =~ ^[0-9]+$ ]]; then
-        _security_baseline_msg_err "maxretry 需要是整数"
-        return 1
-    fi
-
-    if declare -F priv_mkdir >/dev/null 2>&1; then
-        priv_mkdir -p "$jail_dir" || return 1
-    else
-        mkdir -p "$jail_dir" || return 1
-    fi
-
-    _security_baseline_write_fail2ban_jail_file "$jail_file" \
-        "[$jail_name]" \
-        'enabled = true' \
-        "filter = $jail_name" \
-        'port = http,https' \
-        "logpath = $SECURITY_BASELINE_NGINX_ACCESS_LOG" \
-        'backend = auto' \
-        "maxretry = $maxretry" \
-        "findtime = $findtime_seconds" \
-        "bantime = $bantime_seconds" || return 1
-
-    printf '%s\n' "$jail_file"
-}
-
 security_baseline_configure_fail2ban_sshd_jail() {
     local bantime_seconds="${1:-600}"
     local findtime_seconds="${2:-600}"
     local maxretry="${3:-5}"
 
     security_baseline_write_fail2ban_sshd_jail "$bantime_seconds" "$findtime_seconds" "$maxretry" >/dev/null || return 1
-
-    _security_baseline_enable_restart_fail2ban || return 1
-
-    return 0
-}
-
-security_baseline_configure_fail2ban_nginx_jail() {
-    local bantime_seconds="${1:-3600}"
-    local findtime_seconds="${2:-600}"
-    local maxretry="${3:-2}"
-
-    security_baseline_write_fail2ban_nginx_jail "$bantime_seconds" "$findtime_seconds" "$maxretry" >/dev/null || return 1
 
     _security_baseline_enable_restart_fail2ban || return 1
 

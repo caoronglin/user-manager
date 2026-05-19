@@ -37,7 +37,7 @@ modify_user_quota() {
         draw_usage_bar "$pct" 20
         echo ""
     else
-        draw_info_card "当前配额:" "未设置" "$C_BYELLOW"
+        draw_info_card "当前配额:" "未设置" "$C_RESET"
     fi
 
     echo ""
@@ -55,7 +55,7 @@ modify_user_quota() {
     echo ""
     draw_header "配额修改确认"
     draw_info_card "用户:" "$username" "$C_BOLD"
-    draw_info_card "原配额:" "${current_limit_gb:-未知} GB" "$C_BYELLOW"
+    draw_info_card "原配额:" "${current_limit_gb:-未知} GB" "$C_RESET"
     draw_info_card "新配额:" "${new_quota_gb} GB" "$C_BGREEN"
     echo ""
 
@@ -82,8 +82,8 @@ modify_user_resource_limits() {
         local current_cpu="${current_limits%:*}"
         local current_memory="${current_limits#*:}"
         echo ""
-        draw_info_card "CPU 配额:" "${current_cpu:-未设置}" "$C_BCYAN"
-        draw_info_card "内存限制:" "${current_memory:-未设置}" "$C_BCYAN"
+        draw_info_card "CPU 配额:" "${current_cpu:-未设置}" "$C_RESET"
+        draw_info_card "内存限制:" "${current_memory:-未设置}" "$C_RESET"
     else
         echo ""
         msg_info "当前未设置资源限制"

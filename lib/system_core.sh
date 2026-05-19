@@ -121,7 +121,7 @@ show_memory_info() {
             # 空行表示新设备
             if [[ -n "$current_device" ]] && [[ -n "${device_info[size]:-}" ]]; then
                 ((device_num++))
-                echo -e "  ${C_BCYAN}━━━ 内存设备 #$device_num ━━━${C_RESET}"
+                echo -e "  ${C_RESET}━━━ 内存设备 #$device_num ━━━${C_RESET}"
                 draw_info_card "大小:" "${device_info[size]:-N/A}" "$C_BOLD"
                 draw_info_card "定位器:" "${device_info[locator]:-N/A}"
                 draw_info_card "类型:" "${device_info[type]:-N/A}"
@@ -151,7 +151,7 @@ show_memory_info() {
     # 处理最后一个设备
     if [[ -n "$current_device" ]] && [[ -n "${device_info[size]:-}" ]]; then
         ((device_num++))
-        echo -e "  ${C_BCYAN}━━━ 内存设备 #$device_num ━━━${C_RESET}"
+        echo -e "  ${C_RESET}━━━ 内存设备 #$device_num ━━━${C_RESET}"
         draw_info_card "大小:" "${device_info[size]:-N/A}" "$C_BOLD"
         draw_info_card "定位器:" "${device_info[locator]:-N/A}"
         draw_info_card "类型:" "${device_info[type]:-N/A}"
@@ -162,7 +162,7 @@ show_memory_info() {
     fi
 
     # 显示系统内存概览
-    echo -e "  ${C_BYELLOW}━━━ 系统内存概览 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 系统内存概览 ━━━${C_RESET}"
     local total_mem free_mem used_mem
     total_mem=$(free -h 2>/dev/null | awk '/^Mem:/{print $2}')
     used_mem=$(free -h 2>/dev/null | awk '/^Mem:/{print $3}')
@@ -204,34 +204,34 @@ analyze_system_logs() {
 
     # 分析 journalctl 日志
     if command -v journalctl &>/dev/null; then
-        echo -e "  ${C_BCYAN}━━━ Journalctl 错误日志 ━━━${C_RESET}"
+        echo -e "  ${C_RESET}━━━ Journalctl 错误日志 ━━━${C_RESET}"
         journalctl -p err -n "$lines" --no-pager 2>/dev/null | tail -20 || msg_warn "无法读取 journalctl"
         echo ""
     fi
 
     # 分析 syslog
     if [[ -f /var/log/syslog ]]; then
-        echo -e "  ${C_BCYAN}━━━ Syslog 错误记录 ━━━${C_RESET}"
+        echo -e "  ${C_RESET}━━━ Syslog 错误记录 ━━━${C_RESET}"
         grep -i -E "(error|fail|critical|fatal)" /var/log/syslog 2>/dev/null | tail -20 || msg_warn "无法读取 syslog"
         echo ""
     fi
 
     # 分析 kern.log
     if [[ -f /var/log/kern.log ]]; then
-        echo -e "  ${C_BCYAN}━━━ 内核日志错误 ━━━${C_RESET}"
+        echo -e "  ${C_RESET}━━━ 内核日志错误 ━━━${C_RESET}"
         grep -i -E "(error|fail|critical|warn|hardware|mce)" /var/log/kern.log 2>/dev/null | tail -20 || msg_warn "无法读取 kern.log"
         echo ""
     fi
 
     # 分析 dmesg
     if command -v dmesg &>/dev/null; then
-        echo -e "  ${C_BCYAN}━━━ 内核消息 (dmesg) ━━━${C_RESET}"
+        echo -e "  ${C_RESET}━━━ 内核消息 (dmesg) ━━━${C_RESET}"
         dmesg -T 2>/dev/null | grep -i -E "(error|fail|warn|hardware|mce)" | tail -20 || msg_warn "无法读取 dmesg"
         echo ""
     fi
 
     # 显示日志统计
-    echo -e "  ${C_BYELLOW}━━━ 日志统计 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 日志统计 ━━━${C_RESET}"
     local syslog_err kern_err journ_err
 
     if [[ -f /var/log/syslog ]]; then
@@ -259,7 +259,7 @@ analyze_crash_causes() {
     local found_issues=false
 
     # 1. 检查系统崩溃记录
-    echo -e "  ${C_BCYAN}━━━ 系统崩溃记录 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 系统崩溃记录 ━━━${C_RESET}"
     if [[ -f /var/crash ]]; then
         if [[ -d /var/crash ]] && [[ -n "$(find /var/crash -maxdepth 1 -mindepth 1 2>/dev/null)" ]]; then
             msg_warn "发现崩溃转储文件:"
@@ -274,7 +274,7 @@ analyze_crash_causes() {
     echo ""
 
     # 2. 检查内核恐慌记录
-    echo -e "  ${C_BCYAN}━━━ 内核恐慌 (Kernel Panic) ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 内核恐慌 (Kernel Panic) ━━━${C_RESET}"
     local panic_count
     if command -v journalctl &>/dev/null; then
         panic_count=$(journalctl -k --no-pager 2>/dev/null | grep -c -i "kernel panic" || echo "0")
@@ -289,7 +289,7 @@ analyze_crash_causes() {
     echo ""
 
     # 3. 检查硬件错误 (MCE - Machine Check Exception)
-    echo -e "  ${C_BCYAN}━━━ 硬件错误 (MCE) ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 硬件错误 (MCE) ━━━${C_RESET}"
     local mce_count
     if [[ -f /var/log/mcelog ]]; then
         mce_count=$(wc -l < /var/log/mcelog 2>/dev/null || echo "0")
@@ -316,7 +316,7 @@ analyze_crash_causes() {
     echo ""
 
     # 4. 检查 OOM (Out of Memory) 杀手记录
-    echo -e "  ${C_BCYAN}━━━ OOM 杀手记录 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ OOM 杀手记录 ━━━${C_RESET}"
     local oom_count
     if command -v journalctl &>/dev/null; then
         oom_count=$(journalctl --no-pager 2>/dev/null | grep -c "Out of memory\|oom-killer\|Killed process" || echo "0")
@@ -331,14 +331,14 @@ analyze_crash_causes() {
     echo ""
 
     # 5. 检查系统重启记录
-    echo -e "  ${C_BCYAN}━━━ 系统重启记录 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 系统重启记录 ━━━${C_RESET}"
     if command -v last &>/dev/null; then
         last -x reboot 2>/dev/null | head -10 || msg_warn "无法读取重启记录"
     fi
     echo ""
 
     # 6. 检查服务失败
-    echo -e "  ${C_BCYAN}━━━ 失败的服务 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 失败的服务 ━━━${C_RESET}"
     if command -v systemctl &>/dev/null; then
         local failed_services
         failed_services=$(systemctl --failed --no-pager 2>/dev/null | grep -E "●|failed" | head -10)
@@ -353,7 +353,7 @@ analyze_crash_causes() {
     echo ""
 
     # 7. 检查磁盘错误
-    echo -e "  ${C_BCYAN}━━━ 磁盘错误检查 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 磁盘错误检查 ━━━${C_RESET}"
     if [[ -f /var/log/kern.log ]]; then
         local disk_err
         disk_err=$(grep -i -E "(I/O error|disk error|ata.*error|sda.*error)" /var/log/kern.log 2>/dev/null | tail -10)
@@ -368,7 +368,7 @@ analyze_crash_causes() {
     echo ""
 
     # 总结
-    echo -e "  ${C_BYELLOW}━━━ 分析总结 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 分析总结 ━━━${C_RESET}"
     if $found_issues; then
         msg_warn "发现潜在问题，请检查上述日志"
     else
@@ -507,7 +507,7 @@ check_hardware_health() {
     local issues=0
 
     # CPU 温度检查
-    echo -e "  ${C_BCYAN}━━━ CPU 温度 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ CPU 温度 ━━━${C_RESET}"
     if command -v sensors &>/dev/null; then
         sensors 2>/dev/null | grep -E "(Core|Package|temp|°C)" | head -10 || msg_info "无法读取传感器数据"
     else
@@ -529,7 +529,7 @@ check_hardware_health() {
     echo ""
 
     # 风扇状态
-    echo -e "  ${C_BCYAN}━━━ 风扇状态 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 风扇状态 ━━━${C_RESET}"
     if command -v sensors &>/dev/null; then
         sensors 2>/dev/null | grep -i fan | head -5 || msg_info "无风扇信息"
     else
@@ -538,7 +538,7 @@ check_hardware_health() {
     echo ""
 
     # 电池状态 (笔记本)
-    echo -e "  ${C_BCYAN}━━━ 电池状态 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 电池状态 ━━━${C_RESET}"
     if [[ -d /sys/class/power_supply ]]; then
         for bat in /sys/class/power_supply/BAT*; do
             if [[ -d "$bat" ]]; then
@@ -554,7 +554,7 @@ check_hardware_health() {
     echo ""
 
     # 磁盘健康 (SMART)
-    echo -e "  ${C_BCYAN}━━━ 磁盘健康 (SMART) ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 磁盘健康 (SMART) ━━━${C_RESET}"
     if command -v smartctl &>/dev/null; then
         local disks
         disks=$(lsblk -d -o NAME 2>/dev/null | grep -E "^sd|^nvme|^vd" | head -5)
@@ -571,7 +571,7 @@ check_hardware_health() {
     echo ""
 
     # 内存错误检查
-    echo -e "  ${C_BCYAN}━━━ 内存错误 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 内存错误 ━━━${C_RESET}"
     if [[ -f /sys/devices/system/edac/mc/mc0/ce_count ]]; then
         local ce_count ue_count
         ce_count=$(cat /sys/devices/system/edac/mc/mc0/ce_count 2>/dev/null || echo "0")
@@ -588,7 +588,7 @@ check_hardware_health() {
     echo ""
 
     # 总结
-    echo -e "  ${C_BYELLOW}━━━ 检查总结 ━━━${C_RESET}"
+    echo -e "  ${C_RESET}━━━ 检查总结 ━━━${C_RESET}"
     if [[ $issues -gt 0 ]]; then
         msg_warn "发现 $issues 个硬件问题，请检查详细日志"
     else
@@ -611,19 +611,19 @@ show_cpu_info() {
         cpu_cores=$(grep -c "^processor" /proc/cpuinfo)
         
         draw_info_card "型号:" "$cpu_model" "$C_BOLD"
-        draw_info_card "核心数:" "$cpu_cores" "$C_BCYAN"
+        draw_info_card "核心数:" "$cpu_cores" "$C_RESET"
         
         # 获取 CPU 频率
         if [[ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]]; then
             local freq_mhz
             freq_mhz=$(awk '{printf "%.0f", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null)
-            draw_info_card "当前频率:" "${freq_mhz} MHz" "$C_BCYAN"
+            draw_info_card "当前频率:" "${freq_mhz} MHz" "$C_RESET"
         fi
         
         # 获取负载
         local load1 load5 load15
         read -r load1 load5 load15 _ < /proc/loadavg
-        draw_info_card "系统负载:" "1min:${load1} 5min:${load5} 15min:${load15}" "$C_BYELLOW"
+        draw_info_card "系统负载:" "1min:${load1} 5min:${load5} 15min:${load15}" "$C_RESET"
         
         echo ""
         msg_info "详细 CPU 信息（/proc/cpuinfo）:"
@@ -657,7 +657,7 @@ show_memory_info_detailed() {
         
         draw_info_card "总内存:" "${total_gb} GB" "$C_BOLD"
         draw_info_card "可用内存:" "${avail_gb} GB" "$C_BGREEN"
-        draw_info_card "空闲内存:" "${free_gb} GB" "$C_BCYAN"
+        draw_info_card "空闲内存:" "${free_gb} GB" "$C_RESET"
         draw_info_card "Buffers:" "$(awk "BEGIN {printf \"%.2f\", $buffers/1024/1024}") GB" "$C_DIM"
         draw_info_card "Cached:" "$(awk "BEGIN {printf \"%.2f\", $cached/1024/1024}") GB" "$C_DIM"
         

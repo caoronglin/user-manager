@@ -92,7 +92,7 @@ create_user_symlink() {
     if priv_ln -s "$resolved_target" "$link_path"; then
         # 设置所有权（符号链接本身）
         priv_chown -h "$username:$username" "$link_path" 2>/dev/null || true
-        msg_ok "符号链接已创建: ${C_BOLD}$link_name${C_RESET} → ${C_CYAN}$resolved_target${C_RESET}"
+        msg_ok "符号链接已创建: ${C_BOLD}$link_name${C_RESET} → ${C_RESET}$resolved_target${C_RESET}"
         record_user_event "$username" "symlink_create" "$link_name -> $resolved_target"
         return 0
     else
@@ -214,7 +214,7 @@ list_user_symlinks() {
             status_color="$C_BRED"
         fi
 
-        printf "  ${C_CYAN}%-24s${C_RESET} %-40s ${status_color}%s${C_RESET}\n" \
+        printf "  ${C_RESET}%-24s${C_RESET} %-40s ${status_color}%s${C_RESET}\n" \
             "$lname" "$target" "$status"
         found=1
     done < <(find "$user_home" -maxdepth 1 -type l -print0 2>/dev/null | sort -z)
@@ -418,7 +418,7 @@ show_all_symlinks_overview() {
                 status_color="$C_BRED"
             fi
 
-            printf "  ${C_BOLD}%-16s${C_RESET} ${C_CYAN}%-24s${C_RESET} %-36s ${status_color}%s${C_RESET}\n" \
+            printf "  ${C_BOLD}%-16s${C_RESET} ${C_RESET}%-24s${C_RESET} %-36s ${status_color}%s${C_RESET}\n" \
                 "$username" "$lname" "$target" "$status"
             ((total_links+=1))
         done < <(find "$user_home" -maxdepth 1 -type l -print0 2>/dev/null | sort -z)
