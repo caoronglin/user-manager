@@ -21,15 +21,9 @@ rl_wecom_validate_webhook() {
 
 rl_wecom_mask_secret() {
     local rl_value="${1:-}"
-    rl_value="${rl_value//password\":\"*\"/password\":\"***\"}"
-    rl_value="${rl_value//token\":\"*\"/token\":\"***\"}"
-    rl_value="${rl_value//webhook\":\"*\"/webhook\":\"***\"}"
-    rl_value="${rl_value//key=????????????????????????????????/key=***}"
-    rl_value="${rl_value//key=????????????????/key=***}"
-    rl_value="${rl_value//key=????????/key=***}"
-    rl_value="${rl_value//key=abc-123/key=***}"
-    rl_value="${rl_value//Secret123/***}"
-    printf '%s' "$rl_value"
+    printf '%s' "$rl_value" | sed -E \
+        -e 's/(key=)[^&[:space:]"'"'"']+/\1***/g' \
+        -e 's/("(password|token|webhook|secret|key)"[[:space:]]*:[[:space:]]*")[^"]*(")/\1***\3/g'
 }
 
 rl_wecom_json_escape() {

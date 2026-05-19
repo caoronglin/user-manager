@@ -98,5 +98,15 @@ else
     rl_not_ok "webhook 未脱敏: $masked"
 fi
 
+long_key_masked="$(rl_wecom_mask_secret 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=12345678-1234-1234-1234-123456789abc&debug=1')"
+json_masked="$(rl_wecom_mask_secret '{"password":"Secret123","token":"tok_abcdef123456","secret":"sec-value","webhook":"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=12345678-1234-1234-1234-123456789abc"}')"
+if [[ "$long_key_masked" == *'key=***&debug=1'* && "$long_key_masked" != *'123456789abc'* && \
+      "$json_masked" != *'Secret123'* && "$json_masked" != *'tok_abcdef123456'* && \
+      "$json_masked" != *'sec-value'* && "$json_masked" != *'123456789abc'* ]]; then
+    rl_ok "长 webhook key 与敏感 JSON 字段完全脱敏"
+else
+    rl_not_ok "长 key 或敏感 JSON 字段脱敏不完整: $long_key_masked / $json_masked"
+fi
+
 printf 'passed=%s failed=%s\n' "$rl_pass" "$rl_fail"
 [[ "$rl_fail" -eq 0 ]]

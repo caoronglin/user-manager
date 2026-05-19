@@ -526,6 +526,26 @@ _um_user_shell() {
     _um_user_passwd_entry "$username" | cut -d: -f7
 }
 
+_um_user_lock_state() {
+    local username="$1" status_line status_field
+    status_line=$(passwd -S "$username" 2>/dev/null || true)
+    status_field=$(awk '{print $2}' <<<"$status_line")
+    case "$status_field" in
+        L|LK) printf 'locked' ;;
+        *) printf 'active' ;;
+    esac
+}
+
+_um_user_expiry_state() {
+    local username="$1" expiry_line expiry_value
+    expiry_line=$(chage -l "$username" 2>/dev/null | awk -F: '/^Account expires/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}' || true)
+    expiry_value="${expiry_line:-never}"
+    case "$expiry_value" in
+        never|Never|"") printf -- '-1' ;;
+        *) printf '%s' "$(_um_disabled_sanitize_field "$expiry_value")" ;;
+    esac
+}
+
 _um_nologin_shell() {
     if [[ -x /usr/sbin/nologin || ! -e /sbin/nologin ]]; then
         printf '/usr/sbin/nologin'
@@ -553,24 +573,38 @@ _um_write_disabled_records() {
 }
 
 _um_append_disabled_record() {
-    local username="$1" reason="$2" expiry_date="$3" original_shell="$4" original_lock_state="${5:-active}" mode="${6:-disable}"
+    local username="$1" reason="$2" expiry_date="$3" original_shell="$4" original_lock_state="${5:-active}" original_expiry="${6:--1}" mode="${7:-disable}"
     local temp_records
     temp_records="$(mktemp)" || return 1
     if [[ -f "$DISABLED_USERS_FILE" ]]; then
         grep -F -v -- "${username}"$'\t' "$DISABLED_USERS_FILE" > "$temp_records" || true
     fi
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$(_um_disabled_sanitize_field "$username")" \
         "$(_um_disabled_sanitize_field "$reason")" \
         "$(date +%Y-%m-%d)" \
         "$(_um_disabled_sanitize_field "${expiry_date:-permanent}")" \
         "$(_um_disabled_sanitize_field "$original_shell")" \
         "$(_um_disabled_sanitize_field "$original_lock_state")" \
+        "$(_um_disabled_sanitize_field "$original_expiry")" \
         "$(_um_disabled_sanitize_field "$mode")" >> "$temp_records"
     _um_write_disabled_records "$temp_records"
     local rc=$?
     rm -f "$temp_records"
     return $rc
+}
+
+_um_restore_account_state() {
+    local username="$1" original_shell="$2" original_lock_state="${3:-active}" original_expiry="${4:--1}"
+    if [[ "$original_lock_state" != "locked" ]]; then
+        priv_usermod -U "$username" || return 1
+    fi
+    if [[ -n "$original_expiry" && "$original_expiry" != "-1" && "$original_expiry" != "never" ]]; then
+        priv_chage -E "$original_expiry" "$username" || return 1
+    else
+        priv_chage -E -1 "$username" || return 1
+    fi
+    priv_usermod -s "$original_shell" "$username"
 }
 
 _um_get_disabled_record() {
@@ -625,7 +659,7 @@ disable_user_account() {
     [[ "$username" != "${USER:-}" ]] || { msg_err "禁止禁用当前执行用户"; return 1; }
     id "$username" >/dev/null 2>&1 || { msg_err "用户不存在: $username"; return 1; }
 
-    local uid original_shell
+    local uid original_shell original_lock_state original_expiry
     uid="$(_um_user_uid "$username")" || return 1
     [[ "$uid" =~ ^[0-9]+$ ]] || return 1
     (( uid >= 1000 )) || { msg_err "禁止禁用系统用户: $username"; return 1; }
@@ -637,6 +671,8 @@ disable_user_account() {
 
     original_shell="$(_um_user_shell "$username")" || return 1
     [[ -n "$original_shell" ]] || original_shell="/bin/bash"
+    original_lock_state="$(_um_user_lock_state "$username")"
+    original_expiry="$(_um_user_expiry_state "$username")"
 
     local nologin_shell
     nologin_shell="$(_um_nologin_shell)"
@@ -644,7 +680,10 @@ disable_user_account() {
     priv_usermod -L "$username" || return 1
     priv_chage -E 0 "$username" || return 1
     priv_usermod -s "$nologin_shell" "$username" || return 1
-    _um_append_disabled_record "$username" "$reason" "${expiry_date:-permanent}" "$original_shell" "active" "$mode" || return 1
+    if ! _um_append_disabled_record "$username" "$reason" "${expiry_date:-permanent}" "$original_shell" "$original_lock_state" "$original_expiry" "$mode"; then
+        _um_restore_account_state "$username" "$original_shell" "$original_lock_state" "$original_expiry" >/dev/null 2>&1 || true
+        return 1
+    fi
     if [[ "$mode" == "suspend" ]]; then
         _um_send_account_state_notice suspend "$username" "$(_um_disabled_sanitize_field "$reason")" "${expiry_date:-permanent}"
     else
@@ -657,14 +696,19 @@ enable_user_account() {
     local username="$1"
     [[ -n "$username" ]] || { msg_err "用户名不能为空"; return 1; }
 
-    local record original_shell
+    local record original_shell original_lock_state original_expiry record_mode
     record="$(_um_get_disabled_record "$username")" || return 0
-    IFS=$'\t' read -r _ _ _ _ original_shell _ _ <<< "$record"
+    IFS=$'\t' read -r _ _ _ _ original_shell original_lock_state original_expiry record_mode <<< "$record"
     [[ -n "$original_shell" ]] || original_shell="/bin/bash"
+    [[ -n "$original_lock_state" ]] || original_lock_state="active"
+    if [[ "$original_expiry" == "disable" || "$original_expiry" == "suspend" ]]; then
+        record_mode="$original_expiry"
+        original_expiry="-1"
+    fi
+    [[ -n "$record_mode" ]] || record_mode="disable"
+    [[ -n "$original_expiry" ]] || original_expiry="-1"
 
-    priv_usermod -U "$username" || return 1
-    priv_chage -E -1 "$username" || return 1
-    priv_usermod -s "$original_shell" "$username" || return 1
+    _um_restore_account_state "$username" "$original_shell" "$original_lock_state" "$original_expiry" || return 1
     _um_remove_disabled_record "$username" || return 1
     _um_send_account_state_notice restore "$username"
     record_user_event "$username" "enable" "恢复停用账户" 2>/dev/null || true
