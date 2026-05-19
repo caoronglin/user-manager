@@ -281,6 +281,106 @@ fi
 unset -f write_privileged_text_file priv_chmod priv_crontab draw_header draw_info_card msg_step msg_ok msg_err
 
 # ------------------------------------------------------------
+# 账户停用/禁用状态机测试
+# ------------------------------------------------------------
+
+ACCOUNT_DISABLE_LOG="$TEST_TMPDIR/account_disable_calls.log"
+DISABLED_USERS_FILE="$TEST_TMPDIR/disabled_users.tsv"
+: > "$ACCOUNT_DISABLE_LOG"
+
+id() {
+    case "${1:-}" in
+        root) return 0 ;;
+        alice|bob|sysdaemon) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+getent() {
+    if [[ "${1:-}" == "passwd" ]]; then
+        case "${2:-}" in
+            alice) printf 'alice:x:1001:1001:Alice:/home/alice:/bin/bash\n' ;;
+            bob) printf 'bob:x:1002:1002:Bob:/home/bob:/bin/zsh\n' ;;
+            root) printf 'root:x:0:0:root:/root:/bin/bash\n' ;;
+            sysdaemon) printf 'sysdaemon:x:999:999:System:/nonexistent:/usr/sbin/nologin\n' ;;
+            *) return 2 ;;
+        esac
+        return 0
+    fi
+    command getent "$@"
+}
+priv_usermod() { printf 'usermod %s\n' "$*" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
+priv_chage() { printf 'chage %s\n' "$*" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
+record_user_event() { printf 'event %s|%s|%s\n' "${1:-}" "${2:-}" "${3:-}" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
+msg_info() { return 0; }
+msg_warn() { return 0; }
+msg_err() { return 0; }
+msg_ok() { return 0; }
+
+test_start "disable_user_account: 拒绝 root、当前用户和系统 UID 用户"
+old_user_for_disable="$USER"
+USER="bob"
+if ! disable_user_account root "maint" "permanent" >/dev/null 2>&1 && \
+   ! disable_user_account bob "maint" "permanent" >/dev/null 2>&1 && \
+   ! disable_user_account sysdaemon "maint" "permanent" >/dev/null 2>&1 && \
+   [[ ! -s "$ACCOUNT_DISABLE_LOG" ]]; then
+    test_pass
+else
+    test_fail "禁用保护未拒绝 root/current/system user 或产生了特权调用"
+fi
+USER="$old_user_for_disable"
+
+test_start "disable_user_account: 锁定密码、设置过期、切换 nologin 并记录状态"
+: > "$ACCOUNT_DISABLE_LOG"
+if disable_user_account alice $'维护,原因\n换行' "2026-01-02" >/dev/null 2>&1 && \
+   grep -q '^usermod -L alice$' "$ACCOUNT_DISABLE_LOG" && \
+   grep -q '^chage -E 0 alice$' "$ACCOUNT_DISABLE_LOG" && \
+   grep -q '^usermod -s .*nologin alice$' "$ACCOUNT_DISABLE_LOG" && \
+   grep -q $'^alice\t' "$DISABLED_USERS_FILE" && \
+   grep -q $'\t/bin/bash\t' "$DISABLED_USERS_FILE" && \
+   [[ "$(wc -l < "$DISABLED_USERS_FILE" | tr -d ' ')" == "1" ]] && \
+   ! grep -q ',' "$DISABLED_USERS_FILE"; then
+    test_pass
+else
+    test_fail "disable_user_account 未执行完整停用序列或状态记录不安全"
+fi
+
+test_start "disable_user_account: 重复禁用幂等且不重复写记录"
+: > "$ACCOUNT_DISABLE_LOG"
+before_disable_lines=$(wc -l < "$DISABLED_USERS_FILE" | tr -d ' ')
+disable_user_account alice "重复" "2026-01-03" >/dev/null 2>&1 || true
+after_disable_lines=$(wc -l < "$DISABLED_USERS_FILE" | tr -d ' ')
+if [[ "$before_disable_lines" == "$after_disable_lines" ]] && [[ ! -s "$ACCOUNT_DISABLE_LOG" ]]; then
+    test_pass
+else
+    test_fail "重复禁用应为 no-op 且不重复写状态"
+fi
+
+test_start "enable_user_account: 恢复锁定、过期和原 shell 并移除状态"
+: > "$ACCOUNT_DISABLE_LOG"
+if enable_user_account alice >/dev/null 2>&1 && \
+   grep -q '^usermod -U alice$' "$ACCOUNT_DISABLE_LOG" && \
+   grep -q '^chage -E -1 alice$' "$ACCOUNT_DISABLE_LOG" && \
+   grep -q '^usermod -s /bin/bash alice$' "$ACCOUNT_DISABLE_LOG" && \
+   ! grep -q $'^alice\t' "$DISABLED_USERS_FILE"; then
+    test_pass
+else
+    test_fail "enable_user_account 未恢复账户状态或未清理状态记录"
+fi
+
+test_start "check_expired_suspensions: 到期记录调用 enable_user_account"
+: > "$ACCOUNT_DISABLE_LOG"
+printf 'alice\ttest\t2000-01-01\t2000-01-02\t/bin/bash\tactive\tdisable\n' > "$DISABLED_USERS_FILE"
+enable_user_account() { printf 'enable-called %s\n' "$1" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
+if check_expired_suspensions >/dev/null 2>&1 && grep -q '^enable-called alice$' "$ACCOUNT_DISABLE_LOG"; then
+    test_pass
+else
+    test_fail "过期暂停检查未委托 enable_user_account"
+fi
+unset -f enable_user_account
+
+unset -f id getent priv_usermod priv_chage record_user_event msg_info msg_warn msg_err msg_ok
+
+# ------------------------------------------------------------
 # 用户组管理测试
 # ------------------------------------------------------------
 
