@@ -42,12 +42,12 @@ mountpoint() { return 0; }
 
 test_suite_start "Quota Core group mode"
 
-test_start "rl_quota_set_group: 使用组模式调用 setquota"
-if rl_quota_set_group testgroup 4096 /home >/dev/null 2>&1 && \
-   [[ "$(cat "$rl_setquota_log" 2>/dev/null)" == "-g testgroup 4096 4096 0 0 /home" ]]; then
+test_start "rl_quota_set_group: 输入字节时按 KB 设置软/硬配额"
+if rl_quota_set_group testgroup 1073741824 /home >/dev/null 2>&1 && \
+   [[ "$(cat "$rl_setquota_log" 2>/dev/null)" == "-g testgroup 1048576 1048576 0 0 /home" ]]; then
     test_pass
 else
-    test_fail "未按组模式调用 rl_priv_setquota"
+    test_fail "未将字节正确转换为 KB 或未正确设置软/硬配额"
 fi
 
 test_start "rl_quota_get_group: 查询并筛选组配额行"
@@ -63,6 +63,13 @@ if ! rl_quota_set_group "" 4096 /home >/dev/null 2>&1; then
     test_pass
 else
     test_fail "缺少组名时应失败"
+fi
+
+test_start "rl_quota_set_group: 非数字配额时失败"
+if ! rl_quota_set_group testgroup "1G" /home >/dev/null 2>&1; then
+    test_pass
+else
+    test_fail "非数字配额时应失败"
 fi
 
 test_start "rl_quota_get_group: 缺少组名时失败"
