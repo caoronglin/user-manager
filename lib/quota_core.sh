@@ -352,7 +352,17 @@ rl_quota_set_group() {
         msg_err "rl_quota_set_group: 组名和限额不能为空"
         return 1
     fi
-    rl_priv_setquota -g "$rl_group" "$rl_bytes" "$rl_bytes" 0 0 "$rl_mp"
+    if ! [[ "$rl_bytes" =~ ^[0-9]+$ ]]; then
+        msg_err "rl_quota_set_group: 限额必须为字节数字"
+        return 1
+    fi
+
+    local rl_kb=$((rl_bytes / 1024))
+    if (( rl_bytes > 0 && rl_kb == 0 )); then
+        rl_kb=1
+    fi
+
+    rl_priv_setquota -g "$rl_group" "$rl_kb" "$rl_kb" 0 0 "$rl_mp"
 }
 
 # 查询组磁盘配额
