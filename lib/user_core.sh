@@ -591,6 +591,28 @@ _um_remove_disabled_record() {
     return $rc
 }
 
+_um_send_account_state_notice() {
+    local event="$1" username="$2" reason="${3:-}" expiry_date="${4:-permanent}"
+    declare -F get_user_email >/dev/null 2>&1 || return 0
+    local email
+    email=$(get_user_email "$username" 2>/dev/null || true)
+    [[ -n "$email" ]] || return 0
+    case "$event" in
+        suspend)
+            declare -F send_account_suspended_email >/dev/null 2>&1 && \
+                send_account_suspended_email "$username" "$email" "$reason" "$expiry_date" "system" >/dev/null 2>&1 || true
+            ;;
+        disable)
+            declare -F send_account_disabled_email >/dev/null 2>&1 && \
+                send_account_disabled_email "$username" "$email" "$reason" "$expiry_date" "system" >/dev/null 2>&1 || true
+            ;;
+        restore)
+            declare -F send_account_restored_email >/dev/null 2>&1 && \
+                send_account_restored_email "$username" "$email" "system" >/dev/null 2>&1 || true
+            ;;
+    esac
+}
+
 disable_user_account() {
     local username="$1"
     local reason="${2:-无}"
@@ -623,6 +645,11 @@ disable_user_account() {
     priv_chage -E 0 "$username" || return 1
     priv_usermod -s "$nologin_shell" "$username" || return 1
     _um_append_disabled_record "$username" "$reason" "${expiry_date:-permanent}" "$original_shell" "active" "$mode" || return 1
+    if [[ "$mode" == "suspend" ]]; then
+        _um_send_account_state_notice suspend "$username" "$(_um_disabled_sanitize_field "$reason")" "${expiry_date:-permanent}"
+    else
+        _um_send_account_state_notice disable "$username" "$(_um_disabled_sanitize_field "$reason")" "${expiry_date:-permanent}"
+    fi
     record_user_event "$username" "disable" "$(_um_disabled_sanitize_field "$reason") (到期:${expiry_date:-permanent})" 2>/dev/null || true
 }
 
@@ -639,6 +666,7 @@ enable_user_account() {
     priv_chage -E -1 "$username" || return 1
     priv_usermod -s "$original_shell" "$username" || return 1
     _um_remove_disabled_record "$username" || return 1
+    _um_send_account_state_notice restore "$username"
     record_user_event "$username" "enable" "恢复停用账户" 2>/dev/null || true
 }
 

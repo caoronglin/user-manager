@@ -311,6 +311,10 @@ getent() {
 priv_usermod() { printf 'usermod %s\n' "$*" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
 priv_chage() { printf 'chage %s\n' "$*" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
 record_user_event() { printf 'event %s|%s|%s\n' "${1:-}" "${2:-}" "${3:-}" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
+get_user_email() { [[ "${1:-}" == "alice" ]] && printf 'alice@example.com\n'; }
+send_account_disabled_email() { printf 'mail-disabled %s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" >> "$ACCOUNT_DISABLE_LOG"; [[ "${ACCOUNT_MAIL_FAIL:-0}" != "1" ]]; }
+send_account_suspended_email() { printf 'mail-suspended %s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
+send_account_restored_email() { printf 'mail-restored %s|%s|%s\n' "$1" "$2" "$3" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
 msg_info() { return 0; }
 msg_warn() { return 0; }
 msg_err() { return 0; }
@@ -335,6 +339,7 @@ if disable_user_account alice $'维护,原因\n换行' "2026-01-02" >/dev/null 2
    grep -q '^usermod -L alice$' "$ACCOUNT_DISABLE_LOG" && \
    grep -q '^chage -E 0 alice$' "$ACCOUNT_DISABLE_LOG" && \
    grep -q '^usermod -s .*nologin alice$' "$ACCOUNT_DISABLE_LOG" && \
+   grep -q '^mail-disabled alice|alice@example.com|维护 原因 换行|2026-01-02|' "$ACCOUNT_DISABLE_LOG" && \
    grep -q $'^alice\t' "$DISABLED_USERS_FILE" && \
    grep -q $'\t/bin/bash\t' "$DISABLED_USERS_FILE" && \
    [[ "$(wc -l < "$DISABLED_USERS_FILE" | tr -d ' ')" == "1" ]] && \
@@ -361,11 +366,25 @@ if enable_user_account alice >/dev/null 2>&1 && \
    grep -q '^usermod -U alice$' "$ACCOUNT_DISABLE_LOG" && \
    grep -q '^chage -E -1 alice$' "$ACCOUNT_DISABLE_LOG" && \
    grep -q '^usermod -s /bin/bash alice$' "$ACCOUNT_DISABLE_LOG" && \
+   grep -q '^mail-restored alice|alice@example.com|' "$ACCOUNT_DISABLE_LOG" && \
    ! grep -q $'^alice\t' "$DISABLED_USERS_FILE"; then
     test_pass
 else
     test_fail "enable_user_account 未恢复账户状态或未清理状态记录"
 fi
+
+test_start "disable_user_account: 通知失败不阻断账户禁用"
+: > "$ACCOUNT_DISABLE_LOG"
+ACCOUNT_MAIL_FAIL=1
+if disable_user_account alice "通知失败" "2026-01-04" >/dev/null 2>&1 && \
+   grep -q '^usermod -L alice$' "$ACCOUNT_DISABLE_LOG" && \
+   grep -q '^mail-disabled alice|alice@example.com|通知失败|2026-01-04|' "$ACCOUNT_DISABLE_LOG"; then
+    test_pass
+else
+    test_fail "通知失败不应阻断账户禁用"
+fi
+unset ACCOUNT_MAIL_FAIL
+enable_user_account alice >/dev/null 2>&1 || true
 
 test_start "check_expired_suspensions: 到期记录调用 enable_user_account"
 : > "$ACCOUNT_DISABLE_LOG"
@@ -378,7 +397,7 @@ else
 fi
 unset -f enable_user_account
 
-unset -f id getent priv_usermod priv_chage record_user_event msg_info msg_warn msg_err msg_ok
+unset -f id getent priv_usermod priv_chage record_user_event get_user_email send_account_disabled_email send_account_suspended_email send_account_restored_email msg_info msg_warn msg_err msg_ok
 
 # ------------------------------------------------------------
 # 用户组管理测试
