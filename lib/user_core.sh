@@ -502,6 +502,146 @@ delete_user() {
 # 暂停账户管理
 # ============================================================
 
+_um_disabled_sanitize_field() {
+    local value="${1:-}"
+    value="${value//$'\r'/ }"
+    value="${value//$'\n'/ }"
+    value="${value//$'\t'/ }"
+    value="${value//,/ }"
+    printf '%s' "$value"
+}
+
+_um_user_passwd_entry() {
+    local username="$1"
+    getent passwd "$username" 2>/dev/null || return 1
+}
+
+_um_user_uid() {
+    local username="$1"
+    _um_user_passwd_entry "$username" | cut -d: -f3
+}
+
+_um_user_shell() {
+    local username="$1"
+    _um_user_passwd_entry "$username" | cut -d: -f7
+}
+
+_um_nologin_shell() {
+    if [[ -x /usr/sbin/nologin || ! -e /sbin/nologin ]]; then
+        printf '/usr/sbin/nologin'
+    else
+        printf '/sbin/nologin'
+    fi
+}
+
+is_user_disabled() {
+    local username="$1"
+    [[ -n "$username" && -f "$DISABLED_USERS_FILE" ]] || return 1
+    grep -F -q -- "${username}"$'\t' "$DISABLED_USERS_FILE"
+}
+
+_um_write_disabled_records() {
+    local content_file="$1"
+    local target_dir
+    target_dir="$(dirname "$DISABLED_USERS_FILE")"
+    mkdir -p "$target_dir" || return 1
+    local tmp_file
+    tmp_file="${DISABLED_USERS_FILE}.tmp.$$"
+    cp "$content_file" "$tmp_file" || return 1
+    chmod 0600 "$tmp_file" 2>/dev/null || true
+    mv "$tmp_file" "$DISABLED_USERS_FILE"
+}
+
+_um_append_disabled_record() {
+    local username="$1" reason="$2" expiry_date="$3" original_shell="$4" original_lock_state="${5:-active}" mode="${6:-disable}"
+    local temp_records
+    temp_records="$(mktemp)" || return 1
+    if [[ -f "$DISABLED_USERS_FILE" ]]; then
+        grep -F -v -- "${username}"$'\t' "$DISABLED_USERS_FILE" > "$temp_records" || true
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$(_um_disabled_sanitize_field "$username")" \
+        "$(_um_disabled_sanitize_field "$reason")" \
+        "$(date +%Y-%m-%d)" \
+        "$(_um_disabled_sanitize_field "${expiry_date:-permanent}")" \
+        "$(_um_disabled_sanitize_field "$original_shell")" \
+        "$(_um_disabled_sanitize_field "$original_lock_state")" \
+        "$(_um_disabled_sanitize_field "$mode")" >> "$temp_records"
+    _um_write_disabled_records "$temp_records"
+    local rc=$?
+    rm -f "$temp_records"
+    return $rc
+}
+
+_um_get_disabled_record() {
+    local username="$1"
+    [[ -f "$DISABLED_USERS_FILE" ]] || return 1
+    grep -F -- "${username}"$'\t' "$DISABLED_USERS_FILE" | tail -n 1
+}
+
+_um_remove_disabled_record() {
+    local username="$1"
+    [[ -f "$DISABLED_USERS_FILE" ]] || return 0
+    local temp_records
+    temp_records="$(mktemp)" || return 1
+    grep -F -v -- "${username}"$'\t' "$DISABLED_USERS_FILE" > "$temp_records" || true
+    _um_write_disabled_records "$temp_records"
+    local rc=$?
+    rm -f "$temp_records"
+    return $rc
+}
+
+disable_user_account() {
+    local username="$1"
+    local reason="${2:-无}"
+    local expiry_date="${3:-permanent}"
+    local mode="${4:-disable}"
+
+    [[ -n "$username" ]] || { msg_err "用户名不能为空"; return 1; }
+    validate_username "$username" >/dev/null 2>&1 || return 1
+    [[ "$username" != "root" ]] || { msg_err "禁止禁用 root 用户"; return 1; }
+    [[ "$username" != "${USER:-}" ]] || { msg_err "禁止禁用当前执行用户"; return 1; }
+    id "$username" >/dev/null 2>&1 || { msg_err "用户不存在: $username"; return 1; }
+
+    local uid original_shell
+    uid="$(_um_user_uid "$username")" || return 1
+    [[ "$uid" =~ ^[0-9]+$ ]] || return 1
+    (( uid >= 1000 )) || { msg_err "禁止禁用系统用户: $username"; return 1; }
+
+    if is_user_disabled "$username"; then
+        msg_info "用户 $username 已处于停用状态"
+        return 0
+    fi
+
+    original_shell="$(_um_user_shell "$username")" || return 1
+    [[ -n "$original_shell" ]] || original_shell="/bin/bash"
+
+    local nologin_shell
+    nologin_shell="$(_um_nologin_shell)"
+
+    priv_usermod -L "$username" || return 1
+    priv_chage -E 0 "$username" || return 1
+    priv_usermod -s "$nologin_shell" "$username" || return 1
+    _um_append_disabled_record "$username" "$reason" "${expiry_date:-permanent}" "$original_shell" "active" "$mode" || return 1
+    record_user_event "$username" "disable" "$(_um_disabled_sanitize_field "$reason") (到期:${expiry_date:-permanent})" 2>/dev/null || true
+}
+
+enable_user_account() {
+    local username="$1"
+    [[ -n "$username" ]] || { msg_err "用户名不能为空"; return 1; }
+
+    local record original_shell
+    record="$(_um_get_disabled_record "$username")" || return 0
+    IFS=$'\t' read -r _ _ _ _ original_shell _ _ <<< "$record"
+    [[ -n "$original_shell" ]] || original_shell="/bin/bash"
+
+    priv_usermod -U "$username" || return 1
+    priv_chage -E -1 "$username" || return 1
+    priv_usermod -s "$original_shell" "$username" || return 1
+    _um_remove_disabled_record "$username" || return 1
+    record_user_event "$username" "enable" "恢复停用账户" 2>/dev/null || true
+}
+
 # 检查过期的暂停账户
 check_expired_suspensions() {
     [[ ! -f "$DISABLED_USERS_FILE" ]] && return 0
@@ -510,9 +650,15 @@ check_expired_suspensions() {
     today_epoch=$(date +%s)
 
     local expired_users=()
-    local username expiry_date expiry_epoch
+    local username expiry_date expiry_epoch line
 
-    while IFS=, read -r username _ _ expiry_date; do
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        if [[ "$line" == *$'\t'* ]]; then
+            IFS=$'\t' read -r username _ _ expiry_date _ _ _ <<< "$line"
+        else
+            IFS=, read -r username _ _ expiry_date <<< "$line"
+        fi
         [[ -z "$username" ]] && continue
 
         if [[ -z "$expiry_date" || "$expiry_date" == "permanent" ]]; then
@@ -526,8 +672,8 @@ check_expired_suspensions() {
         [[ -z "$expiry_epoch" ]] && continue
 
         if (( today_epoch >= expiry_epoch )); then
-            if id "$username" &>/dev/null && passwd -S "$username" 2>/dev/null | grep -q "LK"; then
-                priv_usermod -U "$username" || continue
+            if id "$username" &>/dev/null; then
+                enable_user_account "$username" || continue
                 expired_users+=("$username")
             fi
         fi

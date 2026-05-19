@@ -24,6 +24,7 @@ readonly -A PRIV_CMD_WHITELIST=(
     ["deluser"]="$ACL_LEVEL_ADMIN"
     ["chpasswd"]="$ACL_LEVEL_ADMIN"
     ["passwd"]="$ACL_LEVEL_ADMIN"
+    ["chage"]="$ACL_LEVEL_ADMIN"
     ["groupadd"]="$ACL_LEVEL_ADMIN"
     ["groupmod"]="$ACL_LEVEL_ADMIN"
     ["groupdel"]="$ACL_LEVEL_ADMIN"
@@ -267,6 +268,7 @@ priv_gzip() { priv_exec gzip "$@"; }
 priv_gunzip() { priv_exec gunzip "$@"; }
 priv_chpasswd() { priv_exec chpasswd "$@"; }
 priv_passwd() { priv_exec passwd "$@"; }
+priv_chage() { priv_exec chage "$@"; }
 priv_visudo() { priv_exec visudo "$@"; }
 
 # 硬件信息命令封装
