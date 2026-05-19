@@ -9,18 +9,33 @@ rl_mail_html_escape() {
 }
 
 rl_mail_template_render() {
-    local rl_template_file="$1" rl_username="$2" rl_password="$3" rl_action="$4" rl_timestamp="$5" rl_content
+    local rl_template_file="$1" rl_username="$2" rl_password="$3" rl_action="$4" rl_timestamp="$5"
+    local rl_reason="${6:-}" rl_expiry_date="${7:-}" rl_operator="${8:-}" rl_status="${9:-}" rl_quota="${10:-}" rl_content
     [[ -f "$rl_template_file" ]] || return 1
     rl_content=$(<"$rl_template_file") || return 1
-    local rl_eu rl_ep rl_ea rl_et
+    local rl_eu rl_ep rl_ea rl_et rl_er rl_ee rl_eo rl_es rl_eq
     rl_eu=$(rl_mail_html_escape "$rl_username")
     rl_ep=$(rl_mail_html_escape "$rl_password")
     rl_ea=$(rl_mail_html_escape "$rl_action")
     rl_et=$(rl_mail_html_escape "$rl_timestamp")
+    rl_er=$(rl_mail_html_escape "$rl_reason")
+    rl_ee=$(rl_mail_html_escape "$rl_expiry_date")
+    rl_eo=$(rl_mail_html_escape "$rl_operator")
+    rl_es=$(rl_mail_html_escape "$rl_status")
+    rl_eq=$(rl_mail_html_escape "$rl_quota")
+
+    # Bash 5.2 的 patsub_replacement 会把 replacement 中的 & 展开为匹配文本，
+    # 而 HTML escape 会生成 &lt; / &gt;。模板替换必须按字面值插入。
+    shopt -u patsub_replacement 2>/dev/null || true
     rl_content="${rl_content//\$\{username\}/$rl_eu}"
     rl_content="${rl_content//\$\{password\}/$rl_ep}"
     rl_content="${rl_content//\$\{action\}/$rl_ea}"
     rl_content="${rl_content//\$\{timestamp\}/$rl_et}"
+    rl_content="${rl_content//\$\{reason\}/$rl_er}"
+    rl_content="${rl_content//\$\{expiry_date\}/$rl_ee}"
+    rl_content="${rl_content//\$\{operator\}/$rl_eo}"
+    rl_content="${rl_content//\$\{status\}/$rl_es}"
+    rl_content="${rl_content//\$\{quota\}/$rl_eq}"
     printf '%s\n' "$rl_content"
 }
 
