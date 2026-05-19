@@ -65,6 +65,31 @@ rl_mail_queue_retry() { [[ -n "${1:-}" ]] && sqlite3 "$EMAIL_QUEUE_DB" "UPDATE e
 rl_mail_queue_stats() { [[ -f "$EMAIL_QUEUE_DB" ]] || { echo "pending=0 sending=0 sent=0 failed=0"; return 0; }; sqlite3 "$EMAIL_QUEUE_DB" "SELECT 'pending='||COUNT(*) FROM email_queue WHERE status='pending' UNION ALL SELECT 'sending='||COUNT(*) FROM email_queue WHERE status='sending' UNION ALL SELECT 'sent='||COUNT(*) FROM email_queue WHERE status='sent' UNION ALL SELECT 'failed='||COUNT(*) FROM email_queue WHERE status='failed';"; }
 rl_mail_queue_cleanup() { [[ -f "$EMAIL_QUEUE_DB" ]] && sqlite3 "$EMAIL_QUEUE_DB" "DELETE FROM email_log WHERE created_at < datetime('now','-${1:-7} days'); DELETE FROM email_queue WHERE status IN ('$EMAIL_QUEUE_SENT','$EMAIL_QUEUE_FAILED') AND created_at < datetime('now','-${1:-7} days');"; }
 
+rl_mail_queue_json_value() {
+    local rl_data="${1:-}" rl_key="$2" rl_default="${3:-}"
+    if command -v jq >/dev/null 2>&1 && [[ -n "$rl_data" ]]; then
+        jq -r --arg key "$rl_key" --arg default "$rl_default" '.[$key] // $default' <<<"$rl_data" 2>/dev/null || printf '%s\n' "$rl_default"
+    else
+        printf '%s\n' "$rl_default"
+    fi
+}
+
+rl_mail_queue_dispatch_template() {
+    local rl_template="$1" rl_username="$2" rl_email="$3" rl_data="${4:-{}}"
+    local rl_reason rl_expiry rl_operator rl_quota
+    rl_reason=$(rl_mail_queue_json_value "$rl_data" reason "")
+    rl_expiry=$(rl_mail_queue_json_value "$rl_data" expiry_date "permanent")
+    rl_operator=$(rl_mail_queue_json_value "$rl_data" operator "system")
+    rl_quota=$(rl_mail_queue_json_value "$rl_data" quota "")
+    case "$rl_template" in
+        account_suspended) send_account_suspended_email "$rl_username" "$rl_email" "$rl_reason" "$rl_expiry" "$rl_operator" ;;
+        account_disabled) send_account_disabled_email "$rl_username" "$rl_email" "$rl_reason" "$rl_expiry" "$rl_operator" ;;
+        account_restored) send_account_restored_email "$rl_username" "$rl_email" "$rl_operator" ;;
+        quota_hard_limit_set) send_quota_hard_limit_email "$rl_username" "$rl_email" "$rl_quota" "$rl_operator" ;;
+        *) return 1 ;;
+    esac
+}
+
 rl_mail_queue_process() {
     local rl_max="${1:-10}" rl_processed=0 rl_success=0 rl_failed=0 rl_next rl_id rl_username rl_email rl_template rl_data rl_send_result
     command -v sqlite3 >/dev/null 2>&1 || return 1
@@ -81,6 +106,7 @@ rl_mail_queue_process() {
                 [[ -n "$rl_password" ]] && send_password_email "$rl_username" "$rl_password" "$rl_email" "$rl_action" && rl_send_result=0 ;;
             quota_warning) declare -F send_quota_warning_email >/dev/null 2>&1 && send_quota_warning_email "$rl_username" "$rl_email" "$rl_data" && rl_send_result=0 ;;
             backup_completed) declare -F send_backup_notification_email >/dev/null 2>&1 && send_backup_notification_email "$rl_username" "$rl_email" "$rl_data" && rl_send_result=0 ;;
+            account_suspended|account_disabled|account_restored|quota_hard_limit_set) rl_mail_queue_dispatch_template "$rl_template" "$rl_username" "$rl_email" "$rl_data" && rl_send_result=0 ;;
         esac
         if [[ $rl_send_result -eq 0 ]]; then rl_mail_queue_mark_sent "$rl_id"; ((rl_success+=1)); else rl_mail_queue_mark_failed "$rl_id" "发送失败"; ((rl_failed+=1)); fi
         ((rl_processed+=1))

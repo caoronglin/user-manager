@@ -183,10 +183,7 @@ suspend_or_enable_user() {
     if passwd -S "$username" 2>/dev/null | grep -q "L"; then
         msg_info "用户 ${C_BOLD}$username${C_RESET} 当前状态: ${C_BRED}已暂停${C_RESET}"
         if confirm_action "是否恢复该用户？"; then
-            priv_usermod -U "$username"
-            if [[ -f "$DISABLED_USERS_FILE" ]]; then
-                remove_file_entry "$DISABLED_USERS_FILE" "^$username,"
-            fi
+            enable_user_account "$username" || return 1
             msg_ok "用户 ${C_BOLD}$username${C_RESET} 已恢复"
             record_user_event "$username" "enable" "手动恢复"
         fi
@@ -201,8 +198,7 @@ suspend_or_enable_user() {
                 expiry_date=$(date -d "+${days} days" +%Y-%m-%d 2>/dev/null || date -v+"${days}"d +%Y-%m-%d 2>/dev/null)
             fi
 
-            priv_usermod -L "$username"
-            echo "$username,${reason:-无},$(date +%Y-%m-%d),${expiry_date}" >> "$DISABLED_USERS_FILE"
+            disable_user_account "$username" "${reason:-无}" "${expiry_date:-permanent}" "suspend" || return 1
 
             msg_ok "用户 ${C_BOLD}$username${C_RESET} 已暂停"
             [[ -n "$expiry_date" ]] && msg_info "将于 ${C_RESET}$expiry_date${C_RESET} 自动启用"

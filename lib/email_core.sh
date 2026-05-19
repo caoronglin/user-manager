@@ -14,3 +14,5 @@ source "$_EMAIL_CORE_DIR/rl_mail_sender.sh"
 source "$_EMAIL_CORE_DIR/rl_mail_queue.sh"
 # shellcheck source=lib/rl_mail_events.sh
 source "$_EMAIL_CORE_DIR/rl_mail_events.sh"
+# shellcheck source=lib/rl_wecom_bot_sender.sh
+[[ -f "$_EMAIL_CORE_DIR/rl_wecom_bot_sender.sh" ]] && source "$_EMAIL_CORE_DIR/rl_wecom_bot_sender.sh"

@@ -50,7 +50,7 @@ printf 'repquota %s\n' "$*" >> "$RL_CMD_LOG"
 EOS
 chmod +x "$rl_stub_dir/repquota"
 
-for rl_cmd in chpasswd passwd gzip gunzip userdel deluser; do
+for rl_cmd in chpasswd passwd chage gzip gunzip userdel deluser; do
     cat > "$rl_stub_dir/$rl_cmd" <<'EOS'
 #!/bin/bash
 rl_cmd_name="$(basename "$0")"
@@ -170,6 +170,21 @@ if priv_passwd -l alice >/dev/null 2>&1 && \
     test_pass
 else
     test_fail "priv_passwd 未通过白名单或未委托 passwd"
+fi
+
+test_start "priv_chage: 白名单允许并通过 sudo 委托账户过期设置"
+: > "$rl_sudo_log"
+: > "$rl_cmd_log"
+if declare -F priv_chage >/dev/null 2>&1 && \
+    priv_chage -E 0 alice >/dev/null 2>&1 && \
+    priv_chage -E -1 alice >/dev/null 2>&1 && \
+    grep -q "sudo chage -E 0 alice" "$rl_sudo_log" && \
+    grep -q "sudo chage -E -1 alice" "$rl_sudo_log" && \
+    grep -q "chage -E 0 alice" "$rl_cmd_log" && \
+    grep -q "chage -E -1 alice" "$rl_cmd_log"; then
+    test_pass
+else
+    test_fail "priv_chage 不存在或未委托 chage"
 fi
 
 test_start "priv_gzip / priv_gunzip: 白名单允许并委托压缩命令"
