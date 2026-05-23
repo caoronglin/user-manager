@@ -175,6 +175,15 @@ _TUI_MENU_STATUS_RIGHT["audit_advanced"]="↑/↓ 导航  Enter 选择  q 返回
 # 通用菜单渲染引擎（现代暗色主题）
 # ============================================================
 
+_tui_menu_number_for_index() {
+    local index="$1" item_count="$2"
+    if (( index == item_count - 1 )); then
+        printf '0'
+    else
+        printf '%d' "$((index + 1))"
+    fi
+}
+
 # 菜单图标映射
 _tui_menu_icon() {
     local menu_id="${1:-main}"
@@ -303,19 +312,26 @@ _tui_draw_menu() {
         printf '│'
         
         # 菜单项内容
-        local item_text
+        local item_num label_width
+        item_num=$(_tui_menu_number_for_index "$i" "$item_count")
+        label_width=$((width - 9))
         if (( i == item_count - 1 )); then
             # 最后一项（退出/返回）用暗淡色
+            printf '  '
+            tui_fg "$TUI_COLOR_ACCENT"
+            printf '%2s' "$item_num"
             tui_fg "$TUI_COLOR_MUTED"
-            item_text="  0. ${item_name}"
+            printf '. '
+            printf '%-*s' "$label_width" "$item_name"
         else
+            tui_fg "$TUI_COLOR_ACCENT2"
+            printf '  %2s' "$item_num"
+            tui_fg "$TUI_COLOR_ACCENT"
+            printf '. '
             tui_fg "$TUI_COLOR_FG"
-            item_text="  $((i + 1)). ${item_name}"
+            printf '%-*s' "$label_width" "$item_name"
         fi
-        
-        # 填充到固定宽度
-        printf '%-*s' $((width - 2)) "$item_text"
-        
+
         tui_move $((menu_start + i)) $((menu_left + width - 1))
         tui_fg "$TUI_COLOR_BORDER"
         printf '│'
@@ -338,6 +354,8 @@ _tui_draw_menu() {
         uptime_info=$(uptime -p 2>/dev/null | sed 's/up //' || echo "unknown")
         actual_left="👥 托管用户: $user_count"
         actual_right="⏱ $uptime_info"
+    elif [[ "$actual_right" == *"↑/↓"* ]]; then
+        actual_right="数字直选  $actual_right"
     fi
     _tui_draw_modern_statusbar "$actual_left" "$actual_right"
 }

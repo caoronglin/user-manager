@@ -44,16 +44,30 @@ rl_mail_template_fallback() {
     rl_eu=$(rl_mail_html_escape "$rl_username"); rl_ep=$(rl_mail_html_escape "$rl_password")
     rl_ea=$(rl_mail_html_escape "$rl_action"); rl_et=$(rl_mail_html_escape "$rl_timestamp")
     cat <<HTMLEOF
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>${rl_ea}通知</title></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;padding:32px;">
-<div style="max-width:560px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
-<div style="background:#16a34a;color:#fff;padding:24px 32px;font-size:20px;font-weight:600;">${rl_ea}通知</div>
-<div style="padding:28px 32px;color:#374151;line-height:1.7;">
-<p>尊敬的用户 <strong>${rl_eu}</strong>，您好！</p>
-<p>您的账户${rl_ea}已完成。以下是您的登录凭据：</p>
-<table style="width:100%;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;"><tr><td>用户名</td><td><strong>${rl_eu}</strong></td></tr><tr><td>密码</td><td><strong>${rl_ep}</strong></td></tr><tr><td>时间</td><td>${rl_et}</td></tr></table>
-<p style="color:#92400e;">安全提示：请妥善保管密码，首次登录后建议立即修改。</p>
-</div><div style="padding:16px 32px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:12px;">用户管理系统 · ${rl_et}</div></div></body></html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${rl_ea}通知</title></head>
+<body style="margin:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans SC',sans-serif;color:#1f2937;line-height:1.7;padding:28px 14px;">
+<div style="max-width:620px;margin:auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 4px 18px rgba(15,23,42,.08);">
+  <div style="background:#166534;color:#fff;padding:24px 30px;">
+    <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.82;">System Notice</div>
+    <h1 style="margin:6px 0 0;font-size:22px;line-height:1.3;">${rl_ea}通知</h1>
+  </div>
+  <div style="padding:28px 30px;">
+    <div style="background:#f0fdf4;border-left:4px solid #16a34a;border-radius:8px;padding:16px 18px;margin-bottom:20px;">
+      <p style="margin:0;">尊敬的用户 <strong>${rl_eu}</strong>，您好！您的账户${rl_ea}已完成。</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+      <tr><td style="width:120px;background:#f9fafb;color:#64748b;padding:12px;">用户名</td><td style="padding:12px;font-weight:700;">${rl_eu}</td></tr>
+      <tr><td style="background:#f9fafb;color:#64748b;padding:12px;">密码</td><td style="padding:12px;font-family:Consolas,'Courier New',monospace;font-weight:700;color:#166534;letter-spacing:1px;">${rl_ep}</td></tr>
+      <tr><td style="background:#f9fafb;color:#64748b;padding:12px;">时间</td><td style="padding:12px;">${rl_et}</td></tr>
+    </table>
+    <div style="margin-top:20px;background:#fff7ed;border-left:4px solid #f97316;border-radius:8px;padding:14px 16px;color:#9a3412;font-size:13px;">安全提示：请妥善保管密码，首次登录后建议立即修改。</div>
+  </div>
+  <div style="padding:16px 30px;background:#f9fafb;border-top:1px solid #e5e7eb;color:#94a3b8;font-size:12px;">用户管理系统 · ${rl_et}</div>
+</div>
+</body>
+</html>
 HTMLEOF
 }
 

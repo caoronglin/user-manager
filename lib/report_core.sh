@@ -19,20 +19,24 @@ generate_html_header() {
 <title>${title}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:#f8fafc;color:#1e293b;line-height:1.7;padding:24px 16px;font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:#f6f8fb;color:#1e293b;line-height:1.7;padding:24px 16px;font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 code,pre,.mono{font-family:'JetBrains Mono','Fira Code','SF Mono','Cascadia Code',Consolas,monospace;font-size:13px}
 .container{max-width:${max_width};margin:0 auto}
-.header{padding:32px 0 24px;border-bottom:1px solid #e2e8f0;margin-bottom:24px}
+.header{background:#fff;border:1px solid #e2e8f0;border-top:4px solid #16a34a;border-radius:10px;padding:24px;margin-bottom:24px;box-shadow:0 1px 3px rgba(15,23,42,.06)}
 .header h1{font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.025em}
 .header .subtitle{font-size:13px;color:#64748b;margin-top:6px;font-weight:400}
-.section{margin-bottom:32px}
-.section-title{font-size:16px;font-weight:600;color:#0f172a;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #16a34a;letter-spacing:-0.01em}
-.card{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);padding:20px;margin-bottom:16px}
-.stat-row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-.stat-card{flex:1;min-width:140px;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);padding:16px}
+.section{margin-bottom:28px}
+.section-title{font-size:16px;font-weight:700;color:#0f172a;margin-bottom:12px;padding-left:10px;border-left:4px solid #16a34a;letter-spacing:0}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(15,23,42,.06);padding:18px;margin-bottom:16px}
+.stat-row,.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}
+.stat-card,.metric{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px}
 .stat-card .label{font-size:12px;color:#64748b;margin-bottom:4px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em}
 .stat-card .value{font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.025em}
 .stat-card .value.green{color:#16a34a}
+.metric .label{font-size:12px;color:#64748b;margin-bottom:4px;font-weight:600}
+.metric .value{font-size:20px;color:#0f172a;font-weight:700}
+.kv-table td:first-child{color:#64748b;width:150px}
+.kv-table td:last-child{font-weight:500}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{background:#f8fafc;color:#475569;font-weight:600;text-align:left;padding:10px 12px;border-bottom:2px solid #e2e8f0;font-size:13px;letter-spacing:0.02em}
 td{padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155}
@@ -47,6 +51,7 @@ tr:hover td{background:#f8fafc}
 .badge-warning{background:#fefce8;color:#ca8a04}
 .badge-danger{background:#fef2f2;color:#dc2626}
 .tip-box{background:#f0fdf4;border-left:3px solid #16a34a;border-radius:4px;padding:12px 16px;font-size:13px;color:#166534;margin-top:12px;line-height:1.8}
+.muted{color:#64748b}
 .footer{margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;text-align:center}
 </style>
 </head>
@@ -154,6 +159,32 @@ report_get_user_network_usage() {
         fi
     fi
     printf '未启用用户流量记账'
+}
+
+report_html_escape() {
+    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&#39;/g"
+}
+
+report_get_login_stats() {
+    local username="${1:-}" limit="${REPORT_LOGIN_SCAN_LIMIT:-200}"
+    [[ -n "$username" ]] || { printf '0|无记录\n'; return 0; }
+    command -v last >/dev/null 2>&1 || { printf '0|无记录\n'; return 0; }
+    [[ "$limit" =~ ^[0-9]+$ ]] || limit=200
+
+    last -w "$username" 2>/dev/null | head -n "$limit" | awk -v user="$username" '
+        $1 == user {
+            count++
+            if ($3 != "" && $3 != "-" && $3 != ":0" && $3 !~ /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/) {
+                ips[$3] = 1
+            }
+        }
+        END {
+            for (ip in ips) {
+                list = (list == "" ? ip : list ", " ip)
+            }
+            if (list == "") list = "无记录"
+            printf "%d|%s\n", count + 0, list
+        }'
 }
 
 # ============================================================
@@ -451,6 +482,8 @@ generate_html_resource_usage_section() {
         <th>磁盘 I/O</th>
         <th>流量使用</th>
         <th>任务提交数</th>
+        <th>登录次数</th>
+        <th>登录 IP/来源</th>
         <th>登录状态</th>
       </tr>
     </thead>
@@ -458,16 +491,21 @@ generate_html_resource_usage_section() {
 HTMLEOF
 
     if (( ${#managed_users[@]} == 0 )); then
-        echo '      <tr><td colspan="9" style="text-align:center;color:#94a3b8;">暂无托管用户</td></tr>'
+        echo '      <tr><td colspan="11" style="text-align:center;color:#94a3b8;">暂无托管用户</td></tr>'
     else
         for username in "${managed_users[@]}"; do
             local proc_count thread_count cpu_pct mem_rss io_read traffic_usage job_submissions login_status login_badge
+            local login_stats login_count login_sources login_sources_html
 
             # 进程数
             proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
             thread_count=$(report_sum_user_threads "$username")
             job_submissions=$(report_count_user_job_submissions "$username" 30)
             traffic_usage=$(report_get_user_network_usage "$username")
+            login_stats=$(report_get_login_stats "$username")
+            login_count="${login_stats%%|*}"
+            login_sources="${login_stats#*|}"
+            login_sources_html=$(report_html_escape "$login_sources")
 
             # CPU 和内存使用
             if (( proc_count > 0 )); then
@@ -536,6 +574,8 @@ HTMLEOF
         <td>${io_read}</td>
         <td>${traffic_usage}</td>
         <td>${job_submissions:-0}</td>
+        <td>${login_count:-0}</td>
+        <td class="mono" style="font-size:12px">${login_sources_html}</td>
         <td>${login_badge}</td>
       </tr>
 HTMLEOF
@@ -656,11 +696,15 @@ generate_user_personal_report() {
     mem_limit="${limits#*:}"
 
     # 获取实时资源使用
-    local proc_count thread_count real_cpu real_mem traffic_usage job_submissions
+    local proc_count thread_count real_cpu real_mem traffic_usage job_submissions login_stats login_count login_sources login_sources_html
     proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
     thread_count=$(report_sum_user_threads "$username")
     traffic_usage=$(report_get_user_network_usage "$username")
     job_submissions=$(report_count_user_job_submissions "$username" 30)
+    login_stats=$(report_get_login_stats "$username")
+    login_count="${login_stats%%|*}"
+    login_sources="${login_stats#*|}"
+    login_sources_html=$(report_html_escape "$login_sources")
     if (( proc_count > 0 )); then
         real_cpu=$(ps -u "$username" --no-headers -o pcpu 2>/dev/null | awk '{sum+=$1} END {printf "%.1f", sum}')
         real_mem=$(ps -u "$username" --no-headers -o rss 2>/dev/null | awk '{sum+=$1} END {
@@ -706,18 +750,22 @@ generate_user_personal_report() {
 <div class="section">
   <div class="section-title">账户信息</div>
   <div class="card">
-    <table>
-      <tr><td style="color:#64748b;width:140px">用户名</td><td style="font-weight:600">${username}</td></tr>
-      <tr><td style="color:#64748b">主目录</td><td>${home:--}</td></tr>
-      <tr><td style="color:#64748b">挂载点</td><td>${mp:--}</td></tr>
-      <tr><td style="color:#64748b">CPU 配额</td><td>${cpu_limit:--}</td></tr>
-      <tr><td style="color:#64748b">内存限制</td><td>${mem_limit:--}</td></tr>
-      <tr><td style="color:#64748b">当前进程数</td><td>${proc_count}</td></tr>
-      <tr><td style="color:#64748b">当前线程数</td><td>${thread_count:-0}</td></tr>
-      <tr><td style="color:#64748b">当前 CPU</td><td>${real_cpu}%</td></tr>
-      <tr><td style="color:#64748b">当前内存</td><td>${real_mem}</td></tr>
-      <tr><td style="color:#64748b">流量使用</td><td>${traffic_usage}</td></tr>
-      <tr><td style="color:#64748b">任务提交数</td><td>${job_submissions:-0}</td></tr>
+    <div class="metric-grid">
+      <div class="metric"><div class="label">当前进程</div><div class="value">${proc_count}</div></div>
+      <div class="metric"><div class="label">当前线程</div><div class="value">${thread_count:-0}</div></div>
+      <div class="metric"><div class="label">当前 CPU</div><div class="value">${real_cpu}%</div></div>
+      <div class="metric"><div class="label">当前内存</div><div class="value">${real_mem}</div></div>
+      <div class="metric"><div class="label">近期登录次数</div><div class="value">${login_count:-0}</div></div>
+      <div class="metric"><div class="label">任务提交数</div><div class="value">${job_submissions:-0}</div></div>
+    </div>
+    <table class="kv-table">
+      <tr><td>用户名</td><td>${username}</td></tr>
+      <tr><td>主目录</td><td>${home:--}</td></tr>
+      <tr><td>挂载点</td><td>${mp:--}</td></tr>
+      <tr><td>CPU 配额</td><td>${cpu_limit:--}</td></tr>
+      <tr><td>内存限制</td><td>${mem_limit:--}</td></tr>
+      <tr><td>流量使用</td><td>${traffic_usage}</td></tr>
+      <tr><td>登录 IP/来源</td><td class="mono">${login_sources_html}</td></tr>
     </table>
   </div>
 </div>
@@ -1526,17 +1574,21 @@ show_user_resource_usage() {
         return 0
     fi
 
-    printf "  ${C_BOLD}${C_WHITE}%-16s %-8s %-8s %-10s %-12s %-12s %-18s %-10s %s${C_RESET}\n" \
-           "用户名" "进程数" "线程数" "CPU %" "内存(RSS)" "磁盘I/O" "流量使用" "任务提交数" "登录状态"
-    draw_line 110
+    printf "  ${C_BOLD}${C_WHITE}%-16s %-8s %-8s %-10s %-12s %-12s %-18s %-10s %-8s %-20s %s${C_RESET}\n" \
+           "用户名" "进程数" "线程数" "CPU %" "内存(RSS)" "磁盘I/O" "流量使用" "任务提交数" "登录数" "登录IP/来源" "登录状态"
+    draw_line 140
 
     for username in "${managed_users[@]}"; do
-        local proc_count thread_count cpu_pct mem_rss io_total traffic_usage job_submissions login_status
+        local proc_count thread_count cpu_pct mem_rss io_total traffic_usage job_submissions login_status login_stats login_count login_sources
 
         proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
         thread_count=$(report_sum_user_threads "$username")
         traffic_usage=$(report_get_user_network_usage "$username")
         job_submissions=$(report_count_user_job_submissions "$username" 30)
+        login_stats=$(report_get_login_stats "$username")
+        login_count="${login_stats%%|*}"
+        login_sources="${login_stats#*|}"
+        [[ ${#login_sources} -gt 20 ]] && login_sources="${login_sources:0:17}..."
 
         if (( proc_count > 0 )); then
             cpu_pct=$(ps -u "$username" --no-headers -o pcpu 2>/dev/null | awk '{sum+=$1} END {printf "%.1f", sum}')
@@ -1585,8 +1637,8 @@ show_user_resource_usage() {
             cpu_color="$C_RESET"
         fi
 
-        printf "  ${C_BOLD}%-16s${C_RESET} %-8s %-8s ${cpu_color}%-10s${C_RESET} %-12s %-12s %-18s %-10s " \
-               "$username" "$proc_count" "${thread_count:-0}" "${cpu_pct}%" "$mem_rss" "$io_total" "$traffic_usage" "${job_submissions:-0}"
+        printf "  ${C_BOLD}%-16s${C_RESET} %-8s %-8s ${cpu_color}%-10s${C_RESET} %-12s %-12s %-18s %-10s %-8s %-20s " \
+               "$username" "$proc_count" "${thread_count:-0}" "${cpu_pct}%" "$mem_rss" "$io_total" "$traffic_usage" "${job_submissions:-0}" "${login_count:-0}" "$login_sources"
         echo -e "$login_status"
     done
 
@@ -1606,9 +1658,14 @@ show_single_user_resource() {
     echo ""
 
     # 进程列表（TOP 10）
-    local proc_count
+    local proc_count login_stats login_count login_sources
     proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
+    login_stats=$(report_get_login_stats "$username")
+    login_count="${login_stats%%|*}"
+    login_sources="${login_stats#*|}"
     draw_info_card "总进程数:" "$proc_count"
+    draw_info_card "近期登录次数:" "${login_count:-0}"
+    draw_info_card "登录IP/来源:" "$login_sources"
 
     if (( proc_count > 0 )); then
         local total_cpu total_mem

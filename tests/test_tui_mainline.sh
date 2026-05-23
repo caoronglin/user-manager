@@ -91,6 +91,18 @@ else
     test_fail "rl_read_menu_key 函数不存在"
 fi
 
+test_start "rl_read_menu_key 支持多位数字无需回车"
+if source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null && declare -F rl_read_menu_key &>/dev/null; then
+    rl_key="$(printf '10' | RL_MENU_DIGIT_TIMEOUT=0.01 rl_read_menu_key)"
+    if [[ "$rl_key" == "10" ]]; then
+        test_pass
+    else
+        test_fail "rl_read_menu_key 未正确读取多位数字，得到: $rl_key"
+    fi
+else
+    test_fail "rl_read_menu_key 函数不存在"
+fi
+
 test_start "TUI 主循环中断 trap 不输出 return 噪声"
 if grep -q "trap 'tui_handle_interrupt' INT TERM" "$PROJECT_ROOT/lib/tui_core.sh" \
     && ! grep -q "trap 'tui_cleanup; return 0' INT TERM EXIT" "$PROJECT_ROOT/lib/tui_core.sh"; then

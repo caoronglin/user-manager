@@ -26,11 +26,19 @@ Red="$C_RED"; Green="$C_GREEN"; Color_Off="$C_RESET"
 if [[ "${COLORTERM:-}" =~ ^(truecolor|24bit)$ ]] || [[ "${TERM:-}" == *"256color"* ]]; then
     C_PRIMARY='\033[38;5;40m'      # 绿色 — 主交互色
     C_ACCENT='\033[38;5;46m'       # 亮绿色 — 强调
+    C_MENU_NUMBER='\033[38;5;46m'  # 菜单编号 — 亮绿
+    C_MENU_LABEL='\033[38;5;120m'  # 菜单文本 — 柔和浅绿
+    C_MENU_SUBMENU='\033[38;5;83m' # 子菜单入口 — 中亮绿
+    C_MENU_EXIT='\033[38;5;71m'    # 返回/退出 — 暗绿
     C_MUTED='\033[38;5;243m'       # 中灰 — 次要信息
     C_SUBTLE='\033[38;5;239m'      # 暗灰 — 边框
 else
     C_PRIMARY="$C_GREEN"
     C_ACCENT="$C_BOLD"
+    C_MENU_NUMBER="$C_BGREEN"
+    C_MENU_LABEL="$C_GREEN"
+    C_MENU_SUBMENU="$C_BGREEN"
+    C_MENU_EXIT="$C_GREEN"
     C_MUTED="$C_DIM"
     C_SUBTLE="$C_DIM"
 fi
@@ -155,20 +163,20 @@ draw_header() {
 draw_menu_item() {
     local num="$1" label="$2" icon="${3:-}"
     if [[ -n "$icon" ]]; then
-        printf "  ${C_MUTED}[${C_RESET}${C_PRIMARY}%2s${C_RESET}${C_MUTED}]${C_RESET}  %s %s\n" "$num" "$icon" "$label"
+        printf "  ${C_MUTED}[${C_RESET}${C_MENU_NUMBER}%2s${C_RESET}${C_MUTED}]${C_RESET}  ${C_MENU_LABEL}%s %s${C_RESET}\n" "$num" "$icon" "$label"
     else
-        printf "  ${C_MUTED}[${C_RESET}${C_PRIMARY}%2s${C_RESET}${C_MUTED}]${C_RESET}  %s\n" "$num" "$label"
+        printf "  ${C_MUTED}[${C_RESET}${C_MENU_NUMBER}%2s${C_RESET}${C_MUTED}]${C_RESET}  ${C_MENU_LABEL}%s${C_RESET}\n" "$num" "$label"
     fi
 }
 
 draw_menu_submenu() {
     local num="$1" label="$2"
-    printf "  ${C_MUTED}[${C_RESET}${C_PRIMARY}%2s${C_RESET}${C_MUTED}]${C_RESET}  ${C_BOLD}%s${C_RESET} ${C_ACCENT}›${C_RESET}\n" "$num" "$label"
+    printf "  ${C_MUTED}[${C_RESET}${C_MENU_NUMBER}%2s${C_RESET}${C_MUTED}]${C_RESET}  ${C_BOLD}${C_MENU_SUBMENU}%s${C_RESET} ${C_ACCENT}›${C_RESET}\n" "$num" "$label"
 }
 
 draw_menu_exit() {
     local label="${1:-返回}"
-    printf "\n  ${C_MUTED}[ 0]  %s${C_RESET}\n" "$label"
+    printf "\n  ${C_MUTED}[${C_RESET}${C_MENU_EXIT}%2s${C_RESET}${C_MUTED}]${C_RESET}  ${C_MENU_EXIT}%s${C_RESET}\n" "0" "$label"
 }
 
 draw_prompt() {
@@ -574,17 +582,24 @@ run_submenu() {
         done
         draw_menu_exit "返回"
         draw_prompt
-        read -r opt
-        [[ "$opt" == "0" ]] && return 0
+        opt="$(rl_read_menu_key)"
+        printf '\n'
+        [[ "$opt" == "0" || "$opt" == "q" || "$opt" == "Q" ]] && return 0
         safe_run "$handler" "$opt"
         pause_continue
     done
 }
 
-# 单键读取（0/q 立即返回，其它键原样输出）
+# 单键读取；连续数字可组成 10/11 等编号，无需回车确认。
 rl_read_menu_key() {
-    local rl_key
-    IFS= read -rsn1 rl_key
+    local rl_key next_key
+    IFS= read -rsn1 rl_key || return 1
+    if [[ "$rl_key" =~ ^[1-9]$ ]]; then
+        while IFS= read -rsn1 -t "${RL_MENU_DIGIT_TIMEOUT:-0.08}" next_key 2>/dev/null; do
+            [[ "$next_key" =~ ^[0-9]$ ]] || break
+            rl_key+="$next_key"
+        done
+    fi
     printf '%s\n' "$rl_key"
 }
 

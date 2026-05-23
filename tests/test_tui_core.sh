@@ -50,6 +50,14 @@ else
     test_fail "Home/End 跳转未按预期工作，输出为: $home_end_output"
 fi
 
+test_start "菜单支持数字键直接选择含多位编号"
+direct_digit_output="$(bash -c 'set -uo pipefail; source "$1/lib/tui_core.sh"; TUI_LINES=24; TUI_COLS=80; TUI_COLOR_HIGHLIGHT=51; TUI_COLOR_FG=255; TUI_COLOR_MUTED=242; tui_draw_box(){ :; }; tui_move(){ :; }; tui_fg(){ :; }; tui_reset(){ :; }; tui_reverse(){ :; }; tui_statusbar_draw(){ :; }; tui_menu_create "菜单" A B C D E F G H I J 返回; tui_menu_draw 2 2 40 >/dev/null; printf "one=%s " "$(tui_menu_handle_key 1)"; printf "ten=%s " "$(tui_menu_handle_key 10)"; printf "zero=%s" "$(tui_menu_handle_key 0)"' _ "$PROJECT_ROOT")"
+if [[ "$direct_digit_output" == *"one=0"* && "$direct_digit_output" == *"ten=9"* && "$direct_digit_output" == *"zero=10"* ]]; then
+    test_pass
+else
+    test_fail "数字直选未按预期映射，输出为: $direct_digit_output"
+fi
+
 test_start "tui_prompt_input 支持默认值确认"
 prompt_default_output="$(bash -c 'set -uo pipefail; source "$1/lib/tui_core.sh"; TUI_LINES=24; TUI_COLS=80; TUI_COLOR_HIGHLIGHT=51; TUI_COLOR_FG=255; TUI_COLOR_MUTED=242; TUI_COLOR_ACCENT=39; tui_draw_box(){ :; }; tui_move(){ :; }; tui_fg(){ :; }; tui_reset(){ :; }; tui_reverse(){ :; }; tui_draw_center(){ :; }; tui_clear(){ :; }; tput(){ :; }; key_file="$(mktemp)"; printf "%s\n" ENTER > "$key_file"; tui_read_key(){ local key; IFS= read -r key < "$key_file" || return 1; tail -n +2 "$key_file" > "$key_file.next"; mv "$key_file.next" "$key_file"; printf "%s\n" "$key"; return 0; }; tui_prompt_input "标题" "用户名" "alice" >/dev/null; rm -f "$key_file" "$key_file.next"; printf "value=%s" "$REPLY_INPUT"' _ "$PROJECT_ROOT")"
 if [[ "$prompt_default_output" == *"value=alice"* ]]; then

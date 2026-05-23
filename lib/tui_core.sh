@@ -371,8 +371,20 @@ tui_menu_draw() {
 tui_menu_handle_key() {
     local key="$1"
     local visible_items="${TUI_MENU_VISIBLE_ITEMS:-${#TUI_MENU_ITEMS[@]}}"
+    local total_items=${#TUI_MENU_ITEMS[@]}
     
     case "$key" in
+        0)
+            echo "$((total_items - 1))"
+            return 0
+            ;;
+        [1-9]|[1-9][0-9]*)
+            local direct_index=$((key - 1))
+            if (( direct_index >= 0 && direct_index < total_items - 1 )); then
+                echo "$direct_index"
+                return 0
+            fi
+            ;;
         UP|k)
             ((TUI_MENU_INDEX > 0)) && ((TUI_MENU_INDEX--))
             (( TUI_MENU_INDEX < TUI_MENU_SCROLL_OFFSET )) && TUI_MENU_SCROLL_OFFSET=$TUI_MENU_INDEX
@@ -703,6 +715,12 @@ tui_read_key() {
         esac
     elif [[ "$key" == "" ]]; then
         key="ENTER"
+    elif [[ "$key" =~ ^[1-9]$ ]]; then
+        local next_key
+        while IFS= read -rsn1 -t "${TUI_MENU_DIGIT_TIMEOUT:-0.08}" next_key 2>/dev/null; do
+            [[ "$next_key" =~ ^[0-9]$ ]] || break
+            key+="$next_key"
+        done
     fi
     
     echo "$key"
