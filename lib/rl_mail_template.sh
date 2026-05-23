@@ -47,7 +47,7 @@ rl_mail_template_fallback() {
 <!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>${rl_ea}通知</title></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;padding:32px;">
 <div style="max-width:560px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
-<div style="background:#2563eb;color:#fff;padding:24px 32px;font-size:20px;font-weight:600;">${rl_ea}通知</div>
+<div style="background:#16a34a;color:#fff;padding:24px 32px;font-size:20px;font-weight:600;">${rl_ea}通知</div>
 <div style="padding:28px 32px;color:#374151;line-height:1.7;">
 <p>尊敬的用户 <strong>${rl_eu}</strong>，您好！</p>
 <p>您的账户${rl_ea}已完成。以下是您的登录凭据：</p>

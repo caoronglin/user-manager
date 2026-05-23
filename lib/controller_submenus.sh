@@ -490,6 +490,8 @@ _handle_user_management() {
         6)  safe_run modify_user_quota ;;
         7)  safe_run modify_user_resource_limits ;;
         8)  safe_run list_managed_users ;;
+        9)  safe_run user_group_menu ;;
+        10) safe_run permission_management_menu ;;
         *)  msg_err "无效的选项" ;;
     esac
 }
@@ -503,7 +505,9 @@ user_management_menu() {
         "5:暂停/恢复用户" \
         "6:调整用户配额" \
         "7:配置资源限制" \
-        "8:查看托管用户"
+        "8:查看托管用户" \
+        "9:用户组管理 ›" \
+        "10:权限管理 ›"
 }
 
 # ============================================================

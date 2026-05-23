@@ -236,6 +236,61 @@ fi
 unset -f priv_touch priv_tee priv_chown priv_chmod
 
 # ------------------------------------------------------------
+# 用户组与权限管理测试
+# ------------------------------------------------------------
+
+test_start "add_user_to_group: 自动创建缺失用户组并追加用户"
+group_call_log="$TEST_TMPDIR/group_calls.log"
+permission_home="$TEST_TMPDIR/alice_home"
+mkdir -p "$permission_home"
+id() {
+    if [[ "${1:-}" == "-nG" ]]; then
+        printf 'alice users sudo\n'
+        return 0
+    fi
+    [[ "${1:-}" == "alice" ]] && return 0
+    return 1
+}
+getent() {
+    case "${1:-}:${2:-}" in
+        passwd:alice) printf 'alice:x:1001:1001:Alice:%s:/bin/bash\n' "$permission_home" ;;
+        group:dev) return 2 ;;
+        group:sudo) printf 'sudo:x:27:alice\n' ;;
+        *) return 2 ;;
+    esac
+}
+priv_groupadd() { printf 'groupadd %s\n' "$*" >> "$group_call_log"; return 0; }
+priv_usermod() { printf 'usermod %s\n' "$*" >> "$group_call_log"; return 0; }
+priv_deluser() { printf 'deluser %s\n' "$*" >> "$group_call_log"; return 0; }
+priv_groupdel() { printf 'groupdel %s\n' "$*" >> "$group_call_log"; return 0; }
+priv_chmod() { printf 'chmod %s\n' "$*" >> "$group_call_log"; return 0; }
+priv_chgrp() { printf 'chgrp %s\n' "$*" >> "$group_call_log"; return 0; }
+record_user_event() { return 0; }
+if add_user_to_group alice dev >/dev/null 2>&1 && \
+   grep -q '^groupadd dev$' "$group_call_log" && \
+   grep -q '^usermod -aG dev alice$' "$group_call_log"; then
+    test_pass
+else
+    test_fail "add_user_to_group 未创建组或未追加用户，日志: $(cat "$group_call_log" 2>/dev/null)"
+fi
+
+test_start "权限管理: 设置主目录权限和管理员权限"
+: > "$group_call_log"
+if set_user_home_mode alice 750 >/dev/null 2>&1 && \
+   set_user_home_group alice sudo >/dev/null 2>&1 && \
+   grant_user_admin_permission alice >/dev/null 2>&1 && \
+   revoke_user_admin_permission alice >/dev/null 2>&1 && \
+   grep -q "^chmod 750 $permission_home$" "$group_call_log" && \
+   grep -q "^chgrp sudo $permission_home$" "$group_call_log" && \
+   grep -q '^usermod -aG sudo alice$' "$group_call_log" && \
+   grep -q '^deluser alice sudo$' "$group_call_log"; then
+    test_pass
+else
+    test_fail "权限管理操作未按预期调用权限封装，日志: $(cat "$group_call_log" 2>/dev/null)"
+fi
+unset -f id getent priv_groupadd priv_usermod priv_deluser priv_groupdel priv_chmod priv_chgrp record_user_event
+
+# ------------------------------------------------------------
 # 密码轮换脚本测试
 # ------------------------------------------------------------
 

@@ -477,6 +477,195 @@ update_user() {
     return 0
 }
 
+# ============================================================
+# 用户组与权限管理
+# ============================================================
+
+GROUP_NAME_PATTERN='^[a-zA-Z_][a-zA-Z0-9_-]{0,31}$'
+
+validate_group_name() {
+    local group_name="${1:-}"
+    [[ "$group_name" =~ $GROUP_NAME_PATTERN ]] && return 0
+    msg_err "用户组 '$group_name' 无效 (字母/数字/下划线/连字符，以字母或下划线开头)"
+    return 1
+}
+
+normalize_group_list() {
+    local raw="${1:-}"
+    raw="${raw//,/ }"
+    raw="${raw//;/ }"
+    awk '
+        {
+            for (i = 1; i <= NF; i++) {
+                if ($i != "" && ! seen[$i]++) print $i
+            }
+        }
+    ' <<< "$raw"
+}
+
+user_group_exists() {
+    local group_name="${1:-}"
+    [[ -n "$group_name" ]] || return 1
+    getent group "$group_name" >/dev/null 2>&1
+}
+
+ensure_user_group() {
+    local group_name="${1:-}"
+    validate_group_name "$group_name" || return 1
+    if user_group_exists "$group_name"; then
+        msg_info "用户组已存在: ${C_BOLD}$group_name${C_RESET}"
+        return 0
+    fi
+    priv_groupadd "$group_name" || return 1
+    msg_ok "用户组已创建: ${C_BOLD}$group_name${C_RESET}"
+}
+
+add_user_to_group() {
+    local username="${1:-}" group_name="${2:-}"
+    require_user "$username" || return 1
+    ensure_user_group "$group_name" || return 1
+    priv_usermod -aG "$group_name" "$username" || return 1
+    record_user_event "$username" "group_add" "$group_name" 2>/dev/null || true
+    msg_ok "已将用户 ${C_BOLD}$username${C_RESET} 加入用户组 ${C_BOLD}$group_name${C_RESET}"
+}
+
+apply_user_groups() {
+    local username="${1:-}" groups_raw="${2:-}"
+    [[ -n "$groups_raw" ]] || return 0
+    require_user "$username" || return 1
+
+    local group_name applied=0
+    while IFS= read -r group_name; do
+        [[ -n "$group_name" ]] || continue
+        add_user_to_group "$username" "$group_name" || return 1
+        ((applied+=1))
+    done < <(normalize_group_list "$groups_raw")
+
+    (( applied > 0 )) && msg_ok "用户组处理完成: $applied 个"
+    return 0
+}
+
+remove_user_from_group() {
+    local username="${1:-}" group_name="${2:-}"
+    require_user "$username" || return 1
+    validate_group_name "$group_name" || return 1
+    user_group_exists "$group_name" || { msg_err "用户组不存在: $group_name"; return 1; }
+    priv_deluser "$username" "$group_name" || return 1
+    record_user_event "$username" "group_remove" "$group_name" 2>/dev/null || true
+    msg_ok "已将用户 ${C_BOLD}$username${C_RESET} 移出用户组 ${C_BOLD}$group_name${C_RESET}"
+}
+
+list_user_groups() {
+    local username="${1:-}"
+    require_user "$username" || return 1
+    id -nG "$username" 2>/dev/null | tr ' ' '\n' | sed '/^$/d'
+}
+
+list_group_members() {
+    local group_name="${1:-}"
+    validate_group_name "$group_name" || return 1
+    user_group_exists "$group_name" || { msg_err "用户组不存在: $group_name"; return 1; }
+    getent group "$group_name" | awk -F: '{gsub(/,/, "\n", $4); print $4}' | sed '/^$/d' | sort
+}
+
+delete_user_group() {
+    local group_name="${1:-}"
+    validate_group_name "$group_name" || return 1
+    user_group_exists "$group_name" || { msg_info "用户组不存在: $group_name"; return 0; }
+    priv_groupdel "$group_name" || return 1
+    msg_ok "用户组已删除: ${C_BOLD}$group_name${C_RESET}"
+}
+
+get_admin_group() {
+    local candidate
+    for candidate in sudo wheel admin; do
+        if user_group_exists "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    printf '%s\n' "sudo"
+}
+
+grant_user_admin_permission() {
+    local username="${1:-}" admin_group
+    require_user "$username" || return 1
+    [[ "$username" != "root" ]] || { msg_info "root 已拥有最高权限"; return 0; }
+    admin_group=$(get_admin_group)
+    ensure_user_group "$admin_group" || return 1
+    priv_usermod -aG "$admin_group" "$username" || return 1
+    record_user_event "$username" "permission_grant" "$admin_group" 2>/dev/null || true
+    msg_ok "已授予管理员权限: ${C_BOLD}$username${C_RESET} -> ${C_BOLD}$admin_group${C_RESET}"
+}
+
+revoke_user_admin_permission() {
+    local username="${1:-}" group_name revoked=0
+    require_user "$username" || return 1
+    [[ "$username" != "root" ]] || { msg_err "禁止移除 root 权限"; return 1; }
+    for group_name in sudo wheel admin; do
+        user_group_exists "$group_name" || continue
+        if id -nG "$username" 2>/dev/null | tr ' ' '\n' | grep -Fxq "$group_name"; then
+            priv_deluser "$username" "$group_name" || return 1
+            ((revoked+=1))
+        fi
+    done
+    record_user_event "$username" "permission_revoke" "admin_groups=${revoked}" 2>/dev/null || true
+    msg_ok "已移除管理员组权限: ${C_BOLD}$username${C_RESET} (${revoked} 个组)"
+}
+
+validate_home_mode() {
+    local mode="${1:-}"
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]]
+}
+
+set_user_home_mode() {
+    local username="${1:-}" mode="${2:-700}" home
+    require_user "$username" || return 1
+    validate_home_mode "$mode" || { msg_err "权限模式无效，应形如 700 或 0750"; return 1; }
+    home=$(get_user_home "$username")
+    [[ -n "$home" && -d "$home" ]] || { msg_err "无法获取用户主目录: $username"; return 1; }
+    priv_chmod "$mode" "$home" || return 1
+    record_user_event "$username" "permission_chmod" "$mode" "" "$home" 2>/dev/null || true
+    msg_ok "主目录权限已更新: ${C_BOLD}$home${C_RESET} -> ${C_BGREEN}$mode${C_RESET}"
+}
+
+set_user_home_group() {
+    local username="${1:-}" group_name="${2:-}" home
+    require_user "$username" || return 1
+    validate_group_name "$group_name" || return 1
+    user_group_exists "$group_name" || { msg_err "用户组不存在: $group_name"; return 1; }
+    home=$(get_user_home "$username")
+    [[ -n "$home" && -d "$home" ]] || { msg_err "无法获取用户主目录: $username"; return 1; }
+    priv_chgrp "$group_name" "$home" || return 1
+    record_user_event "$username" "permission_chgrp" "$group_name" "" "$home" 2>/dev/null || true
+    msg_ok "主目录属组已更新: ${C_BOLD}$home${C_RESET} -> ${C_BGREEN}$group_name${C_RESET}"
+}
+
+show_user_permissions() {
+    local username="${1:-}" home stat_line owner_group mode mode_text acl_level acl_name groups
+    require_user "$username" || return 1
+    home=$(get_user_home "$username")
+    [[ -n "$home" ]] || { msg_err "无法获取用户主目录: $username"; return 1; }
+
+    if [[ -e "$home" ]]; then
+        stat_line=$(stat -c '%U:%G|%a|%A' "$home" 2>/dev/null || printf -- '-|-|-')
+    else
+        stat_line='-|-|-'
+    fi
+    IFS='|' read -r owner_group mode mode_text <<< "$stat_line"
+    acl_level=$(acl_get_current_level "$username" 2>/dev/null || printf '%s' "$ACL_LEVEL_GUEST")
+    acl_name="${ACL_LEVEL_NAMES[$acl_level]:-unknown}"
+    groups=$(list_user_groups "$username" 2>/dev/null | paste -sd ', ' -)
+
+    draw_header "用户权限详情"
+    draw_info_card "用户名:" "$username" "$C_BOLD"
+    draw_info_card "主目录:" "$home"
+    draw_info_card "属主/属组:" "${owner_group:--}"
+    draw_info_card "权限模式:" "${mode:--} (${mode_text:--})"
+    draw_info_card "ACL 等级:" "$acl_name"
+    draw_info_card "用户组:" "${groups:--}"
+}
+
 # 删除用户
 delete_user() {
     local username="$1"

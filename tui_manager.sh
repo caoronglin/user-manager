@@ -132,6 +132,10 @@ tui_run_prompted_username_action() {
         fi
         username="$REPLY_INPUT"
 
+        if [[ "$username" == "0" || "$username" == "q" || "$username" == "Q" ]]; then
+            TUI_REDRAW=true
+            return 1
+        fi
         if [[ -z "$username" ]]; then
             tui_message "错误" "用户名不能为空"
             continue
@@ -175,6 +179,14 @@ tui_run_prompt_sequence_action() {
         if ! tui_prompt_input "参数输入" "$prompt_text" "$prompt_default"; then
             TUI_REDRAW=true
             return 1
+        fi
+        if [[ "$REPLY_INPUT" == "0" || "$REPLY_INPUT" == "q" || "$REPLY_INPUT" == "Q" ]]; then
+            case "$prompt_text" in
+                *用户名*|*用户组*)
+                    TUI_REDRAW=true
+                    return 1
+                    ;;
+            esac
         fi
         args+=("$REPLY_INPUT")
     done
@@ -236,7 +248,9 @@ handle_tui_user_menu_key() {
         5) tui_run_workflow_action modify_user_quota ;;
         6) tui_run_workflow_action modify_user_resource_limits ;;
         7) tui_show_managed_users_view ;;
-        8|-1)
+        8) tui_run_user_group_menu_native ;;
+        9) tui_run_permission_menu_native ;;
+        10|-1)
             TUI_SUBMENU_EXIT=1
             ;;
     esac
@@ -246,6 +260,61 @@ handle_tui_user_menu_key() {
 
 tui_run_user_management_menu() {
     tui_run_native_menu draw_tui_user_menu handle_tui_user_menu_key
+}
+
+draw_tui_user_group_menu() {
+    _tui_draw_menu "user_group"
+}
+
+handle_tui_user_group_menu_key() {
+    local key="$1"
+    local result
+
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_prompt_sequence_action add_user_to_group "用户名" "用户组" ;;
+        1) tui_run_prompt_sequence_action remove_user_from_group "用户名" "用户组" ;;
+        2) tui_run_prompted_username_action "用户名" list_user_groups ;;
+        3) tui_run_prompt_sequence_action list_group_members "用户组" ;;
+        4) tui_run_prompt_sequence_action ensure_user_group "用户组" ;;
+        5) tui_run_prompt_sequence_action delete_user_group "用户组" ;;
+        6|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+
+    return 0
+}
+
+tui_run_user_group_menu_native() {
+    tui_run_native_menu draw_tui_user_group_menu handle_tui_user_group_menu_key
+}
+
+draw_tui_permission_menu() {
+    _tui_draw_menu "permission"
+}
+
+handle_tui_permission_menu_key() {
+    local key="$1"
+    local result
+
+    result=$(tui_menu_handle_key "$key")
+    [[ -z "$result" ]] && return 0
+
+    case "$result" in
+        0) tui_run_prompted_username_action "用户名" show_user_permissions ;;
+        1) tui_run_prompt_sequence_action set_user_home_mode "用户名" "权限模式 (如 700)|700" ;;
+        2) tui_run_prompt_sequence_action set_user_home_group "用户名" "用户组" ;;
+        3) tui_run_prompted_username_action "用户名" grant_user_admin_permission ;;
+        4) tui_run_prompted_username_action "用户名" revoke_user_admin_permission ;;
+        5|-1) TUI_SUBMENU_EXIT=1 ;;
+    esac
+
+    return 0
+}
+
+tui_run_permission_menu_native() {
+    tui_run_native_menu draw_tui_permission_menu handle_tui_permission_menu_key
 }
 
 tui_show_managed_users_view() {
@@ -357,7 +426,7 @@ tui_show_managed_users_view() {
 tui_run_create_or_assign_user_native() {
     local username password disk_num update_existing=false install_miniforge=false
     local target_info idx mp home quota_bytes quota_input sel_df sel_avail_b sel_avail_h
-    local action password_display
+    local action password_display user_groups
 
     acquire_lock || return 1
 
@@ -368,6 +437,11 @@ tui_run_create_or_assign_user_native() {
     fi
     username="$REPLY_INPUT"
 
+    if [[ "$username" == "0" || "$username" == "q" || "$username" == "Q" ]]; then
+        release_lock
+        TUI_REDRAW=true
+        return 1
+    fi
     if [[ -z "$username" ]] || ! validate_username "$username" >/dev/null 2>&1; then
         tui_message "错误" "用户名无效"
         release_lock
@@ -438,6 +512,18 @@ tui_run_create_or_assign_user_native() {
         fi
     fi
 
+    if ! tui_prompt_input "创建/更新用户" "附加用户组 (可选)" ""; then
+        release_lock
+        TUI_REDRAW=true
+        return 1
+    fi
+    user_groups="$REPLY_INPUT"
+    if [[ "$user_groups" == "0" || "$user_groups" == "q" || "$user_groups" == "Q" ]]; then
+        release_lock
+        TUI_REDRAW=true
+        return 1
+    fi
+
     sel_df=$(df -B1 "$mp" 2>/dev/null | awk 'NR==2 {print $4, $5}')
     read -r sel_avail_b _ <<< "$sel_df"
     sel_avail_h=$(bytes_to_human "$sel_avail_b")
@@ -472,6 +558,12 @@ tui_run_create_or_assign_user_native() {
             return 1
         }
     fi
+
+    apply_user_groups "$username" "$user_groups" || {
+        release_lock
+        tui_init
+        return 1
+    }
 
     priv_chown "$username:$username" "$home" 2>/dev/null || true
     priv_chmod 700 "$home" 2>/dev/null || true

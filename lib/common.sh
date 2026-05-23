@@ -24,8 +24,8 @@ Red="$C_RED"; Green="$C_GREEN"; Color_Off="$C_RESET"
 # 根据终端能力自动选择 256 色或标准色
 # shellcheck disable=SC2034
 if [[ "${COLORTERM:-}" =~ ^(truecolor|24bit)$ ]] || [[ "${TERM:-}" == *"256color"* ]]; then
-    C_PRIMARY='\033[38;5;75m'      # 柔和蓝 — 主交互色
-    C_ACCENT='\033[38;5;183m'      # 淡紫 — 强调
+    C_PRIMARY='\033[38;5;40m'      # 绿色 — 主交互色
+    C_ACCENT='\033[38;5;46m'       # 亮绿色 — 强调
     C_MUTED='\033[38;5;243m'       # 中灰 — 次要信息
     C_SUBTLE='\033[38;5;239m'      # 暗灰 — 边框
 else
@@ -186,7 +186,7 @@ get_usage_color() {
     local pct="$1"
     if (( pct >= 90 )); then   echo "$C_BRED"
     elif (( pct >= 70 )); then echo "$C_RED"
-    elif (( pct >= 50 )); then echo "$C_RESET"
+    elif (( pct >= 50 )); then echo "$C_GREEN"
     else                       echo "$C_BGREEN"
     fi
 }
@@ -199,14 +199,7 @@ draw_usage_bar() {
     local filled=$((pct * width / 100))
     [[ $filled -gt $width ]] && filled=$width
     local empty=$((width - filled))
-    local fill_char empty_char
-    if [[ "${LC_ALL:-${LANG:-}}" == *"UTF-8"* || "${LANG:-}" == *"UTF-8"* ]]; then
-        fill_char="▓"
-        empty_char="░"
-    else
-        fill_char="#"
-        empty_char="-"
-    fi
+    local fill_char="#" empty_char="-"
     printf "%s" "$color"
     printf '%*s' "$filled" '' | tr ' ' "$fill_char"
     printf "%s" "$C_DIM"
@@ -532,6 +525,7 @@ read_input() {
 read_username() {
     local prompt="${1:-请输入用户名}"
     read_input "$prompt"
+    [[ "$REPLY_INPUT" == "0" || "$REPLY_INPUT" == "q" || "$REPLY_INPUT" == "Q" ]] && return 1
     if [[ -z "$REPLY_INPUT" ]]; then
         msg_err "用户名不能为空"; return 1
     fi

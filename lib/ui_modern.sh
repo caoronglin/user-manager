@@ -23,10 +23,10 @@ C_HIDDEN='\033[8m'
 C_BLACK='\033[30m'
 C_RED='\033[31m'
 C_GREEN='\033[32m'
-C_RESET='\033[33m'
-C_RESET='\033[34m'
-C_RESET='\033[35m'
-C_RESET='\033[36m'
+C_TEXT_WARN='\033[32m'
+C_TEXT_INFO='\033[32m'
+C_TEXT_ACCENT='\033[32m'
+C_TEXT_SUBTLE='\033[32m'
 C_WHITE='\033[37m'
 
 # 亮前景色
@@ -52,9 +52,9 @@ C_BG_WHITE='\033[47m'
 # 玻璃拟态样式（半透明效果模拟）
 C_GLASS_BG='\033[48;5;235m'     # 深色半透明背景
 C_GLASS_FG='\033[38;5;250m'     # 浅色文字
-C_GLASS_ACCENT='\033[38;5;81m'  # 强调色（蓝绿色）
+C_GLASS_ACCENT='\033[38;5;40m'  # 强调色（绿色）
 C_GLASS_SUCCESS='\033[38;5;84m' # 成功色（绿色）
-C_GLASS_WARN='\033[38;5;220m'   # 警告色（黄色）
+C_GLASS_WARN='\033[38;5;40m'    # 警告色（绿色主题）
 C_GLASS_ERROR='\033[38;5;203m'  # 错误色（红色）
 
 # ============================================================
@@ -320,8 +320,8 @@ glass_progress() {
     local empty=$((width - filled))
     
     printf '%b[' "$C_GLASS_ACCENT"
-    printf '%*s' "$filled" '' | tr ' ' '█'
-    printf '%*s' "$empty" '' | tr ' ' '░'
+    printf '%*s' "$filled" '' | tr ' ' '#'
+    printf '%*s' "$empty" '' | tr ' ' '-'
     printf '%b]%b %3d%%%b\n' "$C_GLASS_ACCENT" "$C_RESET" "$percentage" "$C_RESET"
 }
 

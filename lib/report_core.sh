@@ -18,7 +18,6 @@ generate_html_header() {
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>${title}</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;background:#f8fafc;color:#1e293b;line-height:1.7;padding:24px 16px;font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 code,pre,.mono{font-family:'JetBrains Mono','Fira Code','SF Mono','Cascadia Code',Consolas,monospace;font-size:13px}
@@ -27,13 +26,13 @@ code,pre,.mono{font-family:'JetBrains Mono','Fira Code','SF Mono','Cascadia Code
 .header h1{font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.025em}
 .header .subtitle{font-size:13px;color:#64748b;margin-top:6px;font-weight:400}
 .section{margin-bottom:32px}
-.section-title{font-size:16px;font-weight:600;color:#0f172a;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #2563eb;letter-spacing:-0.01em}
+.section-title{font-size:16px;font-weight:600;color:#0f172a;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #16a34a;letter-spacing:-0.01em}
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);padding:20px;margin-bottom:16px}
 .stat-row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
 .stat-card{flex:1;min-width:140px;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);padding:16px}
 .stat-card .label{font-size:12px;color:#64748b;margin-bottom:4px;font-weight:500;text-transform:uppercase;letter-spacing:0.05em}
 .stat-card .value{font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.025em}
-.stat-card .value.blue{color:#2563eb}
+.stat-card .value.green{color:#16a34a}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{background:#f8fafc;color:#475569;font-weight:600;text-align:left;padding:10px 12px;border-bottom:2px solid #e2e8f0;font-size:13px;letter-spacing:0.02em}
 td{padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#334155}
@@ -47,7 +46,7 @@ tr:hover td{background:#f8fafc}
 .badge-success{background:#f0fdf4;color:#16a34a}
 .badge-warning{background:#fefce8;color:#ca8a04}
 .badge-danger{background:#fef2f2;color:#dc2626}
-.tip-box{background:#eff6ff;border-left:3px solid #2563eb;border-radius:4px;padding:12px 16px;font-size:13px;color:#1e40af;margin-top:12px;line-height:1.8}
+.tip-box{background:#f0fdf4;border-left:3px solid #16a34a;border-radius:4px;padding:12px 16px;font-size:13px;color:#166534;margin-top:12px;line-height:1.8}
 .footer{margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;text-align:center}
 </style>
 </head>
@@ -62,7 +61,7 @@ generate_html_footer() {
     current_time=$(date '+%Y-%m-%d %H:%M:%S')
     cat <<HTMLEOF
 <div class="footer">
-  Generated at ${current_time}
+  生成时间：${current_time}
 </div>
 </div>
 </body>
@@ -94,6 +93,69 @@ get_badge_class() {
     fi
 }
 
+report_run_timeout() {
+    local seconds="${1:-5}"
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$seconds" "$@"
+    else
+        "$@"
+    fi
+}
+
+report_sum_user_threads() {
+    local username="${1:-}"
+    [[ -n "$username" ]] || { printf '0\n'; return 0; }
+    ps -u "$username" -o nlwp --no-headers 2>/dev/null | awk '{sum += $1} END {print sum + 0}'
+}
+
+report_count_user_job_submissions() {
+    local username="${1:-}" days="${2:-30}" count=0
+    [[ -n "$username" ]] || { printf '0\n'; return 0; }
+
+    local stats_dir="${JOB_STATS_DIR:-${DATA_BASE:-/tmp}/job_stats}"
+    local stats_file="$stats_dir/${username}.csv"
+    if [[ -f "$stats_file" ]]; then
+        count=$(awk -F',' 'NR > 1 && $1 != "" {count++} END {print count + 0}' "$stats_file")
+    fi
+
+    if [[ "${REPORT_ENABLE_SCHEDULER_STATS:-0}" == "1" ]] && command -v sacct >/dev/null 2>&1; then
+        local start_date scheduler_count
+        start_date=$(date -d "${days} days ago" '+%Y-%m-%d' 2>/dev/null || date '+%Y-%m-%d')
+        scheduler_count=$(report_run_timeout 5 sacct -u "$username" -S "$start_date" -n -X -o JobID 2>/dev/null | awk 'NF {count++} END {print count + 0}')
+        [[ "$scheduler_count" =~ ^[0-9]+$ ]] && (( scheduler_count > count )) && count="$scheduler_count"
+    fi
+
+    printf '%s\n' "${count:-0}"
+}
+
+report_get_system_network_usage() {
+    local rx_tx rx tx
+    if [[ ! -r /proc/net/dev ]]; then
+        printf '不可用'
+        return 0
+    fi
+    rx_tx=$(awk -F'[: ]+' 'NR > 2 && $2 != "lo" {rx += $3; tx += $11} END {printf "%d:%d", rx, tx}' /proc/net/dev)
+    rx="${rx_tx%%:*}"
+    tx="${rx_tx#*:}"
+    printf '接收 %s / 发送 %s' "$(bytes_to_human "${rx:-0}")" "$(bytes_to_human "${tx:-0}")"
+}
+
+report_get_user_network_usage() {
+    local username="${1:-}" traffic_file latest rx tx
+    [[ -n "$username" ]] || { printf '未启用用户流量记账'; return 0; }
+    traffic_file="${JOB_STATS_DIR:-${DATA_BASE:-/tmp}/job_stats}/${username}_traffic.csv"
+    if [[ -f "$traffic_file" ]]; then
+        latest=$(tail -n 1 "$traffic_file" 2>/dev/null || true)
+        IFS=',' read -r _ rx tx <<< "$latest"
+        if [[ "$rx" =~ ^[0-9]+$ && "$tx" =~ ^[0-9]+$ ]]; then
+            printf '接收 %s / 发送 %s' "$(bytes_to_human "$rx")" "$(bytes_to_human "$tx")"
+            return 0
+        fi
+    fi
+    printf '未启用用户流量记账'
+}
+
 # ============================================================
 # 系统 HTML 报告
 # ============================================================
@@ -106,10 +168,10 @@ generate_html_report() {
     msg_info "正在生成系统报告..."
 
     {
-        generate_html_header "System Report" "900px"
+        generate_html_header "系统资源报告" "900px"
 
         echo '<div class="header">'
-        echo '  <h1>System Report</h1>'
+        echo '  <h1>系统资源报告</h1>'
         echo "  <div class=\"subtitle\">$(date '+%Y-%m-%d %H:%M:%S')</div>"
         echo '</div>'
 
@@ -162,29 +224,55 @@ generate_html_overview_section() {
         suspended_count=$(grep -c '.' "$DISABLED_USERS_FILE" 2>/dev/null || echo 0)
     fi
 
+    local total_threads=0 total_submissions=0 username
+    for username in "${managed_users[@]}"; do
+        local user_threads user_submissions
+        user_threads=$(report_sum_user_threads "$username")
+        user_submissions=$(report_count_user_job_submissions "$username" 30)
+        [[ "$user_threads" =~ ^[0-9]+$ ]] || user_threads=0
+        [[ "$user_submissions" =~ ^[0-9]+$ ]] || user_submissions=0
+        total_threads=$((total_threads + user_threads))
+        total_submissions=$((total_submissions + user_submissions))
+    done
+
+    local network_usage
+    network_usage=$(report_get_system_network_usage)
+
     cat <<HTMLEOF
 <div class="section">
-  <div class="section-title">System Overview</div>
+  <div class="section-title">系统概览</div>
   <div class="stat-row">
     <div class="stat-card">
-      <div class="label">Managed Users</div>
-      <div class="value blue">${user_count}</div>
+      <div class="label">托管用户</div>
+      <div class="value green">${user_count}</div>
     </div>
     <div class="stat-card">
-      <div class="label">Disks Online</div>
+      <div class="label">在线磁盘</div>
       <div class="value">${online_count} / ${#ALL_DISKS[@]}</div>
     </div>
     <div class="stat-card">
-      <div class="label">Total Storage</div>
+      <div class="label">总存储</div>
       <div class="value">${total_human}</div>
     </div>
     <div class="stat-card">
-      <div class="label">Storage Used</div>
+      <div class="label">已用存储</div>
       <div class="value">${used_human}</div>
     </div>
     <div class="stat-card">
-      <div class="label">Suspended</div>
+      <div class="label">暂停用户</div>
       <div class="value">${suspended_count}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">线程总数</div>
+      <div class="value">${total_threads}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">任务提交数</div>
+      <div class="value">${total_submissions}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">流量使用</div>
+      <div class="value" style="font-size:16px">${network_usage}</div>
     </div>
   </div>
 </div>
@@ -198,24 +286,24 @@ generate_html_quota_section() {
 
     cat <<'HTMLEOF'
 <div class="section">
-  <div class="section-title">User Quota</div>
+  <div class="section-title">用户配额</div>
   <div class="card">
   <table>
     <thead>
       <tr>
-        <th>User</th>
-        <th>Mountpoint</th>
-        <th>Used</th>
-        <th>Limit</th>
-        <th>Usage</th>
-        <th>Status</th>
+        <th>用户</th>
+        <th>挂载点</th>
+        <th>已用</th>
+        <th>配额</th>
+        <th>使用率</th>
+        <th>状态</th>
       </tr>
     </thead>
     <tbody>
 HTMLEOF
 
     if (( ${#managed_users[@]} == 0 )); then
-        echo '      <tr><td colspan="6" style="text-align:center;color:#94a3b8;">No managed users found</td></tr>'
+        echo '      <tr><td colspan="6" style="text-align:center;color:#94a3b8;">暂无托管用户</td></tr>'
     else
         for username in "${managed_users[@]}"; do
             local home mp quota_info used_bytes limit_bytes pct
@@ -243,11 +331,11 @@ HTMLEOF
             badge_cls=$(get_badge_class "$pct")
 
             if (( pct >= 90 )); then
-                badge_text="Critical"
+                badge_text="危险"
             elif (( pct >= 70 )); then
-                badge_text="Warning"
+                badge_text="警告"
             else
-                badge_text="Normal"
+                badge_text="正常"
             fi
 
             cat <<HTMLEOF
@@ -283,22 +371,22 @@ generate_html_resource_section() {
 
     cat <<'HTMLEOF'
 <div class="section">
-  <div class="section-title">Resource Limits</div>
+  <div class="section-title">资源限制</div>
   <div class="card">
   <table>
     <thead>
       <tr>
-        <th>User</th>
-        <th>CPU Quota</th>
-        <th>Memory Limit</th>
-        <th>Status</th>
+        <th>用户</th>
+        <th>CPU 配额</th>
+        <th>内存限制</th>
+        <th>状态</th>
       </tr>
     </thead>
     <tbody>
 HTMLEOF
 
     if (( ${#managed_users[@]} == 0 )); then
-        echo '      <tr><td colspan="4" style="text-align:center;color:#94a3b8;">No managed users found</td></tr>'
+        echo '      <tr><td colspan="4" style="text-align:center;color:#94a3b8;">暂无托管用户</td></tr>'
     else
         for username in "${managed_users[@]}"; do
             local limits cpu memory status_badge
@@ -307,9 +395,9 @@ HTMLEOF
             memory="${limits#*:}"
 
             if [[ -n "$cpu" || -n "$memory" ]]; then
-                status_badge='<span class="badge badge-success">Configured</span>'
+                status_badge='<span class="badge badge-success">已配置</span>'
             else
-                status_badge='<span class="badge" style="background:#f1f5f9;color:#94a3b8">Not set</span>'
+                status_badge='<span class="badge" style="background:#f1f5f9;color:#94a3b8">未设置</span>'
             fi
 
             cat <<HTMLEOF
@@ -350,30 +438,36 @@ generate_html_resource_usage_section() {
 
     cat <<'HTMLEOF'
 <div class="section">
-  <div class="section-title">Real-time Resource Usage</div>
+  <div class="section-title">实时资源使用</div>
   <div class="card">
   <table>
     <thead>
       <tr>
-        <th>User</th>
-        <th>Processes</th>
+        <th>用户</th>
+        <th>进程数</th>
+        <th>线程数</th>
         <th>CPU %</th>
-        <th>Memory (RSS)</th>
-        <th>Disk I/O</th>
-        <th>Login Status</th>
+        <th>内存 (RSS)</th>
+        <th>磁盘 I/O</th>
+        <th>流量使用</th>
+        <th>任务提交数</th>
+        <th>登录状态</th>
       </tr>
     </thead>
     <tbody>
 HTMLEOF
 
     if (( ${#managed_users[@]} == 0 )); then
-        echo '      <tr><td colspan="6" style="text-align:center;color:#94a3b8;">No managed users found</td></tr>'
+        echo '      <tr><td colspan="9" style="text-align:center;color:#94a3b8;">暂无托管用户</td></tr>'
     else
         for username in "${managed_users[@]}"; do
-            local proc_count cpu_pct mem_rss io_read login_status login_badge
+            local proc_count thread_count cpu_pct mem_rss io_read traffic_usage job_submissions login_status login_badge
 
             # 进程数
             proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
+            thread_count=$(report_sum_user_threads "$username")
+            job_submissions=$(report_count_user_job_submissions "$username" 30)
+            traffic_usage=$(report_get_user_network_usage "$username")
 
             # CPU 和内存使用
             if (( proc_count > 0 )); then
@@ -400,7 +494,7 @@ HTMLEOF
                         rb=$(awk '/^read_bytes:/ {print $2}' "/proc/$pid/io" 2>/dev/null || echo 0)
                         total_io=$((total_io + rb))
                     fi
-                done < <(ps -u "$username" --no-headers -o pid 2>/dev/null | tr -d ' ')
+                done < <(ps -u "$username" --no-headers -o pid 2>/dev/null | head -n "${REPORT_MAX_PROCESS_SCAN:-500}" | tr -d ' ')
 
                 if (( total_io >= 1073741824 )); then
                     io_read=$(awk "BEGIN {printf \"%.1f GB\", $total_io / 1073741824}")
@@ -415,11 +509,11 @@ HTMLEOF
 
             # 登录状态
             if who 2>/dev/null | grep -q "^${username} "; then
-                login_status="Online"
-                login_badge='<span class="badge badge-success">Online</span>'
+                login_status="在线"
+                login_badge='<span class="badge badge-success">在线</span>'
             else
-                login_status="Offline"
-                login_badge='<span class="badge" style="background:#f1f5f9;color:#94a3b8">Offline</span>'
+                login_status="离线"
+                login_badge='<span class="badge" style="background:#f1f5f9;color:#94a3b8">离线</span>'
             fi
 
             # CPU 颜色
@@ -436,9 +530,12 @@ HTMLEOF
       <tr>
         <td>${username}</td>
         <td>${proc_count}</td>
+        <td>${thread_count:-0}</td>
         <td style="${cpu_style}">${cpu_pct}%</td>
         <td>${mem_rss}</td>
         <td>${io_read}</td>
+        <td>${traffic_usage}</td>
+        <td>${job_submissions:-0}</td>
         <td>${login_badge}</td>
       </tr>
 HTMLEOF
@@ -457,28 +554,28 @@ HTMLEOF
 generate_html_log_section() {
     cat <<'HTMLEOF'
 <div class="section">
-  <div class="section-title">Recent Operations</div>
+  <div class="section-title">最近操作</div>
   <div class="card">
 HTMLEOF
 
     if [[ ! -f "$USER_CREATION_LOG" ]]; then
-        echo '    <p style="color:#94a3b8;text-align:center">No operation log found</p>'
+        echo '    <p style="color:#94a3b8;text-align:center">未找到操作日志</p>'
     else
         local total_lines
         total_lines=$(wc -l < "$USER_CREATION_LOG")
 
         if (( total_lines <= 1 )); then
-            echo '    <p style="color:#94a3b8;text-align:center">No records</p>'
+            echo '    <p style="color:#94a3b8;text-align:center">暂无记录</p>'
         else
             cat <<'HTMLEOF'
     <table>
       <thead>
         <tr>
-          <th>Time</th>
-          <th>User</th>
-          <th>Action</th>
-          <th>Type</th>
-          <th>Mountpoint</th>
+          <th>时间</th>
+          <th>用户</th>
+          <th>操作</th>
+          <th>类型</th>
+          <th>挂载点</th>
         </tr>
       </thead>
       <tbody>
@@ -548,9 +645,9 @@ generate_user_personal_report() {
     progress_cls=$(get_progress_class "$pct")
     badge_cls=$(get_badge_class "$pct")
 
-    if (( pct >= 90 )); then badge_text="Critical"
-    elif (( pct >= 70 )); then badge_text="Warning"
-    else badge_text="Normal"; fi
+    if (( pct >= 90 )); then badge_text="危险"
+    elif (( pct >= 70 )); then badge_text="警告"
+    else badge_text="正常"; fi
 
     # 获取资源限制
     local limits cpu_limit mem_limit
@@ -559,8 +656,11 @@ generate_user_personal_report() {
     mem_limit="${limits#*:}"
 
     # 获取实时资源使用
-    local proc_count real_cpu real_mem
+    local proc_count thread_count real_cpu real_mem traffic_usage job_submissions
     proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
+    thread_count=$(report_sum_user_threads "$username")
+    traffic_usage=$(report_get_user_network_usage "$username")
+    job_submissions=$(report_count_user_job_submissions "$username" 30)
     if (( proc_count > 0 )); then
         real_cpu=$(ps -u "$username" --no-headers -o pcpu 2>/dev/null | awk '{sum+=$1} END {printf "%.1f", sum}')
         real_mem=$(ps -u "$username" --no-headers -o rss 2>/dev/null | awk '{sum+=$1} END {
@@ -595,35 +695,38 @@ generate_user_personal_report() {
     fi
 
     {
-        generate_html_header "Personal Report - ${username}" "600px"
+        generate_html_header "个人资源报告 - ${username}" "700px"
 
         cat <<HTMLEOF
 <div class="header">
-  <h1>Personal Report</h1>
+  <h1>个人资源报告</h1>
   <div class="subtitle">${username} - $(date '+%Y-%m-%d %H:%M:%S')</div>
 </div>
 
 <div class="section">
-  <div class="section-title">Account Info</div>
+  <div class="section-title">账户信息</div>
   <div class="card">
     <table>
-      <tr><td style="color:#64748b;width:120px">Username</td><td style="font-weight:600">${username}</td></tr>
-      <tr><td style="color:#64748b">Home</td><td>${home:--}</td></tr>
-      <tr><td style="color:#64748b">Mountpoint</td><td>${mp:--}</td></tr>
-      <tr><td style="color:#64748b">CPU Quota</td><td>${cpu_limit:--}</td></tr>
-      <tr><td style="color:#64748b">Memory Limit</td><td>${mem_limit:--}</td></tr>
-      <tr><td style="color:#64748b">Active Processes</td><td>${proc_count}</td></tr>
-      <tr><td style="color:#64748b">Current CPU</td><td>${real_cpu}%</td></tr>
-      <tr><td style="color:#64748b">Current Memory</td><td>${real_mem}</td></tr>
+      <tr><td style="color:#64748b;width:140px">用户名</td><td style="font-weight:600">${username}</td></tr>
+      <tr><td style="color:#64748b">主目录</td><td>${home:--}</td></tr>
+      <tr><td style="color:#64748b">挂载点</td><td>${mp:--}</td></tr>
+      <tr><td style="color:#64748b">CPU 配额</td><td>${cpu_limit:--}</td></tr>
+      <tr><td style="color:#64748b">内存限制</td><td>${mem_limit:--}</td></tr>
+      <tr><td style="color:#64748b">当前进程数</td><td>${proc_count}</td></tr>
+      <tr><td style="color:#64748b">当前线程数</td><td>${thread_count:-0}</td></tr>
+      <tr><td style="color:#64748b">当前 CPU</td><td>${real_cpu}%</td></tr>
+      <tr><td style="color:#64748b">当前内存</td><td>${real_mem}</td></tr>
+      <tr><td style="color:#64748b">流量使用</td><td>${traffic_usage}</td></tr>
+      <tr><td style="color:#64748b">任务提交数</td><td>${job_submissions:-0}</td></tr>
     </table>
   </div>
 </div>
 
 <div class="section">
-  <div class="section-title">Disk Quota Usage</div>
+  <div class="section-title">磁盘配额使用</div>
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <span style="font-size:14px;color:#475569">Used: ${used_h} / ${limit_h}</span>
+      <span style="font-size:14px;color:#475569">已用：${used_h} / ${limit_h}</span>
       <span class="badge ${badge_cls}">${badge_text} (${pct}%)</span>
     </div>
     <div class="progress-bar" style="height:12px">
@@ -633,28 +736,28 @@ generate_user_personal_report() {
 </div>
 
 <div class="section">
-  <div class="section-title">Job Statistics</div>
+  <div class="section-title">任务统计</div>
   <div class="card">
     <table>
       <thead>
         <tr>
-          <th>Period</th>
-          <th>Records</th>
-          <th>Avg Processes</th>
-          <th>Max</th>
-          <th>Min</th>
+          <th>周期</th>
+          <th>记录数</th>
+          <th>平均进程数</th>
+          <th>最大值</th>
+          <th>最小值</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>Last 7 Days</td>
+          <td>最近 7 天</td>
           <td>${w_records:-0}</td>
           <td>${w_avg:-0}</td>
           <td>${w_max:-0}</td>
           <td>${w_min:-0}</td>
         </tr>
         <tr>
-          <td>Last 30 Days</td>
+          <td>最近 30 天</td>
           <td>${m_records:-0}</td>
           <td>${m_avg:-0}</td>
           <td>${m_max:-0}</td>
@@ -666,15 +769,15 @@ generate_user_personal_report() {
 </div>
 
 <div class="section">
-  <div class="section-title">Usage Tips</div>
+  <div class="section-title">使用建议</div>
   <div class="card">
     <div class="tip-box">
-      <p style="font-weight:600;margin-bottom:6px">Tips</p>
+      <p style="font-weight:600;margin-bottom:6px">建议</p>
       <ul style="margin:0;padding:0 0 0 18px;line-height:2">
-        <li>Monitor your disk usage regularly to avoid exceeding quota.</li>
-        <li>Clean up temporary files and unused data promptly.</li>
-        <li>Use <code>du -sh ~/*</code> to check directory sizes.</li>
-        <li>Contact admin if you need a quota increase.</li>
+        <li>定期查看磁盘使用率，避免超过配额。</li>
+        <li>及时清理临时文件和不再使用的数据。</li>
+        <li>可使用 <code>du -sh ~/*</code> 查看目录大小。</li>
+        <li>需要调整配额、线程或资源限制时请联系管理员。</li>
       </ul>
     </div>
   </div>
@@ -931,7 +1034,7 @@ analyze_operation_trends() {
         local bar=""
         local i
         for (( i = 0; i < count && i < 40; i++ )); do
-            bar="${bar}█"
+            bar="${bar}#"
         done
         printf "  ${C_DIM}%-12s${C_RESET} ${C_RESET}%-40s${C_RESET} ${C_BOLD}%d${C_RESET}\n" "$date" "$bar" "$count"
     done
@@ -961,7 +1064,7 @@ analyze_operation_trends() {
         local bar=""
         local i
         for (( i = 0; i < count && i < 30; i++ )); do
-            bar="${bar}▓"
+            bar="${bar}#"
         done
         if (( count > 0 )); then
             printf "  ${C_DIM}%s:00${C_RESET} ${C_BGREEN}%-30s${C_RESET} %d\n" "$hour" "$bar" "$count"
@@ -1423,14 +1526,17 @@ show_user_resource_usage() {
         return 0
     fi
 
-    printf "  ${C_BOLD}${C_WHITE}%-16s %-8s %-10s %-12s %-12s %s${C_RESET}\n" \
-           "用户名" "进程数" "CPU %" "内存(RSS)" "磁盘I/O" "登录状态"
-    draw_line 70
+    printf "  ${C_BOLD}${C_WHITE}%-16s %-8s %-8s %-10s %-12s %-12s %-18s %-10s %s${C_RESET}\n" \
+           "用户名" "进程数" "线程数" "CPU %" "内存(RSS)" "磁盘I/O" "流量使用" "任务提交数" "登录状态"
+    draw_line 110
 
     for username in "${managed_users[@]}"; do
-        local proc_count cpu_pct mem_rss io_total login_status
+        local proc_count thread_count cpu_pct mem_rss io_total traffic_usage job_submissions login_status
 
         proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
+        thread_count=$(report_sum_user_threads "$username")
+        traffic_usage=$(report_get_user_network_usage "$username")
+        job_submissions=$(report_count_user_job_submissions "$username" 30)
 
         if (( proc_count > 0 )); then
             cpu_pct=$(ps -u "$username" --no-headers -o pcpu 2>/dev/null | awk '{sum+=$1} END {printf "%.1f", sum}')
@@ -1453,7 +1559,7 @@ show_user_resource_usage() {
                 rb=$(awk '/^read_bytes:/ {print $2}' "/proc/${pid}/io" 2>/dev/null || echo 0)
                 total_io=$((total_io + rb))
             fi
-        done < <(ps -u "$username" --no-headers -o pid 2>/dev/null | tr -d ' ')
+        done < <(ps -u "$username" --no-headers -o pid 2>/dev/null | head -n "${REPORT_MAX_PROCESS_SCAN:-500}" | tr -d ' ')
 
         if (( total_io >= 1073741824 )); then
             io_total=$(awk "BEGIN {printf \"%.1f GB\", $total_io / 1073741824}")
@@ -1479,8 +1585,8 @@ show_user_resource_usage() {
             cpu_color="$C_RESET"
         fi
 
-        printf "  ${C_BOLD}%-16s${C_RESET} %-8s ${cpu_color}%-10s${C_RESET} %-12s %-12s " \
-               "$username" "$proc_count" "${cpu_pct}%" "$mem_rss" "$io_total"
+        printf "  ${C_BOLD}%-16s${C_RESET} %-8s %-8s ${cpu_color}%-10s${C_RESET} %-12s %-12s %-18s %-10s " \
+               "$username" "$proc_count" "${thread_count:-0}" "${cpu_pct}%" "$mem_rss" "$io_total" "$traffic_usage" "${job_submissions:-0}"
         echo -e "$login_status"
     done
 

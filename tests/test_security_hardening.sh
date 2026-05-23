@@ -23,6 +23,15 @@ source "$PROJECT_ROOT/lib/symlink_core.sh"
 
 test_suite_start "Security Hardening"
 
+test_start "acl_cache_get 在 set -u 下不会触发未绑定变量"
+acl_cache_clear
+acl_cache_set "level:cacheuser" "$ACL_LEVEL_USER"
+if unset level 2>/dev/null; acl_cache_get "level:cacheuser" level && [[ "$level" == "$ACL_LEVEL_USER" ]]; then
+    test_pass
+else
+    test_fail "acl_cache_get 未正确写入输出变量或触发了 set -u 问题"
+fi
+
 test_start "validate_safe_link_name 拒绝路径穿越和分隔符"
 if declare -F validate_safe_link_name >/dev/null 2>&1 && \
    ! validate_safe_link_name '../evil' >/dev/null 2>&1 && \

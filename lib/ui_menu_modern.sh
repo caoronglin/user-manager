@@ -60,7 +60,7 @@ C_BORDER="${C_RESET}"
 C_HIGHLIGHT="${C_BGREEN}"
 
 # 状态颜色
-C_SELECTED_BG="\033[7;36m"  # 选中背景色
+C_SELECTED_BG="\033[7;32m"  # 选中背景色
 C_SELECTED_TEXT="\033[0;0;0m"   # 选中文本色
 C_DIM_TEXT="\033[0;0;0m"    # 暗淡文本色
 
@@ -187,10 +187,10 @@ draw_progress_bar() {
     local bar_filled=""
     local bar_empty=""
     for ((i=0; i<filled; i++)); do
-        bar_filled+="█"
+        bar_filled+="#"
     done
     for ((i=0; i<empty; i++)); do
-        bar_empty+="░"
+        bar_empty+="-"
     done
     
     # 颜色进度指示

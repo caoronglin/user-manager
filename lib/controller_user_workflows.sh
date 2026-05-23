@@ -17,3 +17,7 @@ source "$LIB_DIR/controller_user_lifecycle.sh"
 source "$LIB_DIR/controller_user_provisioning.sh"
 # shellcheck disable=SC1091
 source "$LIB_DIR/controller_user_limits.sh"
+# shellcheck disable=SC1091
+source "$LIB_DIR/controller_user_groups.sh"
+# shellcheck disable=SC1091
+source "$LIB_DIR/controller_user_permissions.sh"

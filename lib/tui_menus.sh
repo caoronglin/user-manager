@@ -24,10 +24,24 @@ _TUI_MENU_STATUS_RIGHT["main"]="运行时间"
 
 # 用户管理
 _TUI_MENU_TITLE["user"]="用户管理"
-_TUI_MENU_ITEMS["user"]="创建/更新用户|修改用户密码|删除用户账户|重命名用户账户|暂停/恢复用户|调整用户配额|配置资源限制|查看托管用户|返回主菜单"
+_TUI_MENU_ITEMS["user"]="创建/更新用户|修改用户密码|删除用户账户|重命名用户账户|暂停/恢复用户|调整用户配额|配置资源限制|查看托管用户|用户组管理|权限管理|返回主菜单"
 _TUI_MENU_WIDTH["user"]=50
 _TUI_MENU_STATUS_LEFT["user"]="用户管理"
 _TUI_MENU_STATUS_RIGHT["user"]="↑/↓ 导航  Enter 选择  q 返回"
+
+# 用户组管理
+_TUI_MENU_TITLE["user_group"]="用户组管理"
+_TUI_MENU_ITEMS["user_group"]="将用户加入用户组|将用户移出用户组|查看用户所属组|查看用户组成员|创建用户组|删除用户组|返回上级"
+_TUI_MENU_WIDTH["user_group"]=52
+_TUI_MENU_STATUS_LEFT["user_group"]="用户组管理"
+_TUI_MENU_STATUS_RIGHT["user_group"]="↑/↓ 导航  Enter 选择  q 返回"
+
+# 权限管理
+_TUI_MENU_TITLE["permission"]="权限管理"
+_TUI_MENU_ITEMS["permission"]="查看用户权限详情|设置主目录权限|设置主目录属组|授予管理员权限|移除管理员权限|返回上级"
+_TUI_MENU_WIDTH["permission"]=52
+_TUI_MENU_STATUS_LEFT["permission"]="权限管理"
+_TUI_MENU_STATUS_RIGHT["permission"]="↑/↓ 导航  Enter 选择  q 返回"
 
 # 磁盘与配额管理
 _TUI_MENU_TITLE["disk"]="磁盘与配额管理"
@@ -167,6 +181,8 @@ _tui_menu_icon() {
     case "$menu_id" in
         main)    echo "⚙" ;;
         user)    echo "👤" ;;
+        user_group) echo "👥" ;;
+        permission) echo "🔐" ;;
         disk)    echo "💾" ;;
         network) echo "🌐" ;;
         firewall)echo "🛡" ;;

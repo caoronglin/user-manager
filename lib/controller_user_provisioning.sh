@@ -16,6 +16,10 @@ create_or_assign_user() {
 
     draw_prompt
     read -r username
+    if [[ "$username" == "0" || "$username" == "q" || "$username" == "Q" ]]; then
+        release_lock
+        return 1
+    fi
     if [[ -z "$username" ]] || ! validate_username "$username"; then
         release_lock; return 1
     fi
@@ -78,6 +82,14 @@ create_or_assign_user() {
     local quota_bytes
     quota_bytes=$(_resolve_provision_quota "$username" "$mp" "$update_existing")
 
+    read_input "附加用户组 (逗号分隔，留空跳过)"
+    local user_groups="$REPLY_INPUT"
+    if [[ "$user_groups" == "0" || "$user_groups" == "q" || "$user_groups" == "Q" ]]; then
+        msg_info "已取消"
+        release_lock
+        return 1
+    fi
+
     # 查询选中磁盘剩余空间
     local sel_df sel_avail_b sel_avail_h
     sel_df=$(df -B1 "$mp" 2>/dev/null | awk 'NR==2 {print $4, $5}')
@@ -121,6 +133,10 @@ create_or_assign_user() {
             msg_err "创建用户失败"; release_lock; return 1
         }
     fi
+
+    apply_user_groups "$username" "$user_groups" || {
+        msg_err "用户组配置失败"; release_lock; return 1
+    }
 
     priv_chown "$username:$username" "$home" 2>/dev/null
     priv_chmod 700 "$home" 2>/dev/null

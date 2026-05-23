@@ -37,6 +37,7 @@ readonly ACL_AUDIT_MAX_SIZE=$((10 * 1024 * 1024))  # 10MB 轮转
 # 返回值：0=root, 1=admin, 2=user, 3=guest
 acl_get_current_level() {
     local user="${1:-$USER}"
+    local level
     
     # 检查缓存
     local cache_key="level:$user"
@@ -118,7 +119,7 @@ acl_is_at_least() {
 # 从缓存获取值
 acl_cache_get() {
     local key="$1"
-    local -n _out="$2"
+    local out_var="${2:-}"
     local now
     now=$(date +%s)
     
@@ -126,9 +127,10 @@ acl_cache_get() {
     if [[ -n "${_ACL_CACHE[$key]:-}" ]]; then
         local timestamp="${_ACL_CACHE_TIMESTAMP[$key]:-0}"
         local age=$((now - timestamp))
-        
+
         if [[ $age -lt $ACL_CACHE_TTL ]]; then
-            _out="${_ACL_CACHE[$key]}"
+            [[ -n "$out_var" ]] || return 1
+            printf -v "$out_var" '%s' "${_ACL_CACHE[$key]}"
             return 0
         fi
     fi

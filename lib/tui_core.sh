@@ -55,13 +55,13 @@ tui_init() {
     if [[ "$TUI_HAS_COLORS" == "true" ]]; then
         TUI_COLOR_BG=234       # 深灰黑背景 (#1a1a2e)
         TUI_COLOR_FG=252       # 柔和白前景
-        TUI_COLOR_ACCENT=39    # 亮蓝 #0088ff
-        TUI_COLOR_ACCENT2=51   # 青色高亮
+        TUI_COLOR_ACCENT=40    # 绿色
+        TUI_COLOR_ACCENT2=46   # 亮绿色高亮
         TUI_COLOR_SUCCESS=48   # 翠绿
         TUI_COLOR_WARNING=221  # 金色
         TUI_COLOR_ERROR=203    # 柔和红
         TUI_COLOR_MUTED=243    # 中灰
-        TUI_COLOR_HIGHLIGHT=45 # 电蓝
+        TUI_COLOR_HIGHLIGHT=48 # 绿色选中
         TUI_COLOR_SURFACE=236  # 卡片背景
         TUI_COLOR_BORDER=239   # 边框灰
     fi
@@ -498,20 +498,12 @@ tui_progress_draw() {
     # 进度条
     tui_fg "$TUI_COLOR_SUCCESS"
     for ((i = 0; i < filled; i++)); do
-        if [[ "$TUI_HAS_UTF8" == "true" ]]; then
-            echo -n "█"
-        else
-            echo -n "#"
-        fi
+        echo -n "#"
     done
-    
+
     tui_fg "$TUI_COLOR_MUTED"
     for ((i = 0; i < empty; i++)); do
-        if [[ "$TUI_HAS_UTF8" == "true" ]]; then
-            echo -n "░"
-        else
-            echo -n "-"
-        fi
+        echo -n "-"
     done
     
     tui_reset
