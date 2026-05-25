@@ -17,6 +17,7 @@ PATH="$TMP_ROOT/bin:$PATH"
 mkdir -p "$TMP_ROOT/bin"
 cat > "$TMP_ROOT/bin/last" <<'FAKELAST'
 #!/bin/sh
+[ -n "$LAST_CALL_LOG" ] && printf 'last\n' >> "$LAST_CALL_LOG"
 cat <<'EOF'
 alice pts/0        10.0.0.1        Mon May 20 10:00   still logged in
 alice pts/1        10.0.0.2        Tue May 19 09:00 - 10:00  (01:00)
@@ -26,6 +27,8 @@ wtmp begins Mon May 18 08:00:00 2026
 EOF
 FAKELAST
 chmod +x "$TMP_ROOT/bin/last"
+LAST_CALL_LOG="$TMP_ROOT/last_calls.log"
+export LAST_CALL_LOG
 
 REPORT_DIR="$TMP_ROOT/report"
 DATA_BASE="$TMP_ROOT/data"
@@ -53,6 +56,7 @@ who() { printf 'alice pts/0 2026-05-20 10:00 (10.0.0.1)\n'; }
 source "$PROJECT_ROOT/lib/report_core.sh"
 
 test_start "report_get_login_stats 统计登录次数和去重来源"
+REPORT_LOGIN_STATS_CACHE=()
 login_stats="$(report_get_login_stats alice)"
 if [[ "$login_stats" == 3\|* && "$login_stats" == *"10.0.0.1"* && "$login_stats" == *"10.0.0.2"* && "$login_stats" != *"10.0.0.3"* ]]; then
     test_pass
@@ -60,7 +64,22 @@ else
     test_fail "登录统计不符合预期: $login_stats"
 fi
 
+test_start "report_get_login_stats 同一用户复用缓存"
+: > "$LAST_CALL_LOG"
+REPORT_LOGIN_STATS_CACHE=()
+report_set_login_stats alice
+first_stats="${REPORT_LOGIN_COUNT}|${REPORT_LOGIN_SOURCES}"
+report_set_login_stats alice
+second_stats="${REPORT_LOGIN_COUNT}|${REPORT_LOGIN_SOURCES}"
+last_calls="$(wc -l < "$LAST_CALL_LOG" | tr -d ' ')"
+if [[ "$first_stats" == "$second_stats" && "$last_calls" == "1" ]]; then
+    test_pass
+else
+    test_fail "登录统计缓存未生效: calls=$last_calls first=$first_stats second=$second_stats"
+fi
+
 test_start "个人 HTML 报告包含登录次数和登录 IP"
+REPORT_LOGIN_STATS_CACHE=()
 personal_report="$TMP_ROOT/alice_report.html"
 if generate_user_personal_report alice "$personal_report" >/dev/null && \
    grep -q "近期登录次数" "$personal_report" && \

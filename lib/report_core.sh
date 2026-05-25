@@ -165,13 +165,30 @@ report_html_escape() {
     printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&#39;/g"
 }
 
-report_get_login_stats() {
+declare -gA REPORT_LOGIN_STATS_CACHE 2>/dev/null || true
+REPORT_LOGIN_COUNT=0
+REPORT_LOGIN_SOURCES="无记录"
+
+report_set_login_stats() {
     local username="${1:-}" limit="${REPORT_LOGIN_SCAN_LIMIT:-200}"
-    [[ -n "$username" ]] || { printf '0|无记录\n'; return 0; }
-    command -v last >/dev/null 2>&1 || { printf '0|无记录\n'; return 0; }
+    REPORT_LOGIN_COUNT=0
+    REPORT_LOGIN_SOURCES="无记录"
+    [[ -n "$username" ]] || return 0
+    if [[ "${REPORT_DISABLE_LOGIN_CACHE:-0}" != "1" && -n "${REPORT_LOGIN_STATS_CACHE[$username]+x}" ]]; then
+        local cached="${REPORT_LOGIN_STATS_CACHE[$username]}"
+        REPORT_LOGIN_COUNT="${cached%%|*}"
+        REPORT_LOGIN_SOURCES="${cached#*|}"
+        return 0
+    fi
+
+    command -v last >/dev/null 2>&1 || {
+        REPORT_LOGIN_STATS_CACHE[$username]='0|无记录'
+        return 0
+    }
     [[ "$limit" =~ ^[0-9]+$ ]] || limit=200
 
-    last -w "$username" 2>/dev/null | head -n "$limit" | awk -v user="$username" '
+    local result
+    result=$(last -w "$username" 2>/dev/null | head -n "$limit" | awk -v user="$username" '
         $1 == user {
             count++
             if ($3 != "" && $3 != "-" && $3 != ":0" && $3 !~ /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/) {
@@ -184,7 +201,17 @@ report_get_login_stats() {
             }
             if (list == "") list = "无记录"
             printf "%d|%s\n", count + 0, list
-        }'
+        }')
+    [[ -n "$result" ]] || result='0|无记录'
+    REPORT_LOGIN_STATS_CACHE[$username]="$result"
+    REPORT_LOGIN_COUNT="${result%%|*}"
+    REPORT_LOGIN_SOURCES="${result#*|}"
+}
+
+report_get_login_stats() {
+    report_set_login_stats "$1"
+    local result="${REPORT_LOGIN_COUNT}|${REPORT_LOGIN_SOURCES}"
+    printf '%s\n' "$result"
 }
 
 # ============================================================
@@ -495,16 +522,16 @@ HTMLEOF
     else
         for username in "${managed_users[@]}"; do
             local proc_count thread_count cpu_pct mem_rss io_read traffic_usage job_submissions login_status login_badge
-            local login_stats login_count login_sources login_sources_html
+            local login_count login_sources login_sources_html
 
             # 进程数
             proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
             thread_count=$(report_sum_user_threads "$username")
             job_submissions=$(report_count_user_job_submissions "$username" 30)
             traffic_usage=$(report_get_user_network_usage "$username")
-            login_stats=$(report_get_login_stats "$username")
-            login_count="${login_stats%%|*}"
-            login_sources="${login_stats#*|}"
+            report_set_login_stats "$username"
+            login_count="$REPORT_LOGIN_COUNT"
+            login_sources="$REPORT_LOGIN_SOURCES"
             login_sources_html=$(report_html_escape "$login_sources")
 
             # CPU 和内存使用
@@ -696,14 +723,14 @@ generate_user_personal_report() {
     mem_limit="${limits#*:}"
 
     # 获取实时资源使用
-    local proc_count thread_count real_cpu real_mem traffic_usage job_submissions login_stats login_count login_sources login_sources_html
+    local proc_count thread_count real_cpu real_mem traffic_usage job_submissions login_count login_sources login_sources_html
     proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
     thread_count=$(report_sum_user_threads "$username")
     traffic_usage=$(report_get_user_network_usage "$username")
     job_submissions=$(report_count_user_job_submissions "$username" 30)
-    login_stats=$(report_get_login_stats "$username")
-    login_count="${login_stats%%|*}"
-    login_sources="${login_stats#*|}"
+    report_set_login_stats "$username"
+    login_count="$REPORT_LOGIN_COUNT"
+    login_sources="$REPORT_LOGIN_SOURCES"
     login_sources_html=$(report_html_escape "$login_sources")
     if (( proc_count > 0 )); then
         real_cpu=$(ps -u "$username" --no-headers -o pcpu 2>/dev/null | awk '{sum+=$1} END {printf "%.1f", sum}')
@@ -1579,15 +1606,15 @@ show_user_resource_usage() {
     draw_line 140
 
     for username in "${managed_users[@]}"; do
-        local proc_count thread_count cpu_pct mem_rss io_total traffic_usage job_submissions login_status login_stats login_count login_sources
+        local proc_count thread_count cpu_pct mem_rss io_total traffic_usage job_submissions login_status login_count login_sources
 
         proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
         thread_count=$(report_sum_user_threads "$username")
         traffic_usage=$(report_get_user_network_usage "$username")
         job_submissions=$(report_count_user_job_submissions "$username" 30)
-        login_stats=$(report_get_login_stats "$username")
-        login_count="${login_stats%%|*}"
-        login_sources="${login_stats#*|}"
+        report_set_login_stats "$username"
+        login_count="$REPORT_LOGIN_COUNT"
+        login_sources="$REPORT_LOGIN_SOURCES"
         [[ ${#login_sources} -gt 20 ]] && login_sources="${login_sources:0:17}..."
 
         if (( proc_count > 0 )); then
@@ -1658,11 +1685,11 @@ show_single_user_resource() {
     echo ""
 
     # 进程列表（TOP 10）
-    local proc_count login_stats login_count login_sources
+    local proc_count login_count login_sources
     proc_count=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
-    login_stats=$(report_get_login_stats "$username")
-    login_count="${login_stats%%|*}"
-    login_sources="${login_stats#*|}"
+    report_set_login_stats "$username"
+    login_count="$REPORT_LOGIN_COUNT"
+    login_sources="$REPORT_LOGIN_SOURCES"
     draw_info_card "总进程数:" "$proc_count"
     draw_info_card "近期登录次数:" "${login_count:-0}"
     draw_info_card "登录IP/来源:" "$login_sources"
