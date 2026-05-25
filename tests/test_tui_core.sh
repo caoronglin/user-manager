@@ -58,6 +58,14 @@ else
     test_fail "数字直选未按预期映射，输出为: $direct_digit_output"
 fi
 
+test_start "tui_read_key 根据当前菜单范围读取多位编号"
+read_digit_output="$(bash -c 'set -uo pipefail; source "$1/lib/tui_core.sh"; TUI_MENU_ITEMS=(A B C D E F G H I J 返回); long_key="$(printf "10" | TUI_MENU_DIGIT_TIMEOUT=0.01 tui_read_key)"; TUI_MENU_ITEMS=(A B 返回); short_key="$(printf "10" | TUI_MENU_DIGIT_TIMEOUT=0.01 tui_read_key)"; printf "long=%s short=%s" "$long_key" "$short_key"' _ "$PROJECT_ROOT")"
+if [[ "$read_digit_output" == *"long=10"* && "$read_digit_output" == *"short=1"* ]]; then
+    test_pass
+else
+    test_fail "TUI 按键读取未按菜单范围处理多位编号，输出为: $read_digit_output"
+fi
+
 test_start "tui_prompt_input 支持默认值确认"
 prompt_default_output="$(bash -c 'set -uo pipefail; source "$1/lib/tui_core.sh"; TUI_LINES=24; TUI_COLS=80; TUI_COLOR_HIGHLIGHT=51; TUI_COLOR_FG=255; TUI_COLOR_MUTED=242; TUI_COLOR_ACCENT=39; tui_draw_box(){ :; }; tui_move(){ :; }; tui_fg(){ :; }; tui_reset(){ :; }; tui_reverse(){ :; }; tui_draw_center(){ :; }; tui_clear(){ :; }; tput(){ :; }; key_file="$(mktemp)"; printf "%s\n" ENTER > "$key_file"; tui_read_key(){ local key; IFS= read -r key < "$key_file" || return 1; tail -n +2 "$key_file" > "$key_file.next"; mv "$key_file.next" "$key_file"; printf "%s\n" "$key"; return 0; }; tui_prompt_input "标题" "用户名" "alice" >/dev/null; rm -f "$key_file" "$key_file.next"; printf "value=%s" "$REPLY_INPUT"' _ "$PROJECT_ROOT")"
 if [[ "$prompt_default_output" == *"value=alice"* ]]; then

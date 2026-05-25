@@ -93,11 +93,25 @@ fi
 
 test_start "rl_read_menu_key 支持多位数字无需回车"
 if source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null && declare -F rl_read_menu_key &>/dev/null; then
-    rl_key="$(printf '10' | RL_MENU_DIGIT_TIMEOUT=0.01 rl_read_menu_key)"
+    rl_key="$(printf '10' | RL_MENU_DIGIT_TIMEOUT=0.01 rl_read_menu_key 21)"
     if [[ "$rl_key" == "10" ]]; then
         test_pass
     else
         test_fail "rl_read_menu_key 未正确读取多位数字，得到: $rl_key"
+    fi
+else
+    test_fail "rl_read_menu_key 函数不存在"
+fi
+
+test_start "rl_read_menu_key 根据菜单编号范围决定是否等待下一位"
+if source "$PROJECT_ROOT/lib/common.sh" 2>/dev/null && declare -F rl_read_menu_key &>/dev/null; then
+    rl_single="$(printf '10' | RL_MENU_DIGIT_TIMEOUT=0.01 rl_read_menu_key 9)"
+    rl_high_single="$(printf '90' | RL_MENU_DIGIT_TIMEOUT=0.01 rl_read_menu_key 21)"
+    rl_twenty_one="$(printf '21' | RL_MENU_DIGIT_TIMEOUT=0.01 rl_read_menu_key 21)"
+    if [[ "$rl_single" == "1" && "$rl_high_single" == "9" && "$rl_twenty_one" == "21" ]]; then
+        test_pass
+    else
+        test_fail "菜单范围感知读取异常，max9=$rl_single max21-prefix9=$rl_high_single max21-prefix2=$rl_twenty_one"
     fi
 else
     test_fail "rl_read_menu_key 函数不存在"

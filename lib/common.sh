@@ -561,6 +561,8 @@ run_submenu() {
     local handler="$1"
     shift
     local -a items=("$@")
+    local max_option
+    max_option="$(rl_menu_max_option "${items[@]}")"
 
     while true; do
         clear
@@ -582,7 +584,7 @@ run_submenu() {
         done
         draw_menu_exit "返回"
         draw_prompt
-        opt="$(rl_read_menu_key)"
+        opt="$(rl_read_menu_key "$max_option")"
         printf '\n'
         [[ "$opt" == "0" || "$opt" == "q" || "$opt" == "Q" ]] && return 0
         safe_run "$handler" "$opt"
@@ -590,12 +592,32 @@ run_submenu() {
     done
 }
 
+rl_menu_max_option() {
+    local max=0 entry num
+    for entry in "$@"; do
+        [[ "$entry" == "---" ]] && continue
+        num="${entry%%:*}"
+        if [[ "$num" =~ ^[0-9]+$ ]] && (( num > max )); then
+            max="$num"
+        fi
+    done
+    printf '%s\n' "$max"
+}
+
+rl_menu_prefix_can_extend() {
+    local prefix="$1" max_option="${2:-0}"
+    [[ "$prefix" =~ ^[0-9]+$ && "$max_option" =~ ^[0-9]+$ ]] || return 1
+    (( max_option >= prefix * 10 ))
+}
+
 # 单键读取；连续数字可组成 10/11 等编号，无需回车确认。
 rl_read_menu_key() {
+    local max_option="${1:-0}"
     local rl_key next_key
     IFS= read -rsn1 rl_key || return 1
     if [[ "$rl_key" =~ ^[1-9]$ ]]; then
-        while IFS= read -rsn1 -t "${RL_MENU_DIGIT_TIMEOUT:-0.08}" next_key 2>/dev/null; do
+        while rl_menu_prefix_can_extend "$rl_key" "$max_option"; do
+            IFS= read -rsn1 -t "${RL_MENU_DIGIT_TIMEOUT:-0.35}" next_key 2>/dev/null || break
             [[ "$next_key" =~ ^[0-9]$ ]] || break
             rl_key+="$next_key"
         done

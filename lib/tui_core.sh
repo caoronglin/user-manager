@@ -696,6 +696,12 @@ tui_statusbar_draw() {
 # 键盘输入处理
 # ============================================================
 
+tui_menu_prefix_can_extend() {
+    local prefix="$1" max_option="${2:-0}"
+    [[ "$prefix" =~ ^[0-9]+$ && "$max_option" =~ ^[0-9]+$ ]] || return 1
+    (( max_option >= prefix * 10 ))
+}
+
 # 读取按键
 tui_read_key() {
     local key
@@ -716,8 +722,13 @@ tui_read_key() {
     elif [[ "$key" == "" ]]; then
         key="ENTER"
     elif [[ "$key" =~ ^[1-9]$ ]]; then
-        local next_key
-        while IFS= read -rsn1 -t "${TUI_MENU_DIGIT_TIMEOUT:-0.08}" next_key 2>/dev/null; do
+        local next_key max_option=0 total_items=0
+        if declare -p TUI_MENU_ITEMS >/dev/null 2>&1; then
+            total_items=${#TUI_MENU_ITEMS[@]}
+            (( total_items > 1 )) && max_option=$((total_items - 1))
+        fi
+        while tui_menu_prefix_can_extend "$key" "$max_option"; do
+            IFS= read -rsn1 -t "${TUI_MENU_DIGIT_TIMEOUT:-0.35}" next_key 2>/dev/null || break
             [[ "$next_key" =~ ^[0-9]$ ]] || break
             key+="$next_key"
         done
