@@ -41,6 +41,8 @@ C_BOLD=""
 msg_err() { :; }
 msg_ok() { :; }
 msg_info() { :; }
+msg_warn() { :; }
+msg_step() { :; }
 bytes_to_human() { printf '%sB\n' "$1"; }
 get_managed_usernames() { printf 'alice\n'; }
 get_user_home() { printf '/home/%s\n' "$1"; }
@@ -97,6 +99,40 @@ if [[ "$summary_html" == *"登录次数"* && "$summary_html" == *"登录 IP/来�
     test_pass
 else
     test_fail "汇总资源表缺少登录列: $summary_html"
+fi
+
+test_start "send_user_report_email 复用统一邮件后端且不调用 sendmail"
+cat > "$TMP_ROOT/bin/sendmail" <<'FAKESENDMAIL'
+#!/bin/sh
+printf 'sendmail-called\n' >> "$SENDMAIL_CALL_LOG"
+exit 11
+FAKESENDMAIL
+chmod +x "$TMP_ROOT/bin/sendmail"
+SENDMAIL_CALL_LOG="$TMP_ROOT/sendmail_calls.log"
+REPORT_MAIL_LOG="$TMP_ROOT/report_mail.log"
+export SENDMAIL_CALL_LOG REPORT_MAIL_LOG
+get_user_email() { [[ "${1:-}" == "alice" ]] && printf 'alice@example.com\n'; }
+get_email_config() {
+    case "${1:-}" in
+        from_name) printf '用户管理系统\n' ;;
+        from_address) printf 'noreply@example.com\n' ;;
+        *) printf '\n' ;;
+    esac
+}
+validate_email_config() { return 0; }
+sanitize_mail_header_value() { printf '%s' "${1//$'\n'/ }"; }
+rl_mail_send() {
+    printf 'to=%s\nsubject=%s\nbody=%s\nretries=%s\n' "$1" "$2" "$3" "${4:-}" >> "$REPORT_MAIL_LOG"
+    return 0
+}
+if send_user_report_email alice "$personal_report" >/dev/null 2>&1 && \
+   grep -q 'to=alice@example.com' "$REPORT_MAIL_LOG" && \
+   grep -q '个人使用报告' "$REPORT_MAIL_LOG" && \
+   grep -q '近期登录次数' "$REPORT_MAIL_LOG" && \
+   [[ ! -f "$SENDMAIL_CALL_LOG" ]]; then
+    test_pass
+else
+    test_fail "报告邮件未走统一邮件后端，或仍调用 sendmail"
 fi
 
 test_suite_end

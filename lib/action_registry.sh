@@ -151,13 +151,15 @@ rl_action_users_quota_cli() {
 
 rl_action_users_resource_cli() {
     local rl_mode="${1:-}" rl_username="${2:-}"
-    [[ -n "$rl_username" ]] || { printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --remove <用户名>\n' >&2; return 1; }
+    [[ -n "$rl_username" ]] || { printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2; return 1; }
 
     case "$rl_mode" in
         --get) get_current_resource_limits "$rl_username" ;;
         --set) configure_resource_limits "$rl_username" "${3:-}" "${4:-}" ;;
+        --runtime-set) rl_resource_apply_runtime_limits "$(id -u "$rl_username")" "${3:-}" "${4:-}" ;;
+        --runtime-reset) rl_resource_reset_runtime_limits "$(id -u "$rl_username")" ;;
         --remove) remove_resource_limits "$(id -u "$rl_username")" ;;
-        *) printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --remove <用户名>\n' >&2; return 1 ;;
+        *) printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2; return 1 ;;
     esac
 }
 

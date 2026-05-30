@@ -92,6 +92,83 @@ audit_escape_field() {
     echo "$value"
 }
 
+audit_context_value() {
+    local value="${1:-unknown}"
+    value=${value//$'\n'/ }
+    value=${value//$'\r'/}
+    value=${value//|/ }
+    value=${value//;/,}
+    [[ -n "$value" ]] || value="unknown"
+    printf '%s' "$value"
+}
+
+audit_source_ip() {
+    if [[ -n "${SSH_CONNECTION:-}" ]]; then
+        printf '%s\n' "${SSH_CONNECTION%% *}"
+    elif [[ -n "${SSH_CLIENT:-}" ]]; then
+        printf '%s\n' "${SSH_CLIENT%% *}"
+    else
+        printf 'local\n'
+    fi
+}
+
+audit_collect_context() {
+    local hostname="${1:-}"
+    local pid="${2:-$$}"
+    local ppid="${3:-${PPID:-0}}"
+    local actor="${4:-${USER:-unknown}}"
+    local uid euid cwd tty_name source_ip sudo_user login_user session_id shell_name
+
+    [[ -n "$hostname" ]] || hostname=$(hostname 2>/dev/null || printf 'unknown')
+    uid=$(id -u 2>/dev/null || printf 'unknown')
+    euid="${EUID:-$uid}"
+    cwd="${PWD:-unknown}"
+    tty_name=$(tty 2>/dev/null || printf 'notty')
+    source_ip=$(audit_source_ip)
+    sudo_user="${SUDO_USER:-}"
+    login_user="${LOGNAME:-${USER:-unknown}}"
+    session_id="${XDG_SESSION_ID:-}"
+    shell_name="${SHELL:-unknown}"
+
+    printf 'host=%s;pid=%s;ppid=%s;actor=%s;uid=%s;euid=%s;sudo_user=%s;logname=%s;cwd=%s;tty=%s;source_ip=%s;session=%s;shell=%s' \
+        "$(audit_context_value "$hostname")" \
+        "$(audit_context_value "$pid")" \
+        "$(audit_context_value "$ppid")" \
+        "$(audit_context_value "$actor")" \
+        "$(audit_context_value "$uid")" \
+        "$(audit_context_value "$euid")" \
+        "$(audit_context_value "${sudo_user:-none}")" \
+        "$(audit_context_value "$login_user")" \
+        "$(audit_context_value "$cwd")" \
+        "$(audit_context_value "$tty_name")" \
+        "$(audit_context_value "$source_ip")" \
+        "$(audit_context_value "${session_id:-none}")" \
+        "$(audit_context_value "$shell_name")"
+}
+
+audit_context_field() {
+    local context="${1:-}" key="${2:-}" part
+    [[ -n "$context" && -n "$key" ]] || return 1
+    local IFS=';'
+    for part in $context; do
+        [[ "$part" == "$key="* ]] || continue
+        printf '%s\n' "${part#*=}"
+        return 0
+    done
+    return 1
+}
+
+audit_enrich_details() {
+    local details="${1:-}" context="${2:-}"
+    if [[ "${USER_MANAGER_AUDIT_DETAILED_CONTEXT:-1}" == "0" || -z "$context" ]]; then
+        printf '%s\n' "$details"
+    elif [[ -n "$details" ]]; then
+        printf '%s | context{%s}\n' "$details" "$context"
+    else
+        printf 'context{%s}\n' "$context"
+    fi
+}
+
 # 安全写入审计日志（可选 flock）
 audit_write_line() {
     local line="${1:-}"
@@ -167,8 +244,10 @@ audit_build_journal_fields() {
     local result="${3:-}"
     local details="${4:-}"
     local actor="${5:-}"
+    local context="${6:-}"
     local message priority
 
+    [[ -n "$context" ]] || context="$(audit_collect_context "" "$$" "${PPID:-0}" "$actor")"
     message=$(audit_build_journal_message "$op_type" "$target" "$result" "$details" "$actor")
     priority=$(audit_priority_for_result "$result")
 
@@ -178,6 +257,18 @@ audit_build_journal_fields() {
     printf 'TARGET=%s\n' "$(audit_escape_field "$target")"
     printf 'RESULT=%s\n' "$(audit_escape_field "$result")"
     printf 'ACTOR=%s\n' "$(audit_escape_field "$actor")"
+    printf 'USERMGR_DETAILS=%s\n' "$(audit_escape_field "$details")"
+    printf 'USERMGR_CONTEXT=%s\n' "$(audit_escape_field "$context")"
+    printf 'USERMGR_HOST=%s\n' "$(audit_escape_field "$(audit_context_field "$context" host || printf 'unknown')")"
+    printf 'USERMGR_PID=%s\n' "$(audit_escape_field "$(audit_context_field "$context" pid || printf 'unknown')")"
+    printf 'USERMGR_PPID=%s\n' "$(audit_escape_field "$(audit_context_field "$context" ppid || printf 'unknown')")"
+    printf 'USERMGR_UID=%s\n' "$(audit_escape_field "$(audit_context_field "$context" uid || printf 'unknown')")"
+    printf 'USERMGR_EUID=%s\n' "$(audit_escape_field "$(audit_context_field "$context" euid || printf 'unknown')")"
+    printf 'USERMGR_CWD=%s\n' "$(audit_escape_field "$(audit_context_field "$context" cwd || printf 'unknown')")"
+    printf 'USERMGR_TTY=%s\n' "$(audit_escape_field "$(audit_context_field "$context" tty || printf 'unknown')")"
+    printf 'USERMGR_SOURCE_IP=%s\n' "$(audit_escape_field "$(audit_context_field "$context" source_ip || printf 'unknown')")"
+    printf 'USERMGR_SUDO_USER=%s\n' "$(audit_escape_field "$(audit_context_field "$context" sudo_user || printf 'none')")"
+    printf 'USERMGR_SESSION=%s\n' "$(audit_escape_field "$(audit_context_field "$context" session || printf 'none')")"
     printf 'SYSLOG_IDENTIFIER=%s\n' "$AUDIT_JOURNAL_IDENTIFIER"
 }
 
@@ -249,6 +340,9 @@ audit_log() {
     hostname=$(hostname 2>/dev/null || echo "unknown")
     local pid=$$
     local ppid=${PPID:-0}
+    local audit_context enriched_details
+    audit_context="$(audit_collect_context "$hostname" "$pid" "$ppid" "$user")"
+    enriched_details="$(audit_enrich_details "$details" "$audit_context")"
     
     local esc_hostname esc_user esc_op esc_target esc_result esc_details
     esc_hostname=$(audit_escape_field "$hostname")
@@ -256,17 +350,17 @@ audit_log() {
     esc_op=$(audit_escape_field "$op_type")
     esc_target=$(audit_escape_field "$target")
     esc_result=$(audit_escape_field "$result")
-    esc_details=$(audit_escape_field "$details")
+    esc_details=$(audit_escape_field "$enriched_details")
     
     # 构建日志条目（使用 | 作为分隔符）
-    # 格式: timestamp|unix_time|hostname|pid|ppid|user|op_type|target|result|details
+    # 格式: timestamp|unix_time|hostname|pid|ppid|user|op_type|target|result|details(+context)
     local log_entry="${timestamp}|${unix_time}|${esc_hostname}|${pid}|${ppid}|${esc_user}|${esc_op}|${esc_target}|${esc_result}|${esc_details}"
     
     local journal_payload=""
     local write_status=1
 
     if audit_backend_uses_journal; then
-        journal_payload=$(audit_build_journal_fields "$op_type" "$target" "$result" "$details" "$user")
+        journal_payload=$(audit_build_journal_fields "$op_type" "$target" "$result" "$details" "$user" "$audit_context")
     fi
 
     case "$(audit_backend_mode)" in

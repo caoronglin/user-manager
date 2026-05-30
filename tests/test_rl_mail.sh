@@ -61,6 +61,38 @@ else
     rl_not_ok "rl_mail_send 未拒绝空收件人"
 fi
 
+rl_mail_backend_dir="$rl_tmpdir/mailbin"
+mkdir -p "$rl_mail_backend_dir"
+cat > "$rl_mail_backend_dir/sendmail" <<EOF
+#!/bin/sh
+printf 'sendmail-called\n' >> "$rl_tmpdir/sendmail.log"
+exit 0
+EOF
+chmod +x "$rl_mail_backend_dir/sendmail"
+rl_old_path="$PATH"
+PATH="$rl_mail_backend_dir:/usr/bin:/bin"
+if ! rl_mail_send_raw 'alice@example.com' 'body' sendmail >/dev/null 2>&1 && [[ ! -f "$rl_tmpdir/sendmail.log" ]]; then
+    rl_ok "rl_mail_send_raw 禁用 sendmail 后端且不调用 sendmail"
+else
+    rl_not_ok "rl_mail_send_raw 仍调用 sendmail"
+fi
+
+cat > "$rl_mail_backend_dir/msmtp" <<EOF
+#!/bin/sh
+printf 'msmtp:%s\n' "\$*" >> "$rl_tmpdir/msmtp.log"
+cat >> "$rl_tmpdir/msmtp.body"
+exit 0
+EOF
+chmod +x "$rl_mail_backend_dir/msmtp"
+if rl_mail_send_raw 'alice@example.com' 'body' auto >/dev/null 2>&1 && \
+   grep -q 'msmtp:alice@example.com' "$rl_tmpdir/msmtp.log" && \
+   grep -q 'body' "$rl_tmpdir/msmtp.body"; then
+    rl_ok "rl_mail_send_raw 自动后端优先使用 msmtp"
+else
+    rl_not_ok "rl_mail_send_raw 未按预期使用 msmtp"
+fi
+PATH="$rl_old_path"
+
 rl_extended_template="$rl_tmpdir/extended_template.html"
 cat > "$rl_extended_template" <<'EOF'
 user=${username};reason=${reason};expiry=${expiry_date};operator=${operator};status=${status};quota=${quota}

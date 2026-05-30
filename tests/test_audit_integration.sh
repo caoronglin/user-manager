@@ -66,6 +66,18 @@ else
     test_fail "审计日志写入失败"
 fi
 
+test_start "audit_log appends detailed context"
+audit_log "DETAIL_TEST" "detail_target" "SUCCESS" "detail text" "alice"
+detail_line="$(grep 'DETAIL_TEST' "$AUDIT_LOG_FILE" | tail -1)"
+if [[ "$detail_line" == *"context{"* ]] && \
+   [[ "$detail_line" == *"pid="* ]] && \
+   [[ "$detail_line" == *"cwd="* ]] && \
+   [[ "$detail_line" == *"source_ip="* ]]; then
+    test_pass
+else
+    test_fail "审计日志缺少详细上下文: $detail_line"
+fi
+
 test_start "audit_success records success"
 audit_success "SUCCESS_TEST" "success_target"
 if grep -q "SUCCESS" "$AUDIT_LOG_FILE"; then
@@ -103,13 +115,16 @@ fi
 unset AUDIT_LOG_BACKEND USER_MANAGER_AUDIT_BACKEND
 
 test_start "audit_build_journal_fields includes required keys"
-journal_payload="$(audit_build_journal_fields "CREATE" "demo" "SUCCESS" "created account" "alice")"
+journal_payload="$(audit_build_journal_fields "CREATE" "demo" "SUCCESS" "created account" "alice" "host=test-host;pid=123;ppid=45;actor=alice;uid=1000;euid=0;sudo_user=root;logname=alice;cwd=/srv/app;tty=pts/1;source_ip=10.0.0.8;session=7;shell=/bin/bash")"
 if [[ "$journal_payload" == *$'MESSAGE=created account'* ]] \
     && [[ "$journal_payload" == *$'PRIORITY=6'* ]] \
     && [[ "$journal_payload" == *$'USERMGR_ACTION=CREATE'* ]] \
     && [[ "$journal_payload" == *$'TARGET=demo'* ]] \
     && [[ "$journal_payload" == *$'RESULT=SUCCESS'* ]] \
-    && [[ "$journal_payload" == *$'ACTOR=alice'* ]]; then
+    && [[ "$journal_payload" == *$'ACTOR=alice'* ]] \
+    && [[ "$journal_payload" == *$'USERMGR_PID=123'* ]] \
+    && [[ "$journal_payload" == *$'USERMGR_CWD=/srv/app'* ]] \
+    && [[ "$journal_payload" == *$'USERMGR_SOURCE_IP=10.0.0.8'* ]]; then
     test_pass
 else
     test_fail "journald 字段不完整"

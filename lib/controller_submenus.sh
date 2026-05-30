@@ -282,9 +282,21 @@ view_audit_log() {
 
     msg_info "最近 50 条审计记录:"
     echo ""
-    tail -50 "$AUDIT_LOG_FILE" | while IFS='|' read -r timestamp operation _ result details; do
-        printf "  ${C_DIM}%-20s${C_RESET} ${C_BOLD}%-15s${C_RESET} %-20s %s\n" \
-            "$timestamp" "$operation" "$result" "${details:0:50}"
+    tail -50 "$AUDIT_LOG_FILE" | while IFS='|' read -r timestamp unix_time hostname pid ppid actor operation target result details extra; do
+        if [[ -z "${operation:-}" ]]; then
+            operation="${unix_time:-unknown}"
+            result="${pid:-unknown}"
+            details="${ppid:-}"
+            actor="unknown"
+            target="unknown"
+            hostname="unknown"
+            pid="-"
+        fi
+        [[ -n "${extra:-}" ]] && details="${details}|${extra}"
+        printf "  ${C_DIM}%-19s${C_RESET} ${C_BOLD}%-18s${C_RESET} %-10s user=%-12s target=%s\n" \
+            "$timestamp" "$operation" "$result" "$actor" "$target"
+        printf "    ${C_DIM}host=%s pid=%s${C_RESET} %s\n" \
+            "${hostname:-unknown}" "${pid:-}" "${details:0:120}"
     done
     echo ""
 }

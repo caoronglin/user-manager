@@ -8,6 +8,8 @@ rl_project_root="$(dirname "$rl_script_dir")"
 rl_usage() { cat <<'EOF'
 用法: rl-user-resource.sh --get <用户名>
 用法: rl-user-resource.sh --set <用户名> <CPU配额> <内存限制>
+用法: rl-user-resource.sh --runtime-set <用户名> <CPU配额> <内存限制>
+用法: rl-user-resource.sh --runtime-reset <用户名>
 用法: rl-user-resource.sh --remove <用户名>
 
 选项:

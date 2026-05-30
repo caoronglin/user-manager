@@ -90,11 +90,18 @@ modify_user_resource_limits() {
     fi
 
     echo ""
-    draw_menu_item 1 "设置资源限制"
-    draw_menu_item 2 "移除资源限制"
-    draw_menu_item 3 "取消"
+    draw_menu_item 1 "设置持久+即时资源限制"
+    draw_menu_item 2 "仅即时应用 set-property"
+    draw_menu_item 3 "重置即时 set-property"
+    draw_menu_item 4 "移除资源限制"
+    draw_menu_item 5 "取消"
     draw_prompt
-    read -r choice
+    if declare -F rl_read_menu_key >/dev/null 2>&1; then
+        choice="$(rl_read_menu_key 5)"
+        printf '\n'
+    else
+        read -r choice
+    fi
 
     case $choice in
         1)
@@ -107,6 +114,24 @@ modify_user_resource_limits() {
             record_user_event "$username" "resource_set" "CPU:$cpu_quota MEM:$memory_limit"
             ;;
         2)
+            read_input "CPU 配额 (如: 50%, 200%)"; local runtime_cpu_quota="$REPLY_INPUT"
+            validate_cpu_quota "$runtime_cpu_quota" || return 1
+            read_input "内存限制 (如: 8G, 16G)"; local runtime_memory_limit="$REPLY_INPUT"
+            validate_memory_limit "$runtime_memory_limit" || return 1
+            local runtime_uid
+            runtime_uid=$(id -u "$username")
+            rl_resource_apply_runtime_limits "$runtime_uid" "$runtime_cpu_quota" "$runtime_memory_limit"
+            msg_ok "运行时 set-property 已应用"
+            record_user_event "$username" "resource_set_property" "CPU:$runtime_cpu_quota MEM:$runtime_memory_limit"
+            ;;
+        3)
+            local reset_uid
+            reset_uid=$(id -u "$username")
+            rl_resource_reset_runtime_limits "$reset_uid"
+            msg_ok "运行时 set-property 已重置"
+            record_user_event "$username" "resource_reset_property" "重置运行时资源限制"
+            ;;
+        4)
             local uid
             uid=$(id -u "$username")
             remove_resource_limits "$uid"

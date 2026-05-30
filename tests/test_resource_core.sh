@@ -92,6 +92,18 @@ else
     test_fail "cgroup2 参数不完整: $rl_rendered_config"
 fi
 
+test_start "configure_resource_limits: 通过 systemctl set-property 即时应用"
+rl_systemctl_output="$(cat "$rl_systemctl_log" 2>/dev/null || true)"
+if [[ "$rl_systemctl_output" == *"daemon-reload"* ]] && \
+   [[ "$rl_systemctl_output" == *"set-property --runtime user-${rl_test_uid}.slice"* ]] && \
+   [[ "$rl_systemctl_output" == *"CPUQuota=150%"* ]] && \
+   [[ "$rl_systemctl_output" == *"MemoryMax=8G"* ]] && \
+   [[ "$rl_systemctl_output" == *"TasksMax=4096"* ]]; then
+    test_pass
+else
+    test_fail "未按预期调用 systemctl set-property: $rl_systemctl_output"
+fi
+
 test_start "get_current_resource_limits: 从 user-UID.slice drop-in 读取 CPU 和内存"
 rl_current_limits="$(get_current_resource_limits "$rl_test_user" 2>/dev/null || true)"
 assert_equals "150%:8G" "$rl_current_limits" "应读取 slice drop-in"
@@ -101,6 +113,14 @@ if remove_resource_limits "$rl_test_uid" >/dev/null 2>&1 && [[ ! -f "$rl_expecte
     test_pass
 else
     test_fail "未移除 $rl_expected_file"
+fi
+
+test_start "remove_resource_limits: 重置运行时 set-property"
+rl_systemctl_output="$(cat "$rl_systemctl_log" 2>/dev/null || true)"
+if [[ "$rl_systemctl_output" == *"set-property --runtime user-${rl_test_uid}.slice CPUQuota= MemoryHigh=infinity MemoryMax=infinity TasksMax=infinity"* ]]; then
+    test_pass
+else
+    test_fail "移除时未重置运行时资源限制: $rl_systemctl_output"
 fi
 
 test_start "rl_resource_list_group_members: 返回排序后的组成员列表"

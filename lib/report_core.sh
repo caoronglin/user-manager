@@ -897,15 +897,12 @@ send_user_report_email() {
         return 1
     fi
 
-    local from_name from_addr
+    local from_name
     from_name=$(get_email_config "from_name")
-    from_addr=$(get_email_config "from_address")
     from_name="${from_name:-用户管理系统}"
-    from_addr="${from_addr:-noreply@example.com}"
 
     if declare -F sanitize_mail_header_value >/dev/null 2>&1; then
         from_name=$(sanitize_mail_header_value "$from_name")
-        from_addr=$(sanitize_mail_header_value "$from_addr")
         email=$(sanitize_mail_header_value "$email")
     fi
 
@@ -917,20 +914,27 @@ send_user_report_email() {
 
     msg_step "正在发送报告至: ${email}"
 
+    local html_body
+    html_body="$(cat "$report_file")" || {
+        msg_err "无法读取报告文件: $report_file"
+        return 1
+    }
+
+    if ! declare -F rl_mail_send >/dev/null 2>&1 && ! declare -F send_email >/dev/null 2>&1; then
+        msg_err "邮件发送后端不可用，请加载 email_core.sh"
+        return 1
+    fi
+
     local attempt=0
     while (( attempt < max_retries )); do
         ((attempt+=1))
 
         local send_result
-        {
-            echo "From: ${from_name} <${from_addr}>"
-            echo "To: ${email}"
-            echo "Subject: ${subject}"
-            echo "MIME-Version: 1.0"
-            echo "Content-Type: text/html; charset=UTF-8"
-            echo ""
-            cat "$report_file"
-        } | timeout 30 sendmail -t 2>/dev/null
+        if declare -F rl_mail_send >/dev/null 2>&1; then
+            rl_mail_send "$email" "$subject" "$html_body" 1 >/dev/null 2>&1
+        else
+            send_email "$email" "$subject" "$html_body" 1 >/dev/null 2>&1
+        fi
         send_result=$?
 
         if [[ $send_result -eq 0 ]]; then

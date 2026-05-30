@@ -7,16 +7,14 @@
 rl_mail_sender_msg() { local rl_fn="$1"; shift; declare -F "$rl_fn" >/dev/null 2>&1 && "$rl_fn" "$*" || printf '%s\n' "$*" >&2; }
 
 rl_mail_send_raw() {
-    local rl_recipient="${1:-}" rl_content="${2:-}" rl_backend="${3:-auto}"
+    local rl_recipient="${1:-}" rl_content="${2:-}" rl_backend="${3:-${EMAIL_SEND_BACKEND:-auto}}"
     [[ -n "$rl_recipient" ]] || { rl_mail_sender_msg msg_err "rl_mail_send: 收件人不能为空"; return 1; }
     [[ -n "$rl_content" ]] || { rl_mail_sender_msg msg_err "rl_mail_send: 邮件内容不能为空"; return 1; }
     case "$rl_backend" in
         auto)
-            if command -v sendmail >/dev/null 2>&1; then printf '%s\n' "$rl_content" | timeout 30 sendmail -t; return $?; fi
             if command -v msmtp >/dev/null 2>&1; then printf '%s\n' "$rl_content" | timeout 30 msmtp "$rl_recipient"; return $?; fi
             if command -v mailx >/dev/null 2>&1; then printf '%s\n' "$rl_content" | timeout 30 mailx "$rl_recipient"; return $?; fi
-            rl_mail_sender_msg msg_warn "未安装 sendmail/msmtp/mailx，无法发送邮件"; return 1 ;;
-        sendmail) printf '%s\n' "$rl_content" | timeout 30 sendmail -t ;;
+            rl_mail_sender_msg msg_warn "未安装 msmtp/mailx，无法发送邮件"; return 1 ;;
         msmtp) printf '%s\n' "$rl_content" | timeout 30 msmtp "$rl_recipient" ;;
         mailx) printf '%s\n' "$rl_content" | timeout 30 mailx "$rl_recipient" ;;
         *) return 1 ;;

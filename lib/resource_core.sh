@@ -331,6 +331,76 @@ rl_resource_config_file() {
     printf '%s/%s\n' "$(rl_resource_slice_dir "$rl_uid")" "${RESOURCE_LIMIT_FILENAME:-90-user-manager-limits.conf}"
 }
 
+rl_resource_user_slice_unit() {
+    local rl_uid="$1"
+    [[ "$rl_uid" =~ ^[0-9]+$ ]] || return 1
+    printf 'user-%s.slice\n' "$rl_uid"
+}
+
+rl_resource_apply_runtime_limits() {
+    local rl_uid="$1" rl_cpu_quota="${2:-}" rl_memory_limit="${3:-}"
+    local rl_unit
+    rl_unit="$(rl_resource_user_slice_unit "$rl_uid")" || return 1
+
+    local rl_memory_high rl_tasks_max rl_io_read_bandwidth_max rl_io_write_bandwidth_max
+    rl_memory_high="${USER_MANAGER_RESOURCE_MEMORY_HIGH:-${RL_RESOURCE_MEMORY_HIGH:-}}"
+    rl_tasks_max="${USER_MANAGER_RESOURCE_TASKS_MAX:-${RL_RESOURCE_TASKS_MAX:-4096}}"
+    rl_io_read_bandwidth_max="${USER_MANAGER_RESOURCE_IO_READ_BANDWIDTH_MAX:-${RL_RESOURCE_IO_READ_BANDWIDTH_MAX:-}}"
+    rl_io_write_bandwidth_max="${USER_MANAGER_RESOURCE_IO_WRITE_BANDWIDTH_MAX:-${RL_RESOURCE_IO_WRITE_BANDWIDTH_MAX:-}}"
+
+    local -a rl_properties=(
+        "CPUAccounting=yes"
+        "MemoryAccounting=yes"
+        "TasksAccounting=yes"
+    )
+    [[ -n "$rl_cpu_quota" ]] && rl_properties+=("CPUQuota=$rl_cpu_quota")
+    [[ -n "$rl_memory_high" ]] && rl_properties+=("MemoryHigh=$rl_memory_high")
+    [[ -n "$rl_memory_limit" ]] && rl_properties+=("MemoryMax=$rl_memory_limit")
+    [[ -n "$rl_tasks_max" ]] && rl_properties+=("TasksMax=$rl_tasks_max")
+    if [[ -n "$rl_io_read_bandwidth_max" || -n "$rl_io_write_bandwidth_max" ]]; then
+        rl_properties+=("IOAccounting=yes")
+        [[ -n "$rl_io_read_bandwidth_max" ]] && rl_properties+=("IOReadBandwidthMax=$rl_io_read_bandwidth_max")
+        [[ -n "$rl_io_write_bandwidth_max" ]] && rl_properties+=("IOWriteBandwidthMax=$rl_io_write_bandwidth_max")
+    fi
+
+    if priv_systemctl set-property --runtime "$rl_unit" "${rl_properties[@]}"; then
+        declare -F audit_success >/dev/null 2>&1 && \
+            audit_success "RESOURCE_SET_PROPERTY" "$rl_unit" "runtime ${rl_properties[*]}" || true
+        return 0
+    fi
+
+    local rl_rc=$?
+    declare -F audit_failure >/dev/null 2>&1 && \
+        audit_failure "RESOURCE_SET_PROPERTY" "$rl_unit" "runtime apply failed rc=$rl_rc ${rl_properties[*]}" || true
+    return "$rl_rc"
+}
+
+rl_resource_reset_runtime_limits() {
+    local rl_uid="$1"
+    local rl_unit
+    rl_unit="$(rl_resource_user_slice_unit "$rl_uid")" || return 1
+
+    local -a rl_properties=(
+        "CPUQuota="
+        "MemoryHigh=infinity"
+        "MemoryMax=infinity"
+        "TasksMax=infinity"
+        "IOReadBandwidthMax="
+        "IOWriteBandwidthMax="
+    )
+
+    if priv_systemctl set-property --runtime "$rl_unit" "${rl_properties[@]}"; then
+        declare -F audit_success >/dev/null 2>&1 && \
+            audit_success "RESOURCE_RESET_PROPERTY" "$rl_unit" "runtime ${rl_properties[*]}" || true
+        return 0
+    fi
+
+    local rl_rc=$?
+    declare -F audit_failure >/dev/null 2>&1 && \
+        audit_failure "RESOURCE_RESET_PROPERTY" "$rl_unit" "runtime reset failed rc=$rl_rc ${rl_properties[*]}" || true
+    return "$rl_rc"
+}
+
 get_current_resource_limits() {
     local username="$1"
     local uid config_file
@@ -399,6 +469,9 @@ configure_resource_limits() {
     fi
 
     priv_systemctl daemon-reload 2>/dev/null || true
+    if ! rl_resource_apply_runtime_limits "$uid" "$cpu_quota" "$memory_limit" >/dev/null 2>&1; then
+        msg_warn "运行时资源限制未立即生效，已保留持久配置；用户下次登录或 slice 重建后生效"
+    fi
 
     msg_ok "资源限制已配置: ${C_BOLD}$username${C_RESET}"
     [[ -n "$cpu_quota" ]]     && msg_step "CPU 配额: ${C_RESET}$cpu_quota${C_RESET}"
@@ -428,6 +501,7 @@ remove_resource_limits() {
             fi
         fi
         priv_systemctl daemon-reload 2>/dev/null || true
+        rl_resource_reset_runtime_limits "$uid" >/dev/null 2>&1 || true
         msg_ok "已移除 UID=$uid 的资源限制"
     fi
     return 0
