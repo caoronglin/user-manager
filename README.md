@@ -31,18 +31,26 @@
 | `scripts/rl-audit-query.sh` | 审计日志查询 |
 | `scripts/rl-system-overview.sh` | 系统概览 (glances) |
 
-以下仅列第一批日志与 systemd timer action ID，不代表完整 registry：
+Action ID 完整列表见 `lib/action_registry.sh` 中 `action_register_defaults()` 函数。常用 action：
 
-| Action ID | 说明 |
-| --- | --- |
-| `logs.boot` | 查看本次启动日志 |
-| `logs.failed_services` | 查看失败服务状态 |
-| `logs.service_recent` | 查看指定服务近期日志 |
-| `logs.boot_error_diff` | 对比启动错误日志变化 |
-| `logs.system_file_tail` | 查看传统系统日志文件尾部 |
-| `logs.auth_failures` | 查看认证失败记录 |
-| `system.timers.list` | 列出 systemd timers |
-| `system.timers.logs` | 查看 timer 相关日志 |
+| Action ID | 说明 | 模式 | 风险 |
+| --- | --- | --- | --- |
+| `logs.boot` | 查看本次启动日志 | both | safe |
+| `logs.failed_services` | 查看失败服务状态 | both | safe |
+| `logs.service_recent` | 查看指定服务近期日志 | both | safe |
+| `logs.boot_error_diff` | 对比启动错误日志变化 | both | safe |
+| `logs.system_file_tail` | 查看传统系统日志文件尾部 | both | safe |
+| `logs.auth_failures` | 查看认证失败记录 | both | safe |
+| `system.timers.list` | 列出 systemd timers | both | safe |
+| `system.timers.logs` | 查看 timer 相关日志 | both | safe |
+| `users.list` | 查看托管用户 | both | safe |
+| `users.create` | 创建用户 | cli | dangerous |
+| `users.quota` | 用户配额操作 | cli | dangerous |
+| `users.resource` | 用户资源限制操作 | cli | dangerous |
+| `mail.test` | 发送测试邮件 | cli | safe |
+| `backup.run` | 执行用户备份 | cli | dangerous |
+| `audit.query` | 查询审计日志 | cli | safe |
+| `audit.view` | 查看审计日志 | both | safe |
 
 ## Quick Start
 
@@ -74,5 +82,6 @@ bash scripts/check_sensitive_files.sh .
 
 ## Documentation
 
+- 架构设计与功能说明：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - 架构、入口和回归说明：[`docs/DEEPWIKI.md`](docs/DEEPWIKI.md)
 - PR 模板与提交流程：[`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)

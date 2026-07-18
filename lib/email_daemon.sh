@@ -11,7 +11,6 @@ set -uo pipefail
 # 守护进程目录
 readonly DAEMON_RUN_DIR="/var/run/user_manager"
 readonly DAEMON_PID_FILE="$DAEMON_RUN_DIR/email_daemon.pid"
-readonly DAEMON_SOCKET="$DAEMON_RUN_DIR/email_daemon.sock"
 
 # 邮件队列数据库
 readonly EMAIL_QUEUE_DB="${DATA_DIR:-./data}/email_queue.db"
@@ -28,7 +27,7 @@ readonly RETRY_MULTIPLIER=2
 # 守护进程配置
 readonly POLL_INTERVAL=5
 readonly BATCH_SIZE=10
-readonly MAX_WORKERS=3
+
 
 # ============================================================
 # 日志函数

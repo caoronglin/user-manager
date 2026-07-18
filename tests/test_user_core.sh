@@ -20,7 +20,15 @@ source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/config.sh"
 source "$PROJECT_ROOT/lib/access_control.sh"
 source "$PROJECT_ROOT/lib/privilege.sh"
+source "$PROJECT_ROOT/lib/smb_core.sh"
 source "$PROJECT_ROOT/lib/user_core.sh"
+
+# SMB stubs for testing
+_smb_sync_password() { return 0; }
+smb_disable_user() { return 0; }
+smb_enable_existing_user() { return 0; }
+smb_set_password() { return 0; }
+smb_is_available() { return 0; }
 
 # 设置测试环境
 setup_test_env
@@ -320,18 +328,20 @@ if configure_password_rotation 30 >/dev/null 2>&1 && \
    [[ -f "$rotation_capture" ]] && \
    grep -q 'source "\$MANAGER_DIR/lib/user_core.sh"' "$rotation_capture" && \
    grep -q 'source "\$MANAGER_DIR/lib/email_core.sh"' "$rotation_capture" && \
+   grep -q 'source "\$MANAGER_DIR/lib/smb_core.sh"' "$rotation_capture" && \
    grep -q 'NEW_PASS=$(get_random_password' "$rotation_capture" && \
    ! grep -q 'PASSWORD_POOL_FILE="${PASSWORD_POOL_FILE:-' "$rotation_capture" && \
    ! grep -q 'TOTAL_PASSWORDS=' "$rotation_capture" && \
    ! grep -q 'RAND_LINE=' "$rotation_capture" && \
    grep -q 'priv_chpasswd' "$rotation_capture" && \
+   grep -q 'smb_set_password "\$username" "\$NEW_PASS"' "$rotation_capture" && \
    grep -q 'send_password_email "\$username" "\$NEW_PASS" "\$EMAIL" "定时密码更新"' "$rotation_capture" && \
    ! grep -q '| chpasswd' "$rotation_capture" && \
    ! grep -q 'sendmail -t' "$rotation_capture" && \
    ! grep -q 'echo "From:' "$rotation_capture"; then
     test_pass
 else
-    test_fail "轮换脚本未复用 get_random_password/邮件模块，或仍直接读取密码池/调用 chpasswd/sendmail"
+    test_fail "轮换脚本未复用 get_random_password/邮件/SMB 模块，或仍直接读取密码池/调用 chpasswd/sendmail"
 fi
 unset -f write_privileged_text_file priv_chmod priv_crontab draw_header draw_info_card msg_step msg_ok msg_err
 
@@ -512,6 +522,110 @@ fi
 unset -f enable_user_account
 
 unset -f id getent passwd chage priv_usermod priv_chage _um_write_disabled_records record_user_event get_user_email send_account_disabled_email send_account_suspended_email send_account_restored_email msg_info msg_warn msg_err msg_ok
+
+# ------------------------------------------------------------
+# SMB 集成测试
+# ------------------------------------------------------------
+
+# 重新加载 user_core.sh（前面测试取消了 enable_user_account 等函数）
+source "$PROJECT_ROOT/lib/user_core.sh"
+
+# 为 create_user/update_user 准备 stub
+priv_useradd() { return 0; }
+priv_chpasswd() { return 0; }
+priv_cp() { return 0; }
+priv_deluser() { return 0; }
+ensure_user_proxy_function() { return 0; }
+validate_path_safety() { return 0; }
+record_user_event() { return 0; }
+msg_info() { return 0; }
+msg_warn() { return 0; }
+msg_err() { return 0; }
+msg_ok() { return 0; }
+
+test_start "create_user: SMB 同步成功时不影响用户创建"
+smb_called=0
+_smb_sync_password() { smb_called=1; return 0; }
+create_user "smbtest01" "TestPass123!" "/tmp/smbtest01_home" 2>/dev/null
+if [[ $? -eq 0 && $smb_called -eq 1 ]]; then
+    test_pass
+else
+    test_fail "create_user 在 SMB 成功时应返回 0 且调用 SMB 同步"
+fi
+
+test_start "create_user: SMB 同步失败（非致命，仍返回成功）"
+_smb_sync_password() { return 1; }
+create_user "smbtest02" "TestPass456!" "/tmp/smbtest02_home" 2>/dev/null
+if [[ $? -eq 0 ]]; then
+    test_pass
+else
+    test_fail "create_user 在 SMB 失败时应仍返回 0"
+fi
+
+test_start "update_user: SMB 同步失败（致命，返回 1）"
+_smb_sync_password() { return 1; }
+update_user "smbtest01" "NewPass789!" "/tmp/smbtest01_home" 2>/dev/null
+if [[ $? -eq 1 ]]; then
+    test_pass
+else
+    test_fail "update_user 在 SMB 失败时应返回 1"
+fi
+
+# 恢复 SMB 同步 stub
+_smb_sync_password() { return 0; }
+
+test_start "disable_user_account: SMB 禁用失败（非致命，仍返回 0）"
+# 为 disable 准备 stubs
+id() { return 0; }
+getent() {
+    case "${2:-}" in
+        smbtest_d1) printf 'smbtest_d1:x:1001:1001:Test:/home/smbtest_d1:/bin/bash\n' ;;
+        *) return 2 ;;
+    esac
+}
+passwd() {
+    if [[ "${1:-}" == "-S" ]]; then
+        printf 'smbtest_d1 P 2026-01-01 0 99999 7 -1\n'
+        return 0
+    fi
+    return 1
+}
+chage() {
+    if [[ "${1:-}" == "-l" ]]; then
+        printf 'Last password change: Jan 01, 2026\nAccount expires: never\n'
+        return 0
+    fi
+    return 1
+}
+priv_usermod() { return 0; }
+priv_chage() { return 0; }
+_um_write_disabled_records() { : > "$DISABLED_USERS_FILE"; }
+get_user_email() { return 1; }
+validate_username() { return 0; }
+smb_disable_user() { return 1; }
+DISABLED_USERS_FILE="$TEST_TMPDIR/disabled_smb_test.tsv"
+: > "$DISABLED_USERS_FILE"
+disable_user_account "smbtest_d1" "test" "permanent" >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+    test_pass
+else
+    test_fail "disable_user_account 在 SMB 失败时应返回 0"
+fi
+
+test_start "enable_user_account: SMB 启用失败（非致命，仍返回 0）"
+smb_enable_existing_user() { return 1; }
+# 重新写入禁用记录供 enable 读取
+printf 'smbtest_d1\ttest\t2026-01-01\tpermanent\t/bin/bash\tactive\t-1\tdisable\n' > "$DISABLED_USERS_FILE"
+enable_user_account "smbtest_d1" >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+    test_pass
+else
+    test_fail "enable_user_account 在 SMB 失败时应返回 0"
+fi
+
+unset -f id getent passwd chage priv_usermod priv_chage priv_useradd priv_chpasswd priv_cp priv_deluser ensure_user_proxy_function validate_path_safety record_user_event msg_info msg_warn msg_err msg_ok _um_write_disabled_records get_user_email validate_username smb_disable_user smb_enable_existing_user
+_SMB_PREV_STUB="$PWD"
+_SMB_STUB_STATE=1
 
 # ------------------------------------------------------------
 # 用户组管理测试

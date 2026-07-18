@@ -49,6 +49,14 @@ else
     test_fail "tui profile 加载失败"
 fi
 
+test_start "bootstrap profiles 加载 SMB core"
+if run_project_bootstrap 'set -uo pipefail; export SUDO_NONINTERACTIVE=1; export USER_MANAGER_DATA_BASE="$1/data"; export USER_MANAGER_BACKUP_ROOT="$1/data/backup"; SCRIPT_DIR="$1"; LIB_DIR="$1/lib"; source "$LIB_DIR/bootstrap.sh"; um_load_profile full || exit 1; declare -F smb_set_password >/dev/null' >/dev/null && \
+   run_project_bootstrap 'set -uo pipefail; export SUDO_NONINTERACTIVE=1; export USER_MANAGER_DATA_BASE="$1/data"; export USER_MANAGER_BACKUP_ROOT="$1/data/backup"; SCRIPT_DIR="$1"; LIB_DIR="$1/lib"; source "$LIB_DIR/bootstrap.sh"; um_load_profile tui || exit 1; declare -F smb_set_password >/dev/null' >/dev/null; then
+    test_pass
+else
+    test_fail "full/tui profile 未加载 smb_core.sh"
+fi
+
 test_start "未知 profile 返回失败并输出错误"
 invalid_profile_output="$(run_project_bootstrap 'set -uo pipefail; SCRIPT_DIR="$1"; LIB_DIR="$1/lib"; source "$LIB_DIR/bootstrap.sh"; um_load_profile invalid_profile' || true)"
 if [[ "$invalid_profile_output" == *"未知加载配置: invalid_profile"* ]]; then
@@ -58,17 +66,17 @@ else
 fi
 
 test_start "profile 模块集合按 full/tui 区分加载"
-profile_matrix_output="$(run_project_bootstrap 'set -uo pipefail; temp_root="$(mktemp -d)"; temp_lib="$temp_root/lib"; mkdir -p "$temp_lib"; cleanup() { rm -rf "$temp_root"; }; trap cleanup EXIT; modules=(common.sh ui_modern.sh config.sh env_core.sh action_registry.sh access_control.sh privilege.sh quota_core.sh user_core.sh email_core.sh audit_core.sh resource_core.sh backup_excludes.sh backup_core.sh backup_verify.sh firewall_core.sh dns_core.sh symlink_core.sh report_core.sh system_core.sh logs_core.sh logs_presenter.sh vm_core.sh gpu_core.sh tui_core.sh journalctl_core.sh systemd_timer_core.sh); for module in "${modules[@]}"; do printf "UM_TEST_LOADED_MODULES+=(\"%s\")\n" "$module" > "$temp_lib/$module"; done; SCRIPT_DIR="$1"; LIB_DIR="$temp_lib"; source "$1/lib/bootstrap.sh"; UM_TEST_LOADED_MODULES=(); um_load_profile full || exit 1; printf "full:%s\n" "${UM_TEST_LOADED_MODULES[*]}"; UM_TEST_LOADED_MODULES=(); unset USER_MANAGER_BOOTSTRAP_LOADED; source "$1/lib/bootstrap.sh"; um_load_profile tui || exit 1; printf "tui:%s\n" "${UM_TEST_LOADED_MODULES[*]}"')"
+profile_matrix_output="$(run_project_bootstrap 'set -uo pipefail; temp_root="$(mktemp -d)"; temp_lib="$temp_root/lib"; mkdir -p "$temp_lib"; cleanup() { rm -rf "$temp_root"; }; trap cleanup EXIT; modules=(common.sh ui_modern.sh config.sh env_core.sh action_registry.sh access_control.sh privilege.sh smb_core.sh quota_core.sh user_core.sh email_core.sh audit_core.sh resource_core.sh backup_excludes.sh backup_core.sh backup_verify.sh firewall_core.sh dns_core.sh symlink_core.sh report_core.sh system_core.sh logs_core.sh logs_presenter.sh vm_core.sh gpu_core.sh tui_core.sh journalctl_core.sh systemd_timer_core.sh); for module in "${modules[@]}"; do printf "UM_TEST_LOADED_MODULES+=(\"%s\")\n" "$module" > "$temp_lib/$module"; done; SCRIPT_DIR="$1"; LIB_DIR="$temp_lib"; source "$1/lib/bootstrap.sh"; UM_TEST_LOADED_MODULES=(); um_load_profile full || exit 1; printf "full:%s\n" "${UM_TEST_LOADED_MODULES[*]}"; UM_TEST_LOADED_MODULES=(); unset USER_MANAGER_BOOTSTRAP_LOADED; source "$1/lib/bootstrap.sh"; um_load_profile tui || exit 1; printf "tui:%s\n" "${UM_TEST_LOADED_MODULES[*]}"')"
 full_modules="$(printf '%s\n' "$profile_matrix_output" | grep '^full:')"
 tui_modules="$(printf '%s\n' "$profile_matrix_output" | grep '^tui:')"
-if [[ "$full_modules" == *"ui_modern.sh"* ]] && [[ "$full_modules" == *"system_core.sh journalctl_core.sh logs_core.sh logs_presenter.sh"* ]] && [[ "$full_modules" == *"vm_core.sh"* ]] && [[ "$full_modules" == *"gpu_core.sh"* ]] && [[ "$full_modules" != *"tui_core.sh"* ]] && [[ "$tui_modules" == *"tui_core.sh journalctl_core.sh systemd_timer_core.sh logs_core.sh logs_presenter.sh"* ]] && [[ "$tui_modules" != *"ui_modern.sh"* ]]; then
+if [[ "$full_modules" == *"ui_modern.sh"* ]] && [[ "$full_modules" == *"privilege.sh smb_core.sh quota_core.sh user_core.sh"* ]] && [[ "$full_modules" == *"system_core.sh journalctl_core.sh logs_core.sh logs_presenter.sh"* ]] && [[ "$full_modules" == *"vm_core.sh"* ]] && [[ "$full_modules" == *"gpu_core.sh"* ]] && [[ "$full_modules" != *"tui_core.sh"* ]] && [[ "$tui_modules" == *"privilege.sh smb_core.sh quota_core.sh user_core.sh"* ]] && [[ "$tui_modules" == *"tui_core.sh journalctl_core.sh systemd_timer_core.sh logs_core.sh logs_presenter.sh"* ]] && [[ "$tui_modules" != *"ui_modern.sh"* ]]; then
     test_pass
 else
     test_fail "profile 模块加载集合与预期不一致"
 fi
 
 test_start "跨 profile 重复模块只加载一次"
-cache_output="$(run_project_bootstrap 'set -uo pipefail; temp_root="$(mktemp -d)"; temp_lib="$temp_root/lib"; mkdir -p "$temp_lib"; cleanup() { rm -rf "$temp_root"; }; trap cleanup EXIT; modules=(common.sh config.sh env_core.sh action_registry.sh access_control.sh privilege.sh quota_core.sh user_core.sh tui_core.sh ui_modern.sh email_core.sh audit_core.sh resource_core.sh backup_excludes.sh backup_core.sh backup_verify.sh firewall_core.sh dns_core.sh symlink_core.sh report_core.sh system_core.sh logs_core.sh logs_presenter.sh vm_core.sh gpu_core.sh journalctl_core.sh systemd_timer_core.sh); for module in "${modules[@]}"; do if [[ "$module" == "common.sh" ]]; then printf "declare -gi COMMON_LOAD_COUNT=0\nCOMMON_LOAD_COUNT=\$((COMMON_LOAD_COUNT+1))\n" > "$temp_lib/$module"; else printf ":\n" > "$temp_lib/$module"; fi; done; SCRIPT_DIR="$1"; LIB_DIR="$temp_lib"; source "$1/lib/bootstrap.sh"; um_load_profile tui || exit 1; um_load_profile full || exit 1; printf "%s" "$COMMON_LOAD_COUNT"')"
+cache_output="$(run_project_bootstrap 'set -uo pipefail; temp_root="$(mktemp -d)"; temp_lib="$temp_root/lib"; mkdir -p "$temp_lib"; cleanup() { rm -rf "$temp_root"; }; trap cleanup EXIT; modules=(common.sh config.sh env_core.sh action_registry.sh access_control.sh privilege.sh smb_core.sh quota_core.sh user_core.sh tui_core.sh ui_modern.sh email_core.sh audit_core.sh resource_core.sh backup_excludes.sh backup_core.sh backup_verify.sh firewall_core.sh dns_core.sh symlink_core.sh report_core.sh system_core.sh logs_core.sh logs_presenter.sh vm_core.sh gpu_core.sh journalctl_core.sh systemd_timer_core.sh); for module in "${modules[@]}"; do if [[ "$module" == "common.sh" ]]; then printf "declare -gi COMMON_LOAD_COUNT=0\nCOMMON_LOAD_COUNT=\$((COMMON_LOAD_COUNT+1))\n" > "$temp_lib/$module"; else printf ":\n" > "$temp_lib/$module"; fi; done; SCRIPT_DIR="$1"; LIB_DIR="$temp_lib"; source "$1/lib/bootstrap.sh"; um_load_profile tui || exit 1; um_load_profile full || exit 1; printf "%s" "$COMMON_LOAD_COUNT"')"
 if [[ "$cache_output" == "1" ]]; then
     test_pass
 else
@@ -76,7 +84,7 @@ else
 fi
 
 test_start "缺失模块时 profile 加载失败并报告路径"
-missing_module_output="$(run_project_bootstrap 'set -uo pipefail; temp_root="$(mktemp -d)"; temp_lib="$temp_root/lib"; mkdir -p "$temp_lib"; cleanup() { rm -rf "$temp_root"; }; trap cleanup EXIT; modules=(common.sh config.sh env_core.sh action_registry.sh access_control.sh privilege.sh quota_core.sh user_core.sh tui_core.sh); for module in "${modules[@]}"; do printf ":\n" > "$temp_lib/$module"; done; SCRIPT_DIR="$1"; LIB_DIR="$temp_lib"; source "$1/lib/bootstrap.sh"; um_load_profile full' || true)"
+missing_module_output="$(run_project_bootstrap 'set -uo pipefail; temp_root="$(mktemp -d)"; temp_lib="$temp_root/lib"; mkdir -p "$temp_lib"; cleanup() { rm -rf "$temp_root"; }; trap cleanup EXIT; modules=(common.sh config.sh env_core.sh action_registry.sh access_control.sh privilege.sh smb_core.sh quota_core.sh user_core.sh tui_core.sh); for module in "${modules[@]}"; do printf ":\n" > "$temp_lib/$module"; done; SCRIPT_DIR="$1"; LIB_DIR="$temp_lib"; source "$1/lib/bootstrap.sh"; um_load_profile full' || true)"
 if [[ "$missing_module_output" == *"模块不存在:"* ]] && [[ "$missing_module_output" == *"ui_modern.sh"* ]]; then
     test_pass
 else

@@ -29,12 +29,65 @@ else
 fi
 
 test_start "repeat source does not clear registered action"
-source "$PROJECT_ROOT/lib/action_registry.sh"
+source_stderr="$TMP_DIR/repeat_source.stderr"
+if source "$PROJECT_ROOT/lib/action_registry.sh" 2>"$source_stderr"; then
+    source_rc=0
+else
+    source_rc=$?
+fi
 description="$(action_describe demo.run)"
-if action_exists demo.run && [[ "$description" == *"id=demo.run"* ]]; then
+if [[ "$source_rc" == "0" ]] && [[ ! -s "$source_stderr" ]] && action_exists demo.run && [[ "$description" == *"id=demo.run"* ]]; then
     test_pass
 else
-    test_fail "registered action disappeared after re-source: $description"
+    test_fail "repeat source failed: rc=$source_rc stderr=$(<"$source_stderr") description=$description"
+fi
+
+test_start "writable error code containing r is corrected and locked under nounset"
+constant_stdout="$TMP_DIR/writable_constant.stdout"
+constant_stderr="$TMP_DIR/writable_constant.stderr"
+if bash -u -c 'RL_ERR_PARAM=error; source "$1"; decl=$(declare -p RL_ERR_PARAM); [[ "$RL_ERR_PARAM" == "1" && "$decl" == declare\ -r* ]]; ! (RL_ERR_PARAM=7) 2>/dev/null' bash "$PROJECT_ROOT/lib/action_registry.sh" >"$constant_stdout" 2>"$constant_stderr"; then
+    if [[ ! -s "$constant_stderr" ]]; then
+        test_pass
+    else
+        test_fail "writable constant source produced stderr: $(<"$constant_stderr")"
+    fi
+else
+    test_fail "writable constant was not corrected or locked: stdout=$(<"$constant_stdout") stderr=$(<"$constant_stderr")"
+fi
+
+test_start "declared unset writable error code is corrected under nounset"
+unset_constant_stderr="$TMP_DIR/unset_writable_constant.stderr"
+if bash -u -c 'declare RL_ERR_PARAM; source "$1"; decl=$(declare -p RL_ERR_PARAM); [[ "$RL_ERR_PARAM" == "1" && "$decl" == declare\ -r* ]]; ! (RL_ERR_PARAM=7) 2>/dev/null' bash "$PROJECT_ROOT/lib/action_registry.sh" >/dev/null 2>"$unset_constant_stderr"; then
+    if [[ ! -s "$unset_constant_stderr" ]]; then
+        test_pass
+    else
+        test_fail "declared unset writable source produced stderr: $(<"$unset_constant_stderr")"
+    fi
+else
+    test_fail "declared unset writable constant was not corrected or locked: stderr=$(<"$unset_constant_stderr")"
+fi
+
+test_start "declared unset readonly error code rejects source under nounset"
+unset_readonly_constant_stderr="$TMP_DIR/unset_readonly_constant.stderr"
+if bash -u -c 'declare RL_ERR_PARAM; readonly RL_ERR_PARAM; source "$1"' bash "$PROJECT_ROOT/lib/action_registry.sh" >/dev/null 2>"$unset_readonly_constant_stderr"; then
+    test_fail "declared unset readonly constant source unexpectedly succeeded"
+else
+    unset_readonly_diagnostic="$(<"$unset_readonly_constant_stderr")"
+    if [[ "$unset_readonly_diagnostic" == *"RL_ERR_PARAM"* && "$unset_readonly_diagnostic" == *"value is ; expected 1"* && "$unset_readonly_diagnostic" != *"unbound variable"* && "$unset_readonly_diagnostic" != *"未绑定变量"* ]]; then
+        test_pass
+    else
+        test_fail "declared unset readonly diagnostic was: $unset_readonly_diagnostic"
+    fi
+fi
+
+test_start "incorrect readonly error code constant rejects source"
+readonly_constant_stderr="$TMP_DIR/readonly_constant.stderr"
+if bash -c 'RL_ERR_PARAM=99; readonly RL_ERR_PARAM; source "$1"' bash "$PROJECT_ROOT/lib/action_registry.sh" >/dev/null 2>"$readonly_constant_stderr"; then
+    test_fail "incorrect readonly constant source unexpectedly succeeded"
+elif [[ "$(<"$readonly_constant_stderr")" == *"RL_ERR_PARAM"* && "$(<"$readonly_constant_stderr")" == *"99"* && "$(<"$readonly_constant_stderr")" == *"1"* ]]; then
+    test_pass
+else
+    test_fail "incorrect readonly constant diagnostic was: $(<"$readonly_constant_stderr")"
 fi
 
 test_start "action_exists detects registered action"
@@ -168,6 +221,53 @@ if [[ "$boot_output" == *"title=Boot logs"* ]] && [[ "$boot_output" == *"boot=0"
     test_pass
 else
     test_fail "default log action dispatch output was: boot=$boot_output compat=$compat_boot_output service=$service_output"
+fi
+
+test_start "error code constants are defined"
+if [[ "$RL_ERR_SUCCESS" == "0" ]] && [[ "$RL_ERR_PARAM" == "1" ]] && [[ "$RL_ERR_PERMISSION" == "2" ]] && [[ "$RL_ERR_RUNTIME" == "3" ]]; then
+    test_pass
+else
+    test_fail "error code constants not defined correctly: success=$RL_ERR_SUCCESS param=$RL_ERR_PARAM perm=$RL_ERR_PERMISSION runtime=$RL_ERR_RUNTIME"
+fi
+
+test_start "action_run returns RL_ERR_PARAM for unknown action"
+action_registry_reset
+action_run missing.action cli 2>/dev/null
+rc=$?
+if [[ "$rc" == "$RL_ERR_PARAM" ]]; then
+    test_pass
+else
+    test_fail "expected RC=$RL_ERR_PARAM, got RC=$rc"
+fi
+
+test_start "action_run returns RL_ERR_PARAM for unsupported mode"
+action_register "demo.tui.only" "Demo TUI Only" "demo" demo_other_handler "none" "tui" "safe"
+action_run demo.tui.only cli 2>/dev/null
+rc=$?
+if [[ "$rc" == "$RL_ERR_PARAM" ]]; then
+    test_pass
+else
+    test_fail "expected RC=$RL_ERR_PARAM, got RC=$rc"
+fi
+
+test_start "action_run returns RL_ERR_PERMISSION for missing capability"
+action_register "demo.needs.cap" "Demo Cap" "demo" demo_other_handler "command:definitely_missing_cmd_999" "both" "safe"
+action_run demo.needs.cap cli 2>/dev/null
+rc=$?
+if [[ "$rc" == "$RL_ERR_PERMISSION" ]]; then
+    test_pass
+else
+    test_fail "expected RC=$RL_ERR_PERMISSION, got RC=$rc"
+fi
+
+test_start "action_run returns RL_ERR_RUNTIME for missing handler"
+action_register "demo.broken.handler" "Demo Broken" "demo" definitely_missing_handler "none" "both" "safe"
+action_run demo.broken.handler cli 2>/dev/null
+rc=$?
+if [[ "$rc" == "$RL_ERR_RUNTIME" ]]; then
+    test_pass
+else
+    test_fail "expected RC=$RL_ERR_RUNTIME, got RC=$rc"
 fi
 
 test_suite_end

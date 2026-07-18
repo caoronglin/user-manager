@@ -208,11 +208,28 @@ set_user_quota() {
 }
 
 # ---------------------------------------------------------------------------
+#  _quota_stdout_is_tty  —— 检测 stdout 是否为 TTY（支持强制覆盖）
+# ---------------------------------------------------------------------------
+_quota_stdout_is_tty() {
+    [[ "${USER_MANAGER_FORCE_TTY:-0}" == "1" ]] && return 0
+    [[ -t 1 ]]
+}
+
+# ---------------------------------------------------------------------------
 #  show_disk_usage_warnings  —— 磁盘使用率超阈值时显示彩色告警条
 # ---------------------------------------------------------------------------
 show_disk_usage_warnings() {
     local warning_found=false
     local disk_num idx mp usage_pct
+    local interactive=false
+    if _quota_stdout_is_tty; then
+        interactive=true
+    fi
+
+    local rl_warn_icon="⚠"
+    if [[ "${TUI_HAS_UTF8:-true}" == "false" ]]; then
+        rl_warn_icon="[!]"
+    fi
 
     for disk_num in "${ALL_DISKS[@]}"; do
         idx=$(printf "%02d" "$disk_num")
@@ -225,15 +242,24 @@ show_disk_usage_warnings() {
         if (( usage_pct > DISK_WARNING_THRESHOLD )); then
             if ! $warning_found; then
                 echo ""
-                msg_warn "${C_BOLD}磁盘使用率告警${C_RESET}  (阈值 ${DISK_WARNING_THRESHOLD}%)"
-                draw_line 50
+                if $interactive; then
+                    msg_warn "${C_BOLD}磁盘使用率告警${C_RESET}  (阈值 ${DISK_WARNING_THRESHOLD}%)"
+                    draw_line 50
+                else
+                    printf 'WARNING disk usage above threshold (%s%%)\n' "$DISK_WARNING_THRESHOLD"
+                fi
                 warning_found=true
             fi
-            local color
-            color=$(get_usage_color "$usage_pct")
-            printf "  %s⚠%s  data%s  " "$C_BRED" "$C_RESET" "$idx"
-            draw_usage_bar "$usage_pct" 20
-            printf "  ${color}${usage_pct}%%${C_RESET} > ${DISK_WARNING_THRESHOLD}%%\n"
+
+            if $interactive; then
+                local color
+                color=$(get_usage_color "$usage_pct")
+                printf "  %s%s%s  data%s  " "$C_BRED" "$rl_warn_icon" "$C_RESET" "$idx"
+                draw_usage_bar "$usage_pct" 20
+                printf "  ${color}> %s%%${C_RESET}\n" "$DISK_WARNING_THRESHOLD"
+            else
+                printf 'WARNING data%s %s%% > %s%%\n' "$idx" "$usage_pct" "$DISK_WARNING_THRESHOLD"
+            fi
         fi
     done
 

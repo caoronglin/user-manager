@@ -45,11 +45,12 @@ jobs:
       
       - name: Validate Shell Syntax
         run: |
-          for file in *.sh lib/*.sh scripts/*.sh; do
-            if [[ -f "$file" ]]; then
+          set -o pipefail
+          git ls-files -z -- '*.sh' |
+            while IFS= read -r -d '' file; do
+              [[ "$file" == 'Miniforge.sh' ]] && continue
               bash -n "$file" || exit 1
-            fi
-          done
+            done
 
   validate-docs:
     name: Validate Documentation

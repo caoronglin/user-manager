@@ -417,6 +417,12 @@ create_user() {
 
     priv_useradd -d "$home" -s /bin/bash -m "$username" || return 1
     echo "$username:$password" | priv_chpasswd || return 1
+
+    # SMB 账号同步（失败仅警告，不影响用户创建）
+    if ! _smb_sync_password "$username" "$password"; then
+        msg_warn "SMB 账号同步失败，但 Linux 用户已创建成功: $username"
+    fi
+
     priv_cp -r /etc/skel/. "$home/" 2>/dev/null || true
     priv_deluser "$username" sudo 2>/dev/null || true
     priv_deluser "$username" adm 2>/dev/null || true
@@ -455,6 +461,13 @@ update_user() {
     fi
 
     echo "$username:$password" | priv_chpasswd || return 1
+
+    # SMB 账号同步（失败则整体失败）
+    if ! _smb_sync_password "$username" "$password"; then
+        msg_err "SMB 账号同步失败: $username"
+        return 1
+    fi
+
     priv_deluser "$username" sudo 2>/dev/null || true
     priv_deluser "$username" adm 2>/dev/null || true
 
@@ -873,6 +886,12 @@ disable_user_account() {
         _um_restore_account_state "$username" "$original_shell" "$original_lock_state" "$original_expiry" >/dev/null 2>&1 || true
         return 1
     fi
+
+    # SMB 账号禁用（失败仅警告，Linux 侧已成功）
+    if ! smb_disable_user "$username" 2>/dev/null; then
+        msg_warn "SMB 账号禁用失败，但 Linux 用户已禁用: $username"
+    fi
+
     if [[ "$mode" == "suspend" ]]; then
         _um_send_account_state_notice suspend "$username" "$(_um_disabled_sanitize_field "$reason")" "${expiry_date:-permanent}"
     else
@@ -899,6 +918,12 @@ enable_user_account() {
 
     _um_restore_account_state "$username" "$original_shell" "$original_lock_state" "$original_expiry" || return 1
     _um_remove_disabled_record "$username" || return 1
+
+    # SMB 账号启用（失败仅警告，Linux 侧已成功）
+    if ! smb_enable_existing_user "$username" 2>/dev/null; then
+        msg_warn "SMB 账号启用失败，但 Linux 用户已恢复: $username"
+    fi
+
     _um_send_account_state_notice restore "$username"
     record_user_event "$username" "enable" "恢复停用账户" 2>/dev/null || true
 }
@@ -1155,6 +1180,8 @@ source "\$MANAGER_DIR/lib/access_control.sh"
 # shellcheck disable=SC1091
 source "\$MANAGER_DIR/lib/privilege.sh"
 # shellcheck disable=SC1091
+source "\$MANAGER_DIR/lib/smb_core.sh"
+# shellcheck disable=SC1091
 source "\$MANAGER_DIR/lib/user_core.sh"
 # shellcheck disable=SC1091
 source "\$MANAGER_DIR/lib/email_core.sh"
@@ -1200,6 +1227,11 @@ for username in "\${MANAGED_USERS[@]}"; do
     if echo "\$username:\$NEW_PASS" | priv_chpasswd 2>/dev/null; then
         log_msg "成功: \$username 密码已更新"
         ((SUCCESS+=1))
+
+        # SMB 密码同步（失败仅警告，不影响邮件通知）
+        if ! smb_set_password "\$username" "\$NEW_PASS" 2>/dev/null; then
+            echo "[WARN] SMB 密码同步失败: \$username"
+        fi
 
         # 尝试发送邮件通知（复用邮件模块，避免内联邮件头拼接）
         EMAIL=\$(get_user_email "\$username" 2>/dev/null || true)
@@ -1367,6 +1399,11 @@ manual_password_rotation() {
         fi
 
         if echo "$username:$newpass" | priv_chpasswd 2>/dev/null; then
+            # SMB 密码同步（失败仅警告，继续下一个用户）
+            if ! _smb_sync_password "$username" "$newpass"; then
+                msg_warn "SMB 密码同步失败: $username"
+            fi
+
             msg_ok "  $username: 密码已更新"
             results+=("$username:$newpass")
             ((success+=1))

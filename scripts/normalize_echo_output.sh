@@ -78,7 +78,8 @@ analyze_file() {
 
 convert_file() {
     local file="$1"
-    local backup="${file}.bak.$(date +%Y%m%d_%H%M%S)"
+    local backup
+    backup="${file}.bak.$(date +%Y%m%d_%H%M%S)"
     local converted=0
     
     # 创建备份

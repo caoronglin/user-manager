@@ -43,22 +43,26 @@ network:
       dhcp4: true
 EOF
 NETWORK_STACK_NETPLAN_DIR="$temp_root/netplan" network_stack_summarize_netplan_configs' _ "$PROJECT_ROOT")"
-assert_contains "$netplan_summary" "files=2"
-assert_contains "$netplan_summary" "renderers=NetworkManager,networkd"
-assert_contains "$netplan_summary" "interfaces=enp0s3,wlan0"
+if [[ "$netplan_summary" == *"files=2"* ]] && [[ "$netplan_summary" == *"renderers=NetworkManager,networkd"* ]] && [[ "$netplan_summary" == *"interfaces=enp0s3,wlan0"* ]]; then
+    test_pass
+else
+    test_fail "netplan summary 条件不完整: $netplan_summary"
+fi
 
 test_start "network_stack_extract_default_routes_from_text 与 DNS 解析摘要"
 route_dns_output="$(bash -c 'set -uo pipefail; source "$1/lib/common.sh"; source "$1/lib/network_stack_core.sh"; routes=$'"'"'default via 192.168.1.1 dev enp0s3 proto dhcp src 192.168.1.50 metric 100\ndefault via 10.0.2.2 dev wlan0 proto dhcp src 10.0.2.15 metric 600'"'"'; dns=$'"'"'Link 2 (enp0s3)\n    Current Scopes: DNS\n         DNS Servers: 1.1.1.1 8.8.8.8\n\nnameserver 9.9.9.9'"'"'; printf "routes=%s\n" "$(network_stack_extract_default_routes_from_text "$routes")"; printf "dns=%s\n" "$(network_stack_extract_dns_servers_from_text "$dns")"' _ "$PROJECT_ROOT")"
-assert_contains "$route_dns_output" "routes=enp0s3 via 192.168.1.1 metric 100; wlan0 via 10.0.2.2 metric 600"
-assert_contains "$route_dns_output" "dns=1.1.1.1,8.8.8.8,9.9.9.9"
+if [[ "$route_dns_output" == *"routes=enp0s3 via 192.168.1.1 metric 100; wlan0 via 10.0.2.2 metric 600"* ]] && [[ "$route_dns_output" == *"dns=1.1.1.1,8.8.8.8,9.9.9.9"* ]]; then
+    test_pass
+else
+    test_fail "route/DNS 摘要条件不完整: $route_dns_output"
+fi
 
 test_start "network_stack_collect_report 支持 stub 数据源与状态摘要"
 report_output="$(bash -c 'set -uo pipefail; source "$1/lib/common.sh"; source "$1/lib/network_stack_core.sh"; network_stack_detect_manager() { printf "%s\n" "NetworkManager"; }; network_stack_summarize_netplan_configs() { printf "%s\n" "files=1;renderers=NetworkManager;interfaces=enp0s3"; }; network_stack_get_default_route_raw() { printf "%s\n" "default via 192.168.1.1 dev enp0s3 proto dhcp metric 100"; }; network_stack_get_dns_raw() { printf "%s\n" "GENERAL.DEVICE: enp0s3" "IP4.DNS[1]: 1.1.1.1" "IP4.DNS[2]: 8.8.8.8"; }; network_stack_get_nmcli_status_raw() { printf "%s\n" "DEVICE         TYPE      STATE                   CONNECTION" "enp0s3         ethernet  connected               Wired connection 1" "wlan0          wifi      disconnected            --"; }; network_stack_get_networkctl_status_raw() { return 1; }; network_stack_get_recent_journal_raw() { printf "%s\n" "Apr 20 10:00:00 host NetworkManager[111]: <info>  [time] device enp0s3 activated" "Apr 20 10:01:00 host NetworkManager[111]: <warn>  dns update timeout" "Apr 20 10:02:00 host systemd-resolved[222]: Using degraded feature set UDP instead of TCP"; }; network_stack_collect_report' _ "$PROJECT_ROOT")"
-assert_contains "$report_output" "manager=NetworkManager"
-assert_contains "$report_output" "netplan_summary=files=1;renderers=NetworkManager;interfaces=enp0s3"
-assert_contains "$report_output" "default_routes=enp0s3 via 192.168.1.1 metric 100"
-assert_contains "$report_output" "dns_servers=1.1.1.1,8.8.8.8"
-assert_contains "$report_output" "status_summary=tool=nmcli;connected=1;disconnected=1;devices=enp0s3(ethernet:connected),wlan0(wifi:disconnected)"
-assert_contains "$report_output" "journal_summary=lines=3;warnings=2;errors=0"
+if [[ "$report_output" == *"manager=NetworkManager"* ]] && [[ "$report_output" == *"netplan_summary=files=1;renderers=NetworkManager;interfaces=enp0s3"* ]] && [[ "$report_output" == *"default_routes=enp0s3 via 192.168.1.1 metric 100"* ]] && [[ "$report_output" == *"dns_servers=1.1.1.1,8.8.8.8"* ]] && [[ "$report_output" == *"status_summary=tool=nmcli;connected=1;disconnected=1;devices=enp0s3(ethernet:connected),wlan0(wifi:disconnected)"* ]] && [[ "$report_output" == *"journal_summary=lines=3;warnings=2;errors=0"* ]]; then
+    test_pass
+else
+    test_fail "network collect report 条件不完整: $report_output"
+fi
 
 test_suite_end

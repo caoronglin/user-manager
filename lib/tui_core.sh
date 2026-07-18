@@ -14,10 +14,10 @@ tui_detect_terminal() {
     # 检查是否支持颜色
     if [[ -t 1 ]] && [[ -n "$TERM" ]]; then
         TUI_HAS_COLORS=true
-        TUI_COLORS=$(tput colors 2>/dev/null || echo "8")
+
     else
         TUI_HAS_COLORS=false
-        TUI_COLORS=0
+
     fi
     
     # 检查终端尺寸
@@ -53,20 +53,23 @@ tui_init() {
     
     # 定义颜色（256色 - 现代暗色主题）
     if [[ "$TUI_HAS_COLORS" == "true" ]]; then
+        # shellcheck disable=SC2034  # used in tui_menus.sh via source
         TUI_COLOR_BG=234       # 深灰黑背景 (#1a1a2e)
         TUI_COLOR_FG=252       # 柔和白前景
         TUI_COLOR_ACCENT=40    # 绿色
+        # shellcheck disable=SC2034  # used in tui_menus.sh via source
         TUI_COLOR_ACCENT2=46   # 亮绿色高亮
         TUI_COLOR_SUCCESS=48   # 翠绿
-        TUI_COLOR_WARNING=221  # 金色
-        TUI_COLOR_ERROR=203    # 柔和红
         TUI_COLOR_MUTED=243    # 中灰
         TUI_COLOR_HIGHLIGHT=48 # 绿色选中
+        # shellcheck disable=SC2034  # used in tui_menus.sh via source
         TUI_COLOR_SURFACE=236  # 卡片背景
+        # shellcheck disable=SC2034  # used in tui_menus.sh via source
         TUI_COLOR_BORDER=239   # 边框灰
     fi
     
     TUI_INITIALIZED=true
+    # shellcheck disable=SC2034  # used in tui_core.sh:762 and tui_manager.sh via source
     TUI_RUNNING=true
     TUI_REDRAW=true
     
@@ -74,17 +77,7 @@ tui_init() {
     TUI_MENU_INDEX=0
     TUI_MENU_ITEMS=()
     TUI_MENU_TITLE=""
-    TUI_MENU_FOOTER=""
-    
-    # 组件注册表
-    declare -gA TUI_COMPONENTS=()
-    declare -ga TUI_COMPONENT_ORDER=()
-    
-    # 事件处理
-    TUI_ON_KEY=""
-    TUI_ON_RESIZE=""
-    TUI_ON_TICK=""
-    TUI_TICK_INTERVAL=1
+
     
     return 0
 }
@@ -660,7 +653,9 @@ tui_prompt_select() {
                 (( selected < ${#options[@]} - 1 )) && ((selected++))
                 ;;
             ENTER)
+                # shellcheck disable=SC2034  # used in tui_manager.sh:461 via source
                 TUI_PROMPT_INDEX="$selected"
+                # shellcheck disable=SC2034  # used in 10+ controller files via source
                 REPLY_INPUT="${options[$selected]}"
                 return 0
                 ;;

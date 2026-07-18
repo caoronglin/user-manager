@@ -2,8 +2,8 @@
 # rl-system-overview.sh - 系统概览 (glances 包装)
 set -euo pipefail
 
+# shellcheck disable=SC2034  # used to derive PROJECT_ROOT (now unused after deletion)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 usage() {
     cat <<'EOF'

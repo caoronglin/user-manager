@@ -28,6 +28,8 @@ readonly -A PRIV_CMD_WHITELIST=(
     ["groupadd"]="$ACL_LEVEL_ADMIN"
     ["groupmod"]="$ACL_LEVEL_ADMIN"
     ["groupdel"]="$ACL_LEVEL_ADMIN"
+    ["smbpasswd"]="$ACL_LEVEL_ADMIN"
+    ["pdbedit"]="$ACL_LEVEL_ADMIN"
     
     # 文件权限命令 - 根据上下文需要不同级别
     ["apt-get"]="$ACL_LEVEL_ADMIN"
@@ -269,6 +271,8 @@ priv_gunzip() { priv_exec gunzip "$@"; }
 priv_chpasswd() { priv_exec chpasswd "$@"; }
 priv_passwd() { priv_exec passwd "$@"; }
 priv_chage() { priv_exec chage "$@"; }
+priv_smbpasswd() { priv_exec smbpasswd "$@"; }
+priv_pdbedit() { priv_exec pdbedit "$@"; }
 priv_visudo() { priv_exec visudo "$@"; }
 
 # 硬件信息命令封装

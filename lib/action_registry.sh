@@ -8,6 +8,43 @@ declare -p _ACTION_REQUIRES >/dev/null 2>&1 || declare -Ag _ACTION_REQUIRES=()
 declare -p _ACTION_MODES >/dev/null 2>&1 || declare -Ag _ACTION_MODES=()
 declare -p _ACTION_RISK >/dev/null 2>&1 || declare -Ag _ACTION_RISK=()
 
+# ============================================================
+# Action CLI 错误码规范
+# ============================================================
+# 0  = 成功
+# 1  = 参数错误 (缺少参数、格式无效、未知模式)
+# 2  = 权限错误 (非 root、缺少系统能力)
+# 3  = 运行时错误 (用户不存在、备份失败、SMTP 连接失败)
+# shellcheck disable=SC2034  # documentation constants; success is implicit return 0
+rl_define_error_constant() {
+    local rl_name="$1" rl_expected="$2" rl_declaration rl_flags rl_actual
+
+    if rl_declaration="$(declare -p "$rl_name" 2>/dev/null)"; then
+        rl_actual="${!rl_name-}"
+        rl_flags="${rl_declaration#declare -}"
+        rl_flags="${rl_flags%% *}"
+        if [[ "$rl_flags" == *r* ]]; then
+            if [[ "$rl_actual" != "$rl_expected" ]]; then
+                printf '%s: readonly value is %s; expected %s\n' \
+                    "$rl_name" "$rl_actual" "$rl_expected" >&2
+                return 1
+            fi
+            return 0
+        fi
+
+        printf -v "$rl_name" '%s' "$rl_expected"
+        readonly "$rl_name"
+        return $?
+    fi
+
+    readonly "$rl_name=$rl_expected"
+}
+
+rl_define_error_constant RL_ERR_SUCCESS 0 || return $?
+rl_define_error_constant RL_ERR_PARAM 1 || return $?
+rl_define_error_constant RL_ERR_PERMISSION 2 || return $?
+rl_define_error_constant RL_ERR_RUNTIME 3 || return $?
+
 action_registry_reset() {
     _ACTION_LABEL=()
     _ACTION_GROUP=()
@@ -97,20 +134,20 @@ action_run() {
 
     if ! action_exists "$id"; then
         printf '未知 action: %s\n' "$id" >&2
-        return 1
+        return "$RL_ERR_PARAM"
     fi
 
     if ! action_mode_supported "$id" "$mode"; then
         printf 'action 不支持当前模式: %s mode=%s\n' "$id" "$mode" >&2
-        return 1
+        return "$RL_ERR_PARAM"
     fi
 
-    action_requirements_met "$id" || return 1
+    action_requirements_met "$id" || return "$RL_ERR_PERMISSION"
 
     handler="${_ACTION_HANDLER[$id]}"
     if ! declare -F "$handler" >/dev/null 2>&1; then
         printf 'action handler 不存在: %s -> %s\n' "$id" "$handler" >&2
-        return 1
+        return "$RL_ERR_RUNTIME"
     fi
 
     "$handler" "${args[@]}"
@@ -123,7 +160,7 @@ rl_action_run() {
 rl_action_users_create_cli() {
     if (( $# < 3 )); then
         printf '用法: rl-user-create.sh <用户名> <密码> <主目录> [--miniforge]\n' >&2
-        return 1
+        return "$RL_ERR_PARAM"
     fi
 
     local rl_username="$1" rl_password="$2" rl_home="$3" rl_install_miniforge="false"
@@ -134,7 +171,7 @@ rl_action_users_create_cli() {
 
 rl_action_users_quota_cli() {
     local rl_mode="${1:-}" rl_username="${2:-}" rl_value="${3:-}" rl_mp="${4:-}"
-    [[ -n "$rl_username" ]] || { printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2; return 1; }
+    [[ -n "$rl_username" ]] || { printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2; return "$RL_ERR_PARAM"; }
     [[ -n "$rl_mp" ]] || rl_mp="$(get_user_mountpoint "$(get_user_home "$rl_username")")"
 
     case "$rl_mode" in
@@ -142,16 +179,16 @@ rl_action_users_quota_cli() {
         --set)
             local rl_bytes
             rl_bytes="$(parse_quota_input "$rl_value")"
-            [[ -n "$rl_bytes" ]] || { printf '错误: 无效的配额格式\n' >&2; return 1; }
+            [[ -n "$rl_bytes" ]] || { printf '错误: 无效的配额格式\n' >&2; return "$RL_ERR_PARAM"; }
             set_user_quota "$rl_username" "$rl_bytes" "$rl_mp"
             ;;
-        *) printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2; return 1 ;;
+        *) printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2; return "$RL_ERR_PARAM" ;;
     esac
 }
 
 rl_action_users_resource_cli() {
     local rl_mode="${1:-}" rl_username="${2:-}"
-    [[ -n "$rl_username" ]] || { printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2; return 1; }
+    [[ -n "$rl_username" ]] || { printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2; return "$RL_ERR_PARAM"; }
 
     case "$rl_mode" in
         --get) get_current_resource_limits "$rl_username" ;;
@@ -159,19 +196,19 @@ rl_action_users_resource_cli() {
         --runtime-set) rl_resource_apply_runtime_limits "$(id -u "$rl_username")" "${3:-}" "${4:-}" ;;
         --runtime-reset) rl_resource_reset_runtime_limits "$(id -u "$rl_username")" ;;
         --remove) remove_resource_limits "$(id -u "$rl_username")" ;;
-        *) printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2; return 1 ;;
+        *) printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2; return "$RL_ERR_PARAM" ;;
     esac
 }
 
 rl_action_mail_test_cli() {
     local rl_email="${1:-}"
-    [[ -n "$rl_email" ]] || { printf '用法: rl-mail-test.sh <收件邮箱>\n' >&2; return 1; }
+    [[ -n "$rl_email" ]] || { printf '用法: rl-mail-test.sh <收件邮箱>\n' >&2; return "$RL_ERR_PARAM"; }
     send_password_email "test" "TEST-PASSWORD" "$rl_email" "SMTP 测试" 1
 }
 
 rl_action_backup_run_cli() {
     local rl_username="${1:-}"
-    [[ -n "$rl_username" ]] || { printf '用法: rl-backup-run.sh <用户名>\n' >&2; return 1; }
+    [[ -n "$rl_username" ]] || { printf '用法: rl-backup-run.sh <用户名>\n' >&2; return "$RL_ERR_PARAM"; }
     manual_backup_user "$rl_username"
 }
 

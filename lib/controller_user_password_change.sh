@@ -66,6 +66,13 @@ _change_single_user_password() {
     if ! echo "$username:$newpass" | priv_chpasswd; then
         msg_err "密码更新失败"; return 1
     fi
+
+    # SMB 密码同步（失败则整体失败，跳过通知）
+    if ! _smb_sync_password "$username" "$newpass"; then
+        msg_err "SMB 密码同步失败: $username"
+        return 1
+    fi
+
     msg_ok "密码已更新"
 
     echo ""
@@ -124,6 +131,12 @@ _change_all_users_password() {
             msg_ok "  $username: 密码已更新"
             results+=("$username:$newpass")
             ((success+=1))
+
+            # SMB 密码同步（失败时递增计数器，继续下一个用户）
+            if ! _smb_sync_password "$username" "$newpass"; then
+                failed=$((failed + 1))
+                msg_warn "SMB 密码同步失败: $username"
+            fi
 
             # 自动发送邮件通知
             local email

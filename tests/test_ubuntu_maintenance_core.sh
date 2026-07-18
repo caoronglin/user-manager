@@ -45,11 +45,11 @@ Install: jq:amd64 (1.6-2.1)
 Remove: nano:amd64 (6.2-1)
 End-Date: 2026-04-18  08:02:00
 '"'"'; ubuntu_maintenance_summarize_apt_history_from_text "$sample"' _ "$PROJECT_ROOT")"
-assert_contains "$history_summary" "transactions=2"
-assert_contains "$history_summary" "upgrades=2"
-assert_contains "$history_summary" "installs=1"
-assert_contains "$history_summary" "removals=1"
-assert_contains "$history_summary" "last_start=2026-04-19 09:00:00"
+if [[ "$history_summary" == *"transactions=2"* ]] && [[ "$history_summary" == *"upgrades=2"* ]] && [[ "$history_summary" == *"installs=1"* ]] && [[ "$history_summary" == *"removals=1"* ]] && [[ "$history_summary" == *"last_start=2026-04-19 09:00:00"* ]]; then
+    test_pass
+else
+    test_fail "APT history summary 条件不完整: $history_summary"
+fi
 
 test_start "ubuntu_maintenance_summarize_policy_from_text 汇总 release 通道"
 policy_summary="$(bash -c 'set -uo pipefail; source "$1/lib/common.sh"; source "$1/lib/ubuntu_maintenance_core.sh"; sample=$'"'"'Package files:
@@ -63,18 +63,19 @@ policy_summary="$(bash -c 'set -uo pipefail; source "$1/lib/common.sh"; source "
      origin security.ubuntu.com
 Pinned packages:
 '"'"'; ubuntu_maintenance_summarize_policy_from_text "$sample"' _ "$PROJECT_ROOT")"
-assert_contains "$policy_summary" "channels=2"
-assert_contains "$policy_summary" "noble-security"
-assert_contains "$policy_summary" "noble-updates"
+if [[ "$policy_summary" == *"channels=2"* ]] && [[ "$policy_summary" == *"noble-security"* ]] && [[ "$policy_summary" == *"noble-updates"* ]]; then
+    test_pass
+else
+    test_fail "APT policy summary 条件不完整: $policy_summary"
+fi
 
 test_start "ubuntu_maintenance_collect_report 支持 stub 数据源"
 report_output="$(bash -c 'set -uo pipefail; source "$1/lib/common.sh"; source "$1/lib/ubuntu_maintenance_core.sh"; ubuntu_maintenance_get_upgradable_raw() { printf "%s\n" "Listing... Done" "vim/noble-updates 2:9.1 amd64 [upgradable from: 2:9.0]"; }; ubuntu_maintenance_get_held_raw() { printf "%s\n" "docker-ce" "containerd.io"; }; ubuntu_maintenance_get_needrestart_raw() { printf "%s\n" "NEEDRESTART-KSTA: 3"; }; ubuntu_maintenance_get_policy_raw() { printf "%s\n" "Package files:" " 500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages" "     release o=Ubuntu,a=noble-updates,n=noble,l=Ubuntu,c=main,b=amd64"; }; temp_root="$(mktemp -d)"; trap "rm -rf \"$temp_root\"" EXIT; mkdir -p "$temp_root/sources.list.d"; printf "%s\n" "deb http://archive.ubuntu.com/ubuntu noble main" > "$temp_root/sources.list"; printf "%s\n" "deb http://security.ubuntu.com/ubuntu noble-security main" > "$temp_root/sources.list.d/security.list"; printf "%s\n" "Start-Date: 2026-04-20  07:00:00" "Upgrade: openssl:amd64 (1, 2)" "End-Date: 2026-04-20  07:01:00" > "$temp_root/history.log"; UBUNTU_MAINTENANCE_SOURCES_LIST="$temp_root/sources.list" UBUNTU_MAINTENANCE_SOURCES_DIR="$temp_root/sources.list.d" UBUNTU_MAINTENANCE_APT_HISTORY_LOG="$temp_root/history.log" UBUNTU_MAINTENANCE_REBOOT_FLAG="$temp_root/reboot-required" ubuntu_maintenance_collect_report' _ "$PROJECT_ROOT")"
-assert_contains "$report_output" "upgradable_count=1"
-assert_contains "$report_output" "held_count=2"
-assert_contains "$report_output" "reboot_required=no"
-assert_contains "$report_output" "needrestart_status=kernel"
-assert_contains "$report_output" "history_summary=transactions=1"
-assert_contains "$report_output" "sources_summary=entries=2"
+if [[ "$report_output" == *"upgradable_count=1"* ]] && [[ "$report_output" == *"held_count=2"* ]] && [[ "$report_output" == *"reboot_required=no"* ]] && [[ "$report_output" == *"needrestart_status=kernel"* ]] && [[ "$report_output" == *"history_summary=transactions=1"* ]] && [[ "$report_output" == *"sources_summary=entries=2"* ]]; then
+    test_pass
+else
+    test_fail "Ubuntu maintenance collect report 条件不完整: $report_output"
+fi
 
 test_start "show_ubuntu_maintenance_panel 输出管理员摘要"
 panel_output="$(bash -c 'set -uo pipefail; source "$1/lib/common.sh"; source "$1/lib/ubuntu_maintenance_core.sh"; ubuntu_maintenance_collect_report() { cat <<'"'"'EOF'"'"'
@@ -88,9 +89,10 @@ history_summary=transactions=2;upgrades=5;installs=1;removals=0;last_start=2026-
 sources_summary=entries=3;disabled=1;channels=2;channel_list=noble-updates,noble-security
 EOF
 }; show_ubuntu_maintenance_panel' _ "$PROJECT_ROOT")"
-assert_contains "$panel_output" "Ubuntu APT/重启维护"
-assert_contains "$panel_output" "可升级包:"
-assert_contains "$panel_output" "需要重启"
-assert_contains "$panel_output" "noble-security"
+if [[ "$panel_output" == *"Ubuntu APT/重启维护"* ]] && [[ "$panel_output" == *"可升级包:"* ]] && [[ "$panel_output" == *"需要重启"* ]] && [[ "$panel_output" == *"noble-security"* ]]; then
+    test_pass
+else
+    test_fail "Ubuntu maintenance panel 输出条件不完整: $panel_output"
+fi
 
 test_suite_end

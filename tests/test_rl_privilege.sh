@@ -50,12 +50,12 @@ printf 'repquota %s\n' "$*" >> "$RL_CMD_LOG"
 EOS
 chmod +x "$rl_stub_dir/repquota"
 
-for rl_cmd in chpasswd passwd chage gzip gunzip userdel deluser; do
+for rl_cmd in chpasswd passwd chage gzip gunzip userdel deluser smbpasswd pdbedit; do
     cat > "$rl_stub_dir/$rl_cmd" <<'EOS'
 #!/bin/bash
 rl_cmd_name="$(basename "$0")"
 printf '%s %s\n' "$rl_cmd_name" "$*" >> "$RL_CMD_LOG"
-if [[ "$rl_cmd_name" == "chpasswd" ]]; then
+if [[ "$rl_cmd_name" == "chpasswd" || "$rl_cmd_name" == "smbpasswd" ]]; then
     cat >> "$RL_CMD_LOG"
 fi
 EOS
@@ -185,6 +185,28 @@ if declare -F priv_chage >/dev/null 2>&1 && \
     test_pass
 else
     test_fail "priv_chage 不存在或未委托 chage"
+fi
+
+test_start "priv_smbpasswd / priv_pdbedit: 白名单允许并通过 sudo 委托 Samba 命令"
+: > "$rl_sudo_log"
+: > "$rl_cmd_log"
+if declare -F priv_smbpasswd >/dev/null 2>&1 && \
+    declare -F priv_pdbedit >/dev/null 2>&1 && \
+    printf 'Secret123!\nSecret123!\n' | priv_smbpasswd -a -s alice >/dev/null 2>&1 && \
+    priv_smbpasswd -d alice >/dev/null 2>&1 && \
+    priv_smbpasswd -e alice >/dev/null 2>&1 && \
+    priv_pdbedit -L alice >/dev/null 2>&1 && \
+    grep -q "sudo smbpasswd -a -s alice" "$rl_sudo_log" && \
+    grep -q "sudo smbpasswd -d alice" "$rl_sudo_log" && \
+    grep -q "sudo smbpasswd -e alice" "$rl_sudo_log" && \
+    grep -q "sudo pdbedit -L alice" "$rl_sudo_log" && \
+    grep -q "smbpasswd -a -s alice" "$rl_cmd_log" && \
+    grep -q "smbpasswd -d alice" "$rl_cmd_log" && \
+    grep -q "smbpasswd -e alice" "$rl_cmd_log" && \
+    grep -q "pdbedit -L alice" "$rl_cmd_log"; then
+    test_pass
+else
+    test_fail "priv_smbpasswd 或 priv_pdbedit 未通过白名单委托 Samba 命令"
 fi
 
 test_start "priv_gzip / priv_gunzip: 白名单允许并委托压缩命令"

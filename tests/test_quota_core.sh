@@ -124,5 +124,44 @@ else
     test_fail "缺少组名时应失败"
 fi
 
+
+test_start "show_disk_usage_warnings: 非 TTY 输出纯文本且不重复百分比"
+old_all_disks=("${ALL_DISKS[@]}")
+old_data_base="$DATA_BASE"
+old_threshold="$DISK_WARNING_THRESHOLD"
+ALL_DISKS=(5)
+DATA_BASE="$TEST_TMPDIR/mnt"
+DISK_WARNING_THRESHOLD=90
+mkdir -p "$DATA_BASE/data05"
+mountpoint() { local p="${2:-$1}"; [[ "$p" == "$DATA_BASE/data05" ]]; }
+df() {
+    printf 'Filesystem 1K-blocks Used Available Use%% Mounted on\n'
+    printf '/dev/mock 1000 960 40 96%% %s\n' "$DATA_BASE/data05"
+}
+warning_output="$(show_disk_usage_warnings 2>&1)"
+warning_pct_count=$(printf '%s\n' "$warning_output" | grep -o '96%' | wc -l | tr -d ' ')
+if [[ "$warning_output" == *"WARNING data05 96% > 90%"* ]] && \
+   [[ "$warning_output" != *$'\033'* ]] && \
+   [[ "$warning_pct_count" == "1" ]]; then
+    test_pass
+else
+    test_fail "非 TTY 告警应为纯文本且只出现一次 96%，输出: $warning_output"
+fi
+
+test_start "show_disk_usage_warnings: 强制 TTY 输出不重复百分比"
+USER_MANAGER_FORCE_TTY=1
+tty_warning_output="$(show_disk_usage_warnings 2>&1)"
+unset USER_MANAGER_FORCE_TTY
+tty_pct_count=$(printf '%s\n' "$tty_warning_output" | grep -o '96%' | wc -l | tr -d ' ')
+if [[ "$tty_pct_count" == "1" ]] && [[ "$tty_warning_output" == *"> 90%"* ]]; then
+    test_pass
+else
+    test_fail "TTY 告警不应重复 96%，输出: $tty_warning_output"
+fi
+ALL_DISKS=("${old_all_disks[@]}")
+DATA_BASE="$old_data_base"
+DISK_WARNING_THRESHOLD="$old_threshold"
+unset -f mountpoint df
+
 cleanup_test_env
 test_suite_end

@@ -7,8 +7,6 @@
 # ============================================================
 
 # 资源限制类型映射
-readonly ULIMIT_SOFT="soft"
-readonly ULIMIT_HARD="hard"
 
 # 标准 ulimit 资源类型
 readonly ULIMIT_TYPES=(
@@ -195,7 +193,7 @@ show_user_ulimits() {
     
     local resource
     for resource in "${ULIMIT_TYPES[@]}"; do
-        local soft_val hard_val display_val
+        local soft_val hard_val
         
         soft_val=$(get_user_ulimit "$username" "$resource" "soft" 2>/dev/null || echo "N/A")
         hard_val=$(get_user_ulimit "$username" "$resource" "hard" 2>/dev/null || echo "N/A")

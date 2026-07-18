@@ -30,7 +30,7 @@ Options:
 
 Levels:
   p0    Static/load smoke checks (verify_fixes.sh)
-  p1    Core behavior tests (bootstrap/user/audit/proc/security/tui/system/network/timer/lock/backup/vm/gpu)
+  p1    Core behavior tests (bootstrap/user/quota/privilege/smb/password/audit/proc/security/tui/system/network/timer/lock/backup/vm/gpu)
   p2    Performance baseline (perf_test.sh)
   all   p0 + p1 (and p2 when --include-perf is set)
 EOF
@@ -76,13 +76,27 @@ run_p1() {
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
         bash "$SCRIPT_DIR/test_user_core.sh"
 
+    run_step "P1 password change SMB" env \
+        SUDO_NONINTERACTIVE=1 \
+        USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
+        USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        bash "$SCRIPT_DIR/test_password_change_smb.sh"
+
     run_step "P1 resource core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
         bash "$SCRIPT_DIR/test_resource_core.sh"
 
+    run_step "P1 quota core" env \
+        SUDO_NONINTERACTIVE=1 \
+        USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
+        USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        bash "$SCRIPT_DIR/test_quota_core.sh"
+
     run_step "P1 rl_privilege" bash "$SCRIPT_DIR/test_rl_privilege.sh"
+
+    run_step "P1 smb core" bash "$SCRIPT_DIR/test_smb_core.sh"
 
     run_step "P1 standalone scripts" bash "$SCRIPT_DIR/test_scripts.sh"
 

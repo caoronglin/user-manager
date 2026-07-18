@@ -425,8 +425,8 @@ tui_show_managed_users_view() {
 
 tui_run_create_or_assign_user_native() {
     local username password disk_num update_existing=false install_miniforge=false
-    local target_info idx mp home quota_bytes quota_input sel_df sel_avail_b sel_avail_h
-    local action password_display user_groups
+    local target_info mp home quota_bytes quota_input
+    local action user_groups
 
     acquire_lock || return 1
 
@@ -493,7 +493,7 @@ tui_run_create_or_assign_user_native() {
         release_lock
         return 1
     }
-    IFS='|' read -r idx mp home <<< "$target_info"
+    IFS='|' read -r _ mp home <<< "$target_info"
 
     quota_bytes=$(_resolve_provision_quota "$username" "$mp" "$update_existing")
 
@@ -525,8 +525,8 @@ tui_run_create_or_assign_user_native() {
     fi
 
     sel_df=$(df -B1 "$mp" 2>/dev/null | awk 'NR==2 {print $4, $5}')
-    read -r sel_avail_b _ <<< "$sel_df"
-    sel_avail_h=$(bytes_to_human "$sel_avail_b")
+    read -r _ _ <<< "$sel_df"
+
 
     if ! $update_existing; then
         if tui_confirm "为新用户启用 Mamba/Conda 配置？" "n"; then
@@ -542,7 +542,7 @@ tui_run_create_or_assign_user_native() {
 
     tui_cleanup
 
-    password_display=$(format_password_display "$password")
+
     if $update_existing; then
         action="update"
         update_user "$username" "$password" "$home" || {
@@ -1201,7 +1201,10 @@ handle_main_menu_key() {
         6) tui_run_audit_menu_native ;;
         7) run_monitor_view ;;
         8) run_log_viewer ;;
-        9|-1) TUI_RUNNING=false ;;
+        9|-1)
+            # shellcheck disable=SC2034  # set in tui_core.sh:762 loop condition
+            TUI_RUNNING=false
+            ;;
     esac
 
     TUI_REDRAW=true

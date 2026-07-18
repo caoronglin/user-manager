@@ -1,5 +1,44 @@
 # Progress - 用户管理工具完善
 
+## 2026-07-17 当前工作区检查与修复（完成）
+
+### 已完成
+
+- 恢复 `task_plan.md`、`findings.md`、`progress.md` 上下文。
+- 检查 Git 状态，确认 `main` 领先远端 5 个提交且存在大量未提交改动。
+- 启动两个只读探索任务：检查入口梳理、风险热点扫描。
+
+### 完成内容
+
+- 用户批准的本地设计与计划分别写入 `docs/superpowers/specs/2026-07-17-ci-test-quality-repairs-design.md`、`docs/superpowers/plans/2026-07-17-ci-test-quality-repairs.md`；均未提交。
+- 三条无重叠修复 lane 完成：CI 跟踪文件语法枚举、动作注册表的幂等错误码常量守卫、模块测试统计与 SMB PATH/stderr 清理。
+- 每条 lane 经规格与代码质量复核；最终整体只读集成审查 `ora-7` 返回 APPROVED。
+
+### 本轮基线结果
+
+- `git diff --check`：通过。
+- 全量自有 Bash `bash -n`：通过（排除第三方 `Miniforge.sh`）。
+- 全量自有 Bash `shellcheck -S error`：通过。
+- `bash tests/run_regression.sh --level p0`：通过 1/1，内部检查 20/20。
+- `bash tests/run_regression.sh --level p1`：通过 31/31；输出中识别到统计失真与无害但应清除的加载/测试环境噪声。
+
+### 最终验证
+
+- 定向：`tests/test_action_registry.sh` 23/23、`tests/test_ubuntu_maintenance_core.sh` 7/7、`tests/test_network_stack_core.sh` 5/5、`tests/test_smb_core.sh` 9/9；SMB 测试 stderr 为空。
+- 回归：P0 1/1（`verify_fixes.sh` 20/20）和 P1 31/31 均通过。
+- 静态：NUL 安全遍历的 Git 跟踪 `.sh`（跳过 `Miniforge.sh`）通过 `bash -n` 与 `shellcheck -S error`；`git diff --check` 通过。
+- 未执行 Git 提交、推送、合并或回滚；工作区原有未提交改动未被覆盖。
+
+### 新问题：`create_or_assign_user` 返回码 1（诊断中）
+
+- 已完成只读调用链和失败分支定位：用户看到的错误由 `safe_run` 统一包装，当前不足以判定根因。
+- 未修改创建流程；正在等待报错前后的非敏感运行时输出与调用上下文，再进行最小可复现和根因验证。
+
+### 根因与范围
+
+- 已稳定复现：CI 解析 `Miniforge.sh` 失败、两份模块测试计数失真、动作注册表重复 source 只读警告、SMB 测试的 PATH/mkdir 噪声。
+- 用户选择先修确定问题；SQL 参数边界、邮件队列明文密码、密码池竞态和临时文件清理均记录为后续安全工作，本轮不改变。
+
 ## 2026-05-16 v2 整体优化 (完成)
 
 ### 全部 8 阶段完成

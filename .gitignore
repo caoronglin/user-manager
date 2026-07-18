@@ -46,6 +46,7 @@ logs/
 .vscode/
 .idea/
 .superpowers/
+.slim/deepwork/
 docs/superpowers/
 *.sublime-*
 

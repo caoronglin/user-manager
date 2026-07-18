@@ -504,6 +504,7 @@ async_start_workers() {
         
         # 启动后台worker
         (
+            # shellcheck disable=SC1090  # dynamic source for worker self-spawn
             source "${BASH_SOURCE[0]}"
             async_worker_loop "$i"
         ) &
