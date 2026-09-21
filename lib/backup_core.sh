@@ -45,12 +45,12 @@ show_backup_status() {
 
         # 根据类型上色
         local color="$C_RESET"
-        [[ "$bname" == full_* ]]        && color="$C_BGREEN"
-        [[ "$bname" == inc_* ]]         && color="$C_RESET"
+        [[ "$bname" == full_* ]] && color="$C_BGREEN"
+        [[ "$bname" == inc_* ]] && color="$C_RESET"
         [[ "$bname" == pre_restore_* ]] && color="$C_RESET"
 
         printf "  ${color}%-28s${C_RESET} %-22s ${C_BOLD}%s${C_RESET}\n" "$bname" "$btime" "$bsize"
-        ((backup_count+=1))
+        ((backup_count += 1))
     done < <(find "$user_backup_dir" -maxdepth 1 -type d ! -path "$user_backup_dir" -print0 2>/dev/null | sort -z)
 
     echo ""
@@ -89,7 +89,7 @@ list_backup_users() {
 
         printf "  ${C_RESET}%-24s${C_RESET} ${C_BOLD}%-10d${C_RESET} ${C_BGREEN}%s${C_RESET}\n" \
             "$uname" "$bcount" "$tsize"
-        ((user_count+=1))
+        ((user_count += 1))
     done < <(find "$BACKUP_ROOT" -maxdepth 1 -type d ! -path "$BACKUP_ROOT" -print0 2>/dev/null | sort -z)
 
     echo ""
@@ -136,6 +136,17 @@ manual_backup_user() {
     local backup_dir="$BACKUP_ROOT/$username/inc_${timestamp}"
     [[ "$backup_type" == "full" ]] && backup_dir="$BACKUP_ROOT/$username/full_${timestamp}"
 
+    # 路径穿越防护：规范化后必须位于 BACKUP_ROOT 下
+    local canonical
+    canonical=$(realpath -m -- "$backup_dir")
+    case "$canonical" in
+    "$BACKUP_ROOT"/*) ;;
+    *)
+        msg_err "安全拒绝: 备份路径不在 BACKUP_ROOT 下: $backup_dir"
+        return 1
+        ;;
+    esac
+
     draw_header "手动备份 — $username"
     draw_info_card "源目录:" "$user_home"
     draw_info_card "备份到:" "$backup_dir"
@@ -168,16 +179,16 @@ manual_backup_user() {
     msg_step "使用 rsync 进行${backup_type}备份..."
 
     # 构建排除参数数组 —— 使用统一排除模块
-    local -a rsync_args=( -av --delete )
+    local -a rsync_args=(-av --delete)
 
     # 增量备份：使用 --link-dest 引用上次备份，仅传输差异
     if [[ "$backup_type" == "incremental" ]]; then
-        rsync_args+=( --link-dest="$last_backup" )
+        rsync_args+=(--link-dest="$last_backup")
     fi
 
     build_rsync_exclude_args rsync_args
 
-    rsync_args+=( "$user_home/" "$backup_dir/" )
+    rsync_args+=("$user_home/" "$backup_dir/")
 
     local start_ts
     start_ts=$(date +%s)
@@ -222,6 +233,17 @@ restore_user_backup() {
 
     local user_backup_dir="$BACKUP_ROOT/$username"
 
+    # 路径穿越防护：规范化后必须位于 BACKUP_ROOT 下
+    local canonical
+    canonical=$(realpath -m -- "$user_backup_dir")
+    case "$canonical" in
+    "$BACKUP_ROOT"/*) ;;
+    *)
+        msg_err "安全拒绝: 备份目录不在 BACKUP_ROOT 下: $user_backup_dir"
+        return 1
+        ;;
+    esac
+
     if [[ ! -d "$user_backup_dir" ]]; then
         msg_err "用户 ${C_BOLD}$username${C_RESET} 没有备份记录"
         return 1
@@ -238,6 +260,17 @@ restore_user_backup() {
         backup_name=$(basename "$backup_dir")
     else
         backup_dir="$user_backup_dir/$backup_name"
+
+        # 路径穿越防护：备份点规范化后必须位于 BACKUP_ROOT 下
+        canonical=$(realpath -m -- "$backup_dir")
+        case "$canonical" in
+        "$BACKUP_ROOT"/*) ;;
+        *)
+            msg_err "安全拒绝: 备份点路径不在 BACKUP_ROOT 下: $backup_name"
+            return 1
+            ;;
+        esac
+
         if [[ ! -d "$backup_dir" ]]; then
             msg_err "备份点不存在: ${C_BOLD}$backup_name${C_RESET}"
             return 1
@@ -314,7 +347,7 @@ configure_backup_schedule() {
         return 1
     fi
 
-    if ! [[ "$backup_hour" =~ ^[0-9]+$ ]] || (( backup_hour < 0 || backup_hour > 23 )); then
+    if ! [[ "$backup_hour" =~ ^[0-9]+$ ]] || ((backup_hour < 0 || backup_hour > 23)); then
         msg_err "小时必须是 0-23 之间的数字"
         return 1
     fi
@@ -330,6 +363,17 @@ configure_backup_schedule() {
     local cron_expr="0 $backup_hour * * *"
     local script_dir_target="/usr/local/bin"
     local script_path="${script_dir_target}/backup_user_${username}.sh"
+
+    # 路径穿越防护：脚本路径规范化后必须位于 script_dir_target 下
+    local canonical
+    canonical=$(realpath -m -- "$script_path")
+    case "$canonical" in
+    "$script_dir_target"/*) ;;
+    *)
+        msg_err "安全拒绝: 脚本路径不在 $script_dir_target 下: $script_path"
+        return 1
+        ;;
+    esac
 
     # 将 SCRIPT_DIR 在此处展开为绝对路径嵌入脚本
     local abs_script_dir="$SCRIPT_DIR"
@@ -351,7 +395,8 @@ configure_backup_schedule() {
 
     # 生成备份脚本 —— 所有路径使用绝对值直接嵌入
     local script_content
-    script_content=$(cat << GENEOF
+    script_content=$(
+        cat <<GENEOF
 #!/bin/bash
 # 自动备份脚本 — $username
 # 由用户管理系统生成于 $(date '+%Y-%m-%d %H:%M:%S')
@@ -445,7 +490,7 @@ if [ -f "\$LOG_FILE" ]; then
     fi
 fi
 GENEOF
-)
+    )
 
     # 写入脚本
     if printf '%s' "$script_content" | write_privileged_text_file "$script_path" "0755" "root:root"; then
@@ -487,10 +532,16 @@ _safe_cleanup_backups() {
     [[ -z "$user_backup_dir" ]] && return 1
     [[ ! -d "$user_backup_dir" ]] && return 2
 
-    if [[ "$user_backup_dir" != "$BACKUP_ROOT"/* ]]; then
+    # 路径穿越防护：规范化后必须位于 BACKUP_ROOT 下
+    local canonical
+    canonical=$(realpath -m -- "$user_backup_dir")
+    case "$canonical" in
+    "$BACKUP_ROOT"/*) ;;
+    *)
         msg_err "安全拒绝: 备份清理路径不在 BACKUP_ROOT 下: $user_backup_dir"
         return 1
-    fi
+        ;;
+    esac
 
     local cleanup_list
     cleanup_list=$(find "$user_backup_dir" -maxdepth 1 -type d \
@@ -506,7 +557,7 @@ _safe_cleanup_backups() {
         \( -name 'full_*' -o -name 'inc_*' -o -name 'auto_*' \) 2>/dev/null | wc -l)
 
     local keep_count=$((total_backups - $(echo "$cleanup_list" | wc -l)))
-    if (( keep_count < min_keep )); then
+    if ((keep_count < min_keep)); then
         cleanup_list=$(echo "$cleanup_list" | tail -n +$((min_keep - keep_count + 1)))
         [[ -z "$cleanup_list" ]] && return 0
     fi
@@ -519,11 +570,11 @@ _safe_cleanup_backups() {
         bsize=$(du -sb "$backup_dir" 2>/dev/null | cut -f1)
         freed=$((freed + ${bsize:-0}))
         if rm -rf "$backup_dir" 2>/dev/null; then
-            ((cleaned+=1))
+            ((cleaned += 1))
         fi
-    done <<< "$cleanup_list"
+    done <<<"$cleanup_list"
 
-    if (( cleaned > 0 )); then
+    if ((cleaned > 0)); then
         msg_ok "清理旧备份: $cleaned 个, 释放 $(bytes_to_human "$freed")"
     fi
     return 0
@@ -541,6 +592,18 @@ update_backup_index() {
     [[ -z "$username" || -z "$backup_type" || -z "$backup_dir" || ! -d "$backup_dir" ]] && return 1
 
     local index_file="$BACKUP_ROOT/$username/.backup_index.json"
+
+    # 路径穿越防护：索引路径规范化后必须位于 BACKUP_ROOT 下
+    local canonical
+    canonical=$(realpath -m -- "$index_file")
+    case "$canonical" in
+    "$BACKUP_ROOT"/*) ;;
+    *)
+        msg_err "安全拒绝: 索引路径不在 BACKUP_ROOT 下: $index_file"
+        return 1
+        ;;
+    esac
+
     local backup_id
     backup_id=$(basename "$backup_dir")
     local timestamp
@@ -568,11 +631,11 @@ update_backup_index() {
             tmp_file=$(mktemp)
             jq --argjson entry "$entry" \
                 '.backups += [$entry] | .backups |= sort_by(.timestamp) | .last_updated = now' \
-                "$index_file" > "$tmp_file" 2>/dev/null && mv "$tmp_file" "$index_file"
+                "$index_file" >"$tmp_file" 2>/dev/null && mv "$tmp_file" "$index_file"
         else
             mkdir -p "$(dirname "$index_file")"
             jq -n --arg user "$username" --argjson entry "$entry" \
-                '{username: $user, backups: [$entry], last_updated: now}' > "$index_file"
+                '{username: $user, backups: [$entry], last_updated: now}' >"$index_file"
         fi
     fi
 
@@ -585,7 +648,10 @@ update_backup_index() {
 show_backup_chain() {
     local username="$1"
 
-    [[ -z "$username" ]] && { msg_err "用户名不能为空"; return 1; }
+    [[ -z "$username" ]] && {
+        msg_err "用户名不能为空"
+        return 1
+    }
 
     local index_file="$BACKUP_ROOT/$username/.backup_index.json"
 
@@ -612,7 +678,7 @@ show_backup_chain() {
     draw_line 75
 
     local i
-    for ((i=0; i<backup_count; i++)); do
+    for ((i = 0; i < backup_count; i++)); do
         local bid btype bsize bcs bdep
         bid=$(jq -r ".backups[$i].id" "$index_file")
         btype=$(jq -r ".backups[$i].type" "$index_file")
@@ -647,6 +713,17 @@ remove_backup_schedule() {
     fi
 
     local script_path="/usr/local/bin/backup_user_${username}.sh"
+
+    # 路径穿越防护：脚本路径规范化后必须位于 /usr/local/bin 下
+    local canonical
+    canonical=$(realpath -m -- "$script_path")
+    case "$canonical" in
+    "/usr/local/bin"/*) ;;
+    *)
+        msg_err "安全拒绝: 脚本路径不在 /usr/local/bin 下: $script_path"
+        return 1
+        ;;
+    esac
 
     draw_header "移除定时备份 — $username"
 
@@ -760,15 +837,15 @@ backup_all_users() {
     local -a failed_users=()
 
     for username in "${all_users[@]}"; do
-        ((current+=1))
+        ((current += 1))
         echo ""
         msg_step "[${C_RESET}${current}${C_RESET}/${C_BOLD}${total}${C_RESET}] 备份用户: ${C_BOLD}$username${C_RESET}"
 
         # 检查用户存在
         if ! id "$username" &>/dev/null; then
             msg_warn "  用户不存在，跳过"
-            echo "[$current/$total] $username — 跳过: 用户不存在" | priv_tee -a "$batch_log" > /dev/null
-            ((failed_count+=1))
+            echo "[$current/$total] $username — 跳过: 用户不存在" | priv_tee -a "$batch_log" >/dev/null
+            ((failed_count += 1))
             failed_users+=("$username")
             continue
         fi
@@ -778,8 +855,8 @@ backup_all_users() {
         user_home=$(get_user_home "$username")
         if [[ -z "$user_home" || ! -d "$user_home" ]]; then
             msg_warn "  无法获取主目录，跳过"
-            echo "[$current/$total] $username — 跳过: 无法获取主目录" | priv_tee -a "$batch_log" > /dev/null
-            ((failed_count+=1))
+            echo "[$current/$total] $username — 跳过: 无法获取主目录" | priv_tee -a "$batch_log" >/dev/null
+            ((failed_count += 1))
             failed_users+=("$username")
             continue
         fi
@@ -787,8 +864,8 @@ backup_all_users() {
         local user_backup_dir="$batch_dir/$username"
         if ! priv_mkdir -p "$user_backup_dir"; then
             msg_err "  创建备份目录失败"
-            echo "[$current/$total] $username — 失败: 无法创建备份目录" | priv_tee -a "$batch_log" > /dev/null
-            ((failed_count+=1))
+            echo "[$current/$total] $username — 失败: 无法创建备份目录" | priv_tee -a "$batch_log" >/dev/null
+            ((failed_count += 1))
             failed_users+=("$username")
             continue
         fi
@@ -801,22 +878,22 @@ backup_all_users() {
         fi
 
         # 构建完整 rsync 参数（不使用 eval）
-        local -a rsync_args=( -a --delete )
+        local -a rsync_args=(-a --delete)
         if [[ -n "$last_user_backup" && -d "$last_user_backup" ]]; then
-            rsync_args+=( --link-dest="$last_user_backup" )
+            rsync_args+=(--link-dest="$last_user_backup")
             msg_info "  增量备份 (基于 $(basename "$last_user_backup"))"
         else
             msg_info "  全量备份 (首次)"
         fi
-        rsync_args+=( "${exclude_args[@]}" )
-        rsync_args+=( "$user_home/" "$user_backup_dir/" )
+        rsync_args+=("${exclude_args[@]}")
+        rsync_args+=("$user_home/" "$user_backup_dir/")
 
         local backup_start
         backup_start=$(date +%s)
 
         msg_info "  正在备份..."
 
-        if priv_rsync "${rsync_args[@]}" >> "$batch_log" 2>&1; then
+        if priv_rsync "${rsync_args[@]}" >>"$batch_log" 2>&1; then
             local backup_end elapsed bsize bsize_bytes
             backup_end=$(date +%s)
             elapsed=$((backup_end - backup_start))
@@ -825,18 +902,18 @@ backup_all_users() {
             bsize_bytes=${bsize_bytes:-0}
 
             msg_ok "  备份完成 ${C_DIM}(大小: ${bsize}, 耗时: ${elapsed}s)${C_RESET}"
-            echo "[$current/$total] $username — 成功 (大小: $bsize, 耗时: ${elapsed}s)" | \
-                priv_tee -a "$batch_log" > /dev/null
+            echo "[$current/$total] $username — 成功 (大小: $bsize, 耗时: ${elapsed}s)" |
+                priv_tee -a "$batch_log" >/dev/null
 
-            ((success_count+=1))
+            ((success_count += 1))
             total_bytes=$((total_bytes + bsize_bytes))
             # 更新备份索引
             update_backup_index "$username" "batch" "$user_backup_dir" "${last_user_backup:-}"
         else
             msg_err "  备份失败"
-            echo "[$current/$total] $username — 失败: rsync 执行错误" | \
-                priv_tee -a "$batch_log" > /dev/null
-            ((failed_count+=1))
+            echo "[$current/$total] $username — 失败: rsync 执行错误" |
+                priv_tee -a "$batch_log" >/dev/null
+            ((failed_count += 1))
             failed_users+=("$username")
         fi
     done
@@ -867,7 +944,7 @@ backup_all_users() {
         echo "汇总: 成功 $success_count, 失败 $failed_count, 总大小 $total_human"
         echo "完成时间: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "========================================="
-    } | priv_tee -a "$batch_log" > /dev/null
+    } | priv_tee -a "$batch_log" >/dev/null
 
     record_user_event "system" "batch_backup" "批量备份: 成功${success_count}, 失败${failed_count}"
     return 0
@@ -907,16 +984,26 @@ backup_all_users_parallel() {
     local batch_dir="$BACKUP_ROOT/batch_${backup_batch_id}"
     local batch_log="$batch_dir/backup_batch_parallel.log"
     local results_dir
-    results_dir=$(mktemp -d) || { msg_err "无法创建临时目录"; return 1; }
+    results_dir=$(mktemp -d) || {
+        msg_err "无法创建临时目录"
+        return 1
+    }
 
-    priv_mkdir -p "$batch_dir" || { rm -rf "$results_dir"; return 1; }
+    priv_mkdir -p "$batch_dir" || {
+        rm -rf "$results_dir"
+        return 1
+    }
 
-    echo "并行备份开始: $(date '+%Y-%m-%d %H:%M:%S'), 并行度: $parallel_jobs" | \
+    echo "并行备份开始: $(date '+%Y-%m-%d %H:%M:%S'), 并行度: $parallel_jobs" |
         write_privileged_text_file "$batch_log" "0644" "root:root"
 
     # ── 生成排除列表临时文件 ──
     local exclude_file
-    exclude_file=$(generate_exclude_file) || { rm -rf "$results_dir"; msg_err "无法生成排除文件"; return 1; }
+    exclude_file=$(generate_exclude_file) || {
+        rm -rf "$results_dir"
+        msg_err "无法生成排除文件"
+        return 1
+    }
     register_exclude_temp_file "$exclude_file"
 
     # ── 生成并行备份子脚本（嵌入绝对路径，不用 sed 替换） ──
@@ -931,7 +1018,7 @@ backup_all_users_parallel() {
     # ── 注册临时文件清理 ──
     trap '_cleanup_exclude_temp_files; rm -f "$backup_script"; rm -rf "$results_dir"' EXIT INT TERM
 
-    cat > "$backup_script" << PEOF
+    cat >"$backup_script" <<PEOF
 #!/bin/bash
 # 并行备份子任务脚本 — 自动生成
 # 所有路径已嵌入为绝对路径，无需 sed 替换
@@ -993,7 +1080,7 @@ PEOF
     # ── 使用 GNU parallel 或 xargs 执行 ──
     if command -v parallel &>/dev/null; then
         msg_info "使用 GNU parallel (并行度: $parallel_jobs)"
-        printf '%s\n' "${all_users[@]}" | \
+        printf '%s\n' "${all_users[@]}" |
             priv_parallel -j "$parallel_jobs" --line-buffer \
                 bash "$backup_script" {} 2>&1 | while IFS= read -r line; do
             if [[ "$line" == OK* ]]; then
@@ -1008,7 +1095,7 @@ PEOF
         done
     else
         msg_info "使用 xargs -P (并行度: $parallel_jobs)"
-        printf '%s\n' "${all_users[@]}" | \
+        printf '%s\n' "${all_users[@]}" |
             priv_xargs -P "$parallel_jobs" -I {} \
                 bash "$backup_script" {} 2>&1 | while IFS= read -r line; do
             if [[ "$line" == OK* ]]; then
@@ -1036,9 +1123,12 @@ PEOF
         local status
         status=$(head -c4 "$f")
         case "$status" in
-            OK*)   ((ok_count+=1)) ;;
-            FAIL)  ((fail_count+=1)); fail_list+=("$uname") ;;
-            SKIP)  ((skip_count+=1)) ;;
+        OK*) ((ok_count += 1)) ;;
+        FAIL)
+            ((fail_count += 1))
+            fail_list+=("$uname")
+            ;;
+        SKIP) ((skip_count += 1)) ;;
         esac
     done
 
@@ -1115,6 +1205,17 @@ restore_from_batch() {
 
     local batch_dir="$BACKUP_ROOT/batch_${batch_id}"
     local user_backup_dir="$batch_dir/$username"
+
+    # 路径穿越防护：规范化后必须位于 BACKUP_ROOT 下（覆盖 batch_id 与 username 拼接）
+    local canonical
+    canonical=$(realpath -m -- "$user_backup_dir")
+    case "$canonical" in
+    "$BACKUP_ROOT"/*) ;;
+    *)
+        msg_err "安全拒绝: 备份路径不在 BACKUP_ROOT 下: $user_backup_dir"
+        return 1
+        ;;
+    esac
 
     if [[ ! -d "$user_backup_dir" ]]; then
         msg_err "无法找到备份: ${C_BOLD}${batch_id}/${username}${C_RESET}"

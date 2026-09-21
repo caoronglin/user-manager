@@ -8,13 +8,12 @@ rl_project_root="$(dirname "$rl_test_dir")"
 rl_tmpdir="$(mktemp -d)"
 trap 'rm -rf "$rl_tmpdir"' EXIT
 
-SCRIPT_DIR="$rl_project_root"
 rl_stub_dir="$rl_tmpdir/bin"
 rl_curl_log="$rl_tmpdir/curl.log"
 mkdir -p "$rl_stub_dir"
-: > "$rl_curl_log"
+: >"$rl_curl_log"
 
-cat > "$rl_stub_dir/curl" <<'EOS'
+cat >"$rl_stub_dir/curl" <<'EOS'
 #!/bin/bash
 printf '%s\n' "$*" >> "$RL_CURL_LOG"
 printf '{"errcode":0,"errmsg":"ok"}\n'
@@ -25,8 +24,14 @@ export RL_CURL_LOG="$rl_curl_log"
 
 rl_pass=0
 rl_fail=0
-rl_ok() { printf 'ok - %s\n' "$1"; rl_pass=$((rl_pass + 1)); }
-rl_not_ok() { printf 'not ok - %s\n' "$1" >&2; rl_fail=$((rl_fail + 1)); }
+rl_ok() {
+    printf 'ok - %s\n' "$1"
+    rl_pass=$((rl_pass + 1))
+}
+rl_not_ok() {
+    printf 'not ok - %s\n' "$1" >&2
+    rl_fail=$((rl_fail + 1))
+}
 
 msg_err() { :; }
 msg_warn() { :; }
@@ -40,7 +45,7 @@ else
 fi
 
 unset USER_MANAGER_WECOM_ENABLED USER_MANAGER_WECOM_DRY_RUN USER_MANAGER_WECOM_WEBHOOK USER_MANAGER_WECOM_EVENTS
-: > "$rl_curl_log"
+: >"$rl_curl_log"
 if rl_wecom_bot_send_text account_disabled '{"summary":"用户禁用"}' >/dev/null 2>&1 && [[ ! -s "$rl_curl_log" ]]; then
     rl_ok "默认关闭时 no-op 且不调用 curl"
 else
@@ -50,7 +55,7 @@ fi
 USER_MANAGER_WECOM_ENABLED=1
 USER_MANAGER_WECOM_DRY_RUN=1
 USER_MANAGER_WECOM_WEBHOOK='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc-123'
-: > "$rl_curl_log"
+: >"$rl_curl_log"
 if rl_wecom_bot_send_text account_disabled '{"summary":"dry"}' >/dev/null 2>&1 && [[ ! -s "$rl_curl_log" ]]; then
     rl_ok "dry-run 时不调用 curl"
 else
@@ -80,12 +85,12 @@ else
     rl_not_ok "事件 allowlist 未生效"
 fi
 
-: > "$rl_curl_log"
-if rl_wecom_bot_send_text account_disabled '{"summary":"用户 <alice>","password":"Secret123","webhook":"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret"}' >/dev/null 2>&1 && \
-   grep -q -- '--max-time 5' "$rl_curl_log" && \
-   grep -q 'qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc-123' "$rl_curl_log" && \
-   ! grep -q 'Secret123' "$rl_curl_log" && \
-   ! grep -q 'key=secret' "$rl_curl_log"; then
+: >"$rl_curl_log"
+if rl_wecom_bot_send_text account_disabled '{"summary":"用户 <alice>","password":"Secret123","webhook":"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret"}' >/dev/null 2>&1 &&
+    grep -q -- '--max-time 5' "$rl_curl_log" &&
+    grep -q 'qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc-123' "$rl_curl_log" &&
+    ! grep -q 'Secret123' "$rl_curl_log" &&
+    ! grep -q 'key=secret' "$rl_curl_log"; then
     rl_ok "启用时调用 stub curl、带超时并脱敏 payload"
 else
     rl_not_ok "启用发送未满足 curl/timeout/脱敏要求"
@@ -100,9 +105,9 @@ fi
 
 long_key_masked="$(rl_wecom_mask_secret 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=12345678-1234-1234-1234-123456789abc&debug=1')"
 json_masked="$(rl_wecom_mask_secret '{"password":"Secret123","token":"tok_abcdef123456","secret":"sec-value","webhook":"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=12345678-1234-1234-1234-123456789abc"}')"
-if [[ "$long_key_masked" == *'key=***&debug=1'* && "$long_key_masked" != *'123456789abc'* && \
-      "$json_masked" != *'Secret123'* && "$json_masked" != *'tok_abcdef123456'* && \
-      "$json_masked" != *'sec-value'* && "$json_masked" != *'123456789abc'* ]]; then
+if [[ "$long_key_masked" == *'key=***&debug=1'* && "$long_key_masked" != *'123456789abc'* &&
+    "$json_masked" != *'Secret123'* && "$json_masked" != *'tok_abcdef123456'* &&
+    "$json_masked" != *'sec-value'* && "$json_masked" != *'123456789abc'* ]]; then
     rl_ok "长 webhook key 与敏感 JSON 字段完全脱敏"
 else
     rl_not_ok "长 key 或敏感 JSON 字段脱敏不完整: $long_key_masked / $json_masked"

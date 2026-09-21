@@ -146,7 +146,7 @@ show_memory_info() {
         elif [[ "$line" =~ "Part Number:"[[:space:]]*(.*) ]]; then
             device_info[part]="${BASH_REMATCH[1]}"
         fi
-    done <<< "$mem_info"
+    done <<<"$mem_info"
 
     # 处理最后一个设备
     if [[ -n "$current_device" ]] && [[ -n "${device_info[size]:-}" ]]; then
@@ -197,7 +197,7 @@ analyze_system_logs() {
 
     local lines="${1:-100}"
     # shellcheck disable=SC2034
-    local log_type="${2:-all}"  # 保留参数供未来扩展
+    local log_type="${2:-all}" # 保留参数供未来扩展
 
     echo -e "  ${C_DIM}分析最近 $lines 条日志记录...${C_RESET}"
     echo ""
@@ -292,7 +292,7 @@ analyze_crash_causes() {
     echo -e "  ${C_RESET}━━━ 硬件错误 (MCE) ━━━${C_RESET}"
     local mce_count
     if [[ -f /var/log/mcelog ]]; then
-        mce_count=$(wc -l < /var/log/mcelog 2>/dev/null || echo "0")
+        mce_count=$(wc -l </var/log/mcelog 2>/dev/null || echo "0")
         if [[ "$mce_count" -gt 0 ]]; then
             msg_warn "发现硬件错误记录:"
             tail -20 /var/log/mcelog
@@ -408,21 +408,19 @@ configure_oom_protection() {
     priv_mkdir -p "$conf_dir" || return 1
     priv_mkdir -p "$dropin_dir" || return 1
 
-    if ! write_privileged_text_file "$conf_file" "0644" "root:root" <<'EOF'
+    if ! write_privileged_text_file "$conf_file" "0644" "root:root" <<'EOF'; then
 [OOM]
 DefaultMemoryPressureLimit=60%
 DefaultMemoryPressureDurationSec=30s
 SwapUsedLimit=90%
 EOF
-    then
         return 1
     fi
 
-    if ! write_privileged_text_file "$dropin_file" "0644" "root:root" <<'EOF'
+    if ! write_privileged_text_file "$dropin_file" "0644" "root:root" <<'EOF'; then
 [Service]
 OOMScoreAdjust=-900
 EOF
-    then
         return 1
     fi
 
@@ -604,27 +602,27 @@ check_hardware_health() {
 # 显示 CPU 详细信息
 show_cpu_info() {
     draw_header "CPU 详细信息"
-    
+
     if [[ -f /proc/cpuinfo ]]; then
         local cpu_model cpu_cores
         cpu_model=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
         cpu_cores=$(grep -c "^processor" /proc/cpuinfo)
-        
+
         draw_info_card "型号:" "$cpu_model" "$C_BOLD"
         draw_info_card "核心数:" "$cpu_cores" "$C_RESET"
-        
+
         # 获取 CPU 频率
         if [[ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]]; then
             local freq_mhz
             freq_mhz=$(awk '{printf "%.0f", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null)
             draw_info_card "当前频率:" "${freq_mhz} MHz" "$C_RESET"
         fi
-        
+
         # 获取负载
         local load1 load5 load15
-        read -r load1 load5 load15 _ < /proc/loadavg
+        read -r load1 load5 load15 _ </proc/loadavg
         draw_info_card "系统负载:" "1min:${load1} 5min:${load5} 15min:${load15}" "$C_RESET"
-        
+
         echo ""
         msg_info "详细 CPU 信息（/proc/cpuinfo）:"
         echo "${C_DIM}"
@@ -639,7 +637,7 @@ show_cpu_info() {
 # 显示内存详细信息（使用 dmidecode 和 /proc/meminfo）
 show_memory_info_detailed() {
     draw_header "内存详细信息"
-    
+
     # 从 /proc/meminfo 获取信息
     if [[ -f /proc/meminfo ]]; then
         local total_mem free_mem available_mem buffers cached
@@ -648,47 +646,47 @@ show_memory_info_detailed() {
         available_mem=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
         buffers=$(awk '/^Buffers:/ {print $2}' /proc/meminfo)
         cached=$(awk '/^Cached:/ {print $2}' /proc/meminfo)
-        
+
         # 转换为 GB
         local total_gb free_gb avail_gb
         total_gb=$(awk "BEGIN {printf \"%.2f\", $total_mem/1024/1024}")
         free_gb=$(awk "BEGIN {printf \"%.2f\", $free_mem/1024/1024}")
         avail_gb=$(awk "BEGIN {printf \"%.2f\", $available_mem/1024/1024}")
-        
+
         draw_info_card "总内存:" "${total_gb} GB" "$C_BOLD"
         draw_info_card "可用内存:" "${avail_gb} GB" "$C_BGREEN"
         draw_info_card "空闲内存:" "${free_gb} GB" "$C_RESET"
         draw_info_card "Buffers:" "$(awk "BEGIN {printf \"%.2f\", $buffers/1024/1024}") GB" "$C_DIM"
         draw_info_card "Cached:" "$(awk "BEGIN {printf \"%.2f\", $cached/1024/1024}") GB" "$C_DIM"
-        
+
         # 计算使用率
         local used_pct
         used_pct=$(awk "BEGIN {printf \"%.0f\", 100 * ($total_mem - $available_mem) / $total_mem}")
         printf '  %s ' "${C_BOLD}内存使用率:${C_RESET}"
         draw_usage_bar "$used_pct" 30
         echo ""
-        
+
         echo ""
     fi
-    
+
     # 使用 dmidecode 获取物理内存信息
     if command -v dmidecode &>/dev/null; then
         msg_step "正在获取物理内存信息 (dmidecode)..."
-        
+
         local mem_info
         mem_info=$(priv_exec dmidecode -t memory 2>/dev/null | grep -E "(Locator:|Size:|Speed:|Manufacturer:|Type:|Part Number:|Configured)" | head -60 || echo "")
-        
+
         if [[ -n "$mem_info" ]]; then
             echo ""
             msg_info "物理内存模块信息:"
             echo "${C_DIM}"
-            sed 's/^/  /' <<< "$mem_info"
+            sed 's/^/  /' <<<"$mem_info"
             echo "${C_RESET}"
         fi
     else
         msg_warn "未安装 dmidecode，无法获取物理内存信息"
     fi
-    
+
     # 显示 Swap 信息
     echo ""
     msg_info "Swap 信息:"
@@ -702,23 +700,23 @@ show_memory_info_detailed() {
 # 显示磁盘信息
 show_disk_info() {
     draw_header "磁盘信息"
-    
+
     # 显示磁盘分区信息
     msg_info "磁盘分区信息:"
     echo "${C_DIM}"
     lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL | sed 's/^/  /'
     echo "${C_RESET}"
-    
+
     echo ""
-    
+
     # 显示文件系统使用情况
     msg_info "文件系统使用情况:"
     echo "${C_DIM}"
     df -h -x tmpfs -x devtmpfs | sed 's/^/  /'
     echo "${C_RESET}"
-    
+
     echo ""
-    
+
     # 显示磁盘 I/O 统计
     msg_info "磁盘 I/O 统计 (iostat):"
     if command -v iostat &>/dev/null; then
@@ -733,14 +731,14 @@ show_disk_info() {
 # 显示网络硬件信息
 show_network_hardware_info() {
     draw_header "网络硬件信息"
-    
+
     msg_info "网络接口信息:"
     echo "${C_DIM}"
     ip -s link show | sed 's/^/  /'
     echo "${C_RESET}"
-    
+
     echo ""
-    
+
     # 显示 PCI 网络设备
     if command -v lspci &>/dev/null; then
         msg_info "PCI 网络设备:"
@@ -748,9 +746,9 @@ show_network_hardware_info() {
         lspci | grep -i net | sed 's/^/  /'
         echo "${C_RESET}"
     fi
-    
+
     echo ""
-    
+
     # 显示网络统计
     msg_info "网络连接统计:"
     echo "${C_DIM}"
@@ -761,22 +759,22 @@ show_network_hardware_info() {
 # 运行完整的硬件检测
 run_full_hardware_check() {
     draw_header "完整硬件检测"
-    
+
     msg_info "开始完整硬件检测..."
     echo ""
-    
+
     show_cpu_info
     pause_continue
-    
+
     show_memory_info_detailed
     pause_continue
-    
+
     show_disk_info
     pause_continue
-    
+
     show_network_hardware_info
     pause_continue
-    
+
     msg_ok "完整硬件检测完成！"
 }
 
@@ -807,7 +805,10 @@ rewrite_root_crontab_without_literal() {
 
 append_root_crontab_line() {
     local line="$1"
-    { read_root_crontab; printf '%s\n' "$line"; } | install_root_crontab
+    {
+        read_root_crontab
+        printf '%s\n' "$line"
+    } | install_root_crontab
 }
 
 find_root_crontab_line() {

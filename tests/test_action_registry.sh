@@ -190,28 +190,26 @@ fi
 
 test_start "default log actions dispatch natural args and compat id prefix"
 action_registry_reset
+unset JOURNALCTL_BIN SYSTEMCTL_BIN
 source "$PROJECT_ROOT/lib/logs_presenter.sh"
 
 mock_journalctl() {
     case "$*" in
-        *"-b 0"*) printf 'boot ok\n' ;;
-        *"-u ssh.service"*) printf 'ssh ok\n' ;;
-        *) printf 'generic\n' ;;
+    *"-b 0"*) printf 'boot ok\n' ;;
+    *"-u ssh.service"*) printf 'ssh ok\n' ;;
+    *) printf 'generic\n' ;;
     esac
 }
 
 mock_systemctl() {
     case "$*" in
-        *"--failed"*) printf 'UNIT LOAD ACTIVE SUB DESCRIPTION\nssh.service loaded failed failed OpenSSH server\n' ;;
-        *) printf 'systemctl ok\n' ;;
+    *"--failed"*) printf 'UNIT LOAD ACTIVE SUB DESCRIPTION\nssh.service loaded failed failed OpenSSH server\n' ;;
+    *) printf 'systemctl ok\n' ;;
     esac
 }
 
 journalctl() { mock_journalctl "$@"; }
 systemctl() { mock_systemctl "$@"; }
-
-JOURNALCTL_BIN=journalctl
-SYSTEMCTL_BIN=systemctl
 
 action_register_defaults
 boot_output="$(action_run logs.boot cli --boot 0 --lines 5)"
@@ -221,6 +219,25 @@ if [[ "$boot_output" == *"title=Boot logs"* ]] && [[ "$boot_output" == *"boot=0"
     test_pass
 else
     test_fail "default log action dispatch output was: boot=$boot_output compat=$compat_boot_output service=$service_output"
+fi
+
+test_start "default SMB actions are registered"
+if action_exists smb.status && action_exists smb.list && action_exists smb.show &&
+    action_exists smb.password && action_exists smb.disable && action_exists smb.enable && action_exists smb.remove; then
+    test_pass
+else
+    test_fail "默认 SMB actions 未全部注册"
+fi
+
+test_start "只读主机 actions 使用 safe/cli 元数据"
+host_probe_description="$(action_describe host.probe 2>/dev/null || true)"
+gpu_summary_description="$(action_describe gpu.summary 2>/dev/null || true)"
+if action_exists host.probe && action_exists gpu.summary &&
+    [[ "$host_probe_description" == *"modes=cli"* && "$host_probe_description" == *"risk=safe"* ]] &&
+    [[ "$gpu_summary_description" == *"modes=cli"* && "$gpu_summary_description" == *"risk=safe"* ]]; then
+    test_pass
+else
+    test_fail "主机只读 actions 未正确注册"
 fi
 
 test_start "error code constants are defined"

@@ -21,7 +21,8 @@ create_or_assign_user() {
         return 1
     fi
     if [[ -z "$username" ]] || ! validate_username "$username"; then
-        release_lock; return 1
+        release_lock
+        return 1
     fi
 
     local update_existing=false
@@ -41,43 +42,49 @@ create_or_assign_user() {
 
     local password=""
     case $pass_option in
-        1)
-            password=$(get_random_password)
-            if [[ -z "$password" ]]; then
-                msg_err "无法从密码池获取密码"
-                release_lock; return 1
-            fi
-            if show_passwords_enabled; then
-                msg_ok "已从密码池随机选择密码: ${C_BOLD}$password${C_RESET}"
-            else
-                msg_ok "已从密码池随机选择密码（已隐藏输出，设置 SHOW_PASSWORDS=1 可显示）"
-            fi
-            ;;
-        2)
-            read -rsp "  请输入密码 (至少8位): " password; echo
-            if (( ${#password} < 8 )); then
-                msg_err "密码长度至少需要8个字符"
-                release_lock; return 1
-            fi
-            ;;
-        *)
-            msg_err "无效的选项"
-            release_lock; return 1
-            ;;
+    1)
+        password=$(get_random_password)
+        if [[ -z "$password" ]]; then
+            msg_err "无法从密码池获取密码"
+            release_lock
+            return 1
+        fi
+        if show_passwords_enabled; then
+            msg_ok "已从密码池随机选择密码: ${C_BOLD}$password${C_RESET}"
+        else
+            msg_ok "已从密码池随机选择密码（已隐藏输出，设置 SHOW_PASSWORDS=1 可显示）"
+        fi
+        ;;
+    2)
+        read -rsp "  请输入密码 (至少8位): " password
+        echo
+        if ((${#password} < 8)); then
+            msg_err "密码长度至少需要8个字符"
+            release_lock
+            return 1
+        fi
+        ;;
+    *)
+        msg_err "无效的选项"
+        release_lock
+        return 1
+        ;;
     esac
 
     # 选择数据盘 —— 展示各磁盘剩余空间与用户数
     _display_available_data_disks
 
     echo ""
-    read_input "选择磁盘编号"; local disk_num="$REPLY_INPUT"
+    read_input "选择磁盘编号"
+    local disk_num="$REPLY_INPUT"
     local target_info
     target_info=$(_resolve_provision_target "$username" "$disk_num") || {
-        release_lock; return 1
+        release_lock
+        return 1
     }
 
     local idx mp home
-    IFS='|' read -r idx mp home <<< "$target_info"
+    IFS='|' read -r idx mp home <<<"$target_info"
 
     local quota_bytes
     quota_bytes=$(_resolve_provision_quota "$username" "$mp" "$update_existing")
@@ -93,11 +100,11 @@ create_or_assign_user() {
     # 查询选中磁盘剩余空间
     local sel_df sel_avail_b sel_avail_h
     sel_df=$(df -B1 "$mp" 2>/dev/null | awk 'NR==2 {print $4, $5}')
-    read -r sel_avail_b _ <<< "$sel_df"
+    read -r sel_avail_b _ <<<"$sel_df"
     sel_avail_h=$(bytes_to_human "$sel_avail_b")
 
     # 检查剩余空间是否足够分配默认配额
-    if [[ "$sel_avail_b" =~ ^[0-9]+$ ]] && (( sel_avail_b < quota_bytes )); then
+    if [[ "$sel_avail_b" =~ ^[0-9]+$ ]] && ((sel_avail_b < quota_bytes)); then
         msg_warn "磁盘 data${idx} 剩余 ${sel_avail_h}，不足默认配额 $(bytes_to_human "$quota_bytes")"
     fi
 
@@ -106,7 +113,8 @@ create_or_assign_user() {
 
     if ! confirm_action "确认继续？"; then
         msg_info "已取消"
-        release_lock; return 1
+        release_lock
+        return 1
     fi
 
     # 询问是否启用 Mamba/Conda 配置（仅新用户）
@@ -125,17 +133,23 @@ create_or_assign_user() {
     if $update_existing; then
         action="update"
         update_user "$username" "$password" "$home" || {
-            msg_err "更新用户失败"; release_lock; return 1
+            msg_err "更新用户失败"
+            release_lock
+            return 1
         }
     else
         action="create"
         create_user "$username" "$password" "$home" "$install_miniforge" || {
-            msg_err "创建用户失败"; release_lock; return 1
+            msg_err "创建用户失败"
+            release_lock
+            return 1
         }
     fi
 
     apply_user_groups "$username" "$user_groups" || {
-        msg_err "用户组配置失败"; release_lock; return 1
+        msg_err "用户组配置失败"
+        release_lock
+        return 1
     }
 
     priv_chown "$username:$username" "$home" 2>/dev/null

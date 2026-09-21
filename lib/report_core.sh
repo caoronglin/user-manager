@@ -77,9 +77,9 @@ HTMLEOF
 # 根据使用率百分比返回进度条 CSS 类
 get_progress_class() {
     local pct="$1"
-    if (( pct >= 90 )); then
+    if ((pct >= 90)); then
         echo "progress-danger"
-    elif (( pct >= 70 )); then
+    elif ((pct >= 70)); then
         echo "progress-warning"
     else
         echo "progress-success"
@@ -89,9 +89,9 @@ get_progress_class() {
 # 根据使用率百分比返回徽章 CSS 类
 get_badge_class() {
     local pct="$1"
-    if (( pct >= 90 )); then
+    if ((pct >= 90)); then
         echo "badge-danger"
-    elif (( pct >= 70 )); then
+    elif ((pct >= 70)); then
         echo "badge-warning"
     else
         echo "badge-success"
@@ -110,13 +110,19 @@ report_run_timeout() {
 
 report_sum_user_threads() {
     local username="${1:-}"
-    [[ -n "$username" ]] || { printf '0\n'; return 0; }
+    [[ -n "$username" ]] || {
+        printf '0\n'
+        return 0
+    }
     ps -u "$username" -o nlwp --no-headers 2>/dev/null | awk '{sum += $1} END {print sum + 0}'
 }
 
 report_count_user_job_submissions() {
     local username="${1:-}" days="${2:-30}" count=0
-    [[ -n "$username" ]] || { printf '0\n'; return 0; }
+    [[ -n "$username" ]] || {
+        printf '0\n'
+        return 0
+    }
 
     local stats_dir="${JOB_STATS_DIR:-${DATA_BASE:-/tmp}/job_stats}"
     local stats_file="$stats_dir/${username}.csv"
@@ -128,7 +134,7 @@ report_count_user_job_submissions() {
         local start_date scheduler_count
         start_date=$(date -d "${days} days ago" '+%Y-%m-%d' 2>/dev/null || date '+%Y-%m-%d')
         scheduler_count=$(report_run_timeout 5 sacct -u "$username" -S "$start_date" -n -X -o JobID 2>/dev/null | awk 'NF {count++} END {print count + 0}')
-        [[ "$scheduler_count" =~ ^[0-9]+$ ]] && (( scheduler_count > count )) && count="$scheduler_count"
+        [[ "$scheduler_count" =~ ^[0-9]+$ ]] && ((scheduler_count > count)) && count="$scheduler_count"
     fi
 
     printf '%s\n' "${count:-0}"
@@ -148,11 +154,14 @@ report_get_system_network_usage() {
 
 report_get_user_network_usage() {
     local username="${1:-}" traffic_file latest rx tx
-    [[ -n "$username" ]] || { printf '未启用用户流量记账'; return 0; }
+    [[ -n "$username" ]] || {
+        printf '未启用用户流量记账'
+        return 0
+    }
     traffic_file="${JOB_STATS_DIR:-${DATA_BASE:-/tmp}/job_stats}/${username}_traffic.csv"
     if [[ -f "$traffic_file" ]]; then
         latest=$(tail -n 1 "$traffic_file" 2>/dev/null || true)
-        IFS=',' read -r _ rx tx <<< "$latest"
+        IFS=',' read -r _ rx tx <<<"$latest"
         if [[ "$rx" =~ ^[0-9]+$ && "$tx" =~ ^[0-9]+$ ]]; then
             printf '接收 %s / 发送 %s' "$(bytes_to_human "$rx")" "$(bytes_to_human "$tx")"
             return 0
@@ -240,7 +249,7 @@ generate_html_report() {
         generate_html_log_section
 
         generate_html_footer
-    } > "$output_file"
+    } >"$output_file"
 
     msg_ok "系统报告已生成: ${C_BOLD}${output_file}${C_RESET}"
 }
@@ -261,12 +270,12 @@ generate_html_overview_section() {
         idx=$(printf "%02d" "$disk_num")
         mp="${DATA_BASE}/data${idx}"
         mountpoint -q "$mp" 2>/dev/null || continue
-        ((online_count+=1))
+        ((online_count += 1))
         local df_line
         df_line=$(df -B1 "$mp" 2>/dev/null | awk 'NR==2 {print $2, $3}')
         if [[ -n "$df_line" ]]; then
             local t u
-            read -r t u <<< "$df_line"
+            read -r t u <<<"$df_line"
             total_disk_bytes=$((total_disk_bytes + t))
             used_disk_bytes=$((used_disk_bytes + u))
         fi
@@ -360,7 +369,7 @@ generate_html_quota_section() {
     <tbody>
 HTMLEOF
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         echo '      <tr><td colspan="6" style="text-align:center;color:#94a3b8;">暂无托管用户</td></tr>'
     else
         for username in "${managed_users[@]}"; do
@@ -374,11 +383,11 @@ HTMLEOF
             used_bytes="${quota_info%%:*}"
             limit_bytes="${quota_info#*:}"
 
-            [[ "$used_bytes" =~ ^[0-9]+$ ]]  || used_bytes=0
+            [[ "$used_bytes" =~ ^[0-9]+$ ]] || used_bytes=0
             [[ "$limit_bytes" =~ ^[0-9]+$ ]] || limit_bytes=0
 
             pct=0
-            if (( limit_bytes > 0 )); then
+            if ((limit_bytes > 0)); then
                 pct=$((used_bytes * 100 / limit_bytes))
             fi
 
@@ -388,9 +397,9 @@ HTMLEOF
             progress_cls=$(get_progress_class "$pct")
             badge_cls=$(get_badge_class "$pct")
 
-            if (( pct >= 90 )); then
+            if ((pct >= 90)); then
                 badge_text="危险"
-            elif (( pct >= 70 )); then
+            elif ((pct >= 70)); then
                 badge_text="警告"
             else
                 badge_text="正常"
@@ -443,7 +452,7 @@ generate_html_resource_section() {
     <tbody>
 HTMLEOF
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         echo '      <tr><td colspan="4" style="text-align:center;color:#94a3b8;">暂无托管用户</td></tr>'
     else
         for username in "${managed_users[@]}"; do
@@ -517,7 +526,7 @@ generate_html_resource_usage_section() {
     <tbody>
 HTMLEOF
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         echo '      <tr><td colspan="11" style="text-align:center;color:#94a3b8;">暂无托管用户</td></tr>'
     else
         for username in "${managed_users[@]}"; do
@@ -535,7 +544,7 @@ HTMLEOF
             login_sources_html=$(report_html_escape "$login_sources")
 
             # CPU 和内存使用
-            if (( proc_count > 0 )); then
+            if ((proc_count > 0)); then
                 cpu_pct=$(ps -u "$username" --no-headers -o pcpu 2>/dev/null | awk '{sum+=$1} END {printf "%.1f", sum}')
                 mem_rss=$(ps -u "$username" --no-headers -o rss 2>/dev/null | awk '{sum+=$1} END {
                     if (sum >= 1048576) printf "%.1f GB", sum/1048576
@@ -561,11 +570,11 @@ HTMLEOF
                     fi
                 done < <(ps -u "$username" --no-headers -o pid 2>/dev/null | head -n "${REPORT_MAX_PROCESS_SCAN:-500}" | tr -d ' ')
 
-                if (( total_io >= 1073741824 )); then
+                if ((total_io >= 1073741824)); then
                     io_read=$(awk "BEGIN {printf \"%.1f GB\", $total_io / 1073741824}")
-                elif (( total_io >= 1048576 )); then
+                elif ((total_io >= 1048576)); then
                     io_read=$(awk "BEGIN {printf \"%.1f MB\", $total_io / 1048576}")
-                elif (( total_io > 0 )); then
+                elif ((total_io > 0)); then
                     io_read=$(awk "BEGIN {printf \"%.1f KB\", $total_io / 1024}")
                 else
                     io_read="0"
@@ -585,9 +594,9 @@ HTMLEOF
             local cpu_val
             cpu_val=$(echo "$cpu_pct" | awk '{printf "%d", $1}')
             local cpu_style=""
-            if (( cpu_val >= 80 )); then
+            if ((cpu_val >= 80)); then
                 cpu_style="color:#dc2626;font-weight:600"
-            elif (( cpu_val >= 50 )); then
+            elif ((cpu_val >= 50)); then
                 cpu_style="color:#ca8a04;font-weight:600"
             fi
 
@@ -629,9 +638,9 @@ HTMLEOF
         echo '    <p style="color:#94a3b8;text-align:center">未找到操作日志</p>'
     else
         local total_lines
-        total_lines=$(wc -l < "$USER_CREATION_LOG")
+        total_lines=$(wc -l <"$USER_CREATION_LOG")
 
-        if (( total_lines <= 1 )); then
+        if ((total_lines <= 1)); then
             echo '    <p style="color:#94a3b8;text-align:center">暂无记录</p>'
         else
             cat <<'HTMLEOF'
@@ -699,9 +708,9 @@ generate_user_personal_report() {
         quota_info=$(get_user_quota_info "$username" "$mp" 2>/dev/null)
         used_bytes="${quota_info%%:*}"
         limit_bytes="${quota_info#*:}"
-        [[ "$used_bytes" =~ ^[0-9]+$ ]]  || used_bytes=0
+        [[ "$used_bytes" =~ ^[0-9]+$ ]] || used_bytes=0
         [[ "$limit_bytes" =~ ^[0-9]+$ ]] || limit_bytes=0
-        if (( limit_bytes > 0 )); then
+        if ((limit_bytes > 0)); then
             pct=$((used_bytes * 100 / limit_bytes))
         fi
     fi
@@ -712,8 +721,10 @@ generate_user_personal_report() {
     progress_cls=$(get_progress_class "$pct")
     badge_cls=$(get_badge_class "$pct")
 
-    if (( pct >= 90 )); then badge_text="危险"
-    elif (( pct >= 70 )); then badge_text="警告"
+    if ((pct >= 90)); then
+        badge_text="危险"
+    elif ((pct >= 70)); then
+        badge_text="警告"
     else badge_text="正常"; fi
 
     # 获取资源限制
@@ -732,7 +743,7 @@ generate_user_personal_report() {
     login_count="$REPORT_LOGIN_COUNT"
     login_sources="$REPORT_LOGIN_SOURCES"
     login_sources_html=$(report_html_escape "$login_sources")
-    if (( proc_count > 0 )); then
+    if ((proc_count > 0)); then
         real_cpu=$(ps -u "$username" --no-headers -o pcpu 2>/dev/null | awk '{sum+=$1} END {printf "%.1f", sum}')
         real_mem=$(ps -u "$username" --no-headers -o rss 2>/dev/null | awk '{sum+=$1} END {
             if (sum >= 1048576) printf "%.1f GB", sum/1048576
@@ -860,7 +871,7 @@ generate_user_personal_report() {
 HTMLEOF
 
         generate_html_footer
-    } > "$output_file"
+    } >"$output_file"
 
     msg_ok "个人报告已生成: ${C_BOLD}${output_file}${C_RESET}"
 }
@@ -926,8 +937,8 @@ send_user_report_email() {
     fi
 
     local attempt=0
-    while (( attempt < max_retries )); do
-        ((attempt+=1))
+    while ((attempt < max_retries)); do
+        ((attempt += 1))
 
         local send_result
         if declare -F rl_mail_send >/dev/null 2>&1; then
@@ -942,7 +953,7 @@ send_user_report_email() {
             return 0
         fi
 
-        if (( attempt < max_retries )); then
+        if ((attempt < max_retries)); then
             local wait_secs=$((attempt * 2))
             msg_warn "发送失败 (第 $attempt 次)，${wait_secs}s 后重试..."
             sleep "$wait_secs"
@@ -958,7 +969,7 @@ send_all_user_reports() {
     local managed_users=()
     mapfile -t managed_users < <(get_managed_usernames 2>/dev/null)
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         msg_warn "未找到托管用户"
         return 0
     fi
@@ -973,7 +984,7 @@ send_all_user_reports() {
         # 生成个人报告
         if ! generate_user_personal_report "$username" "$report_file" 2>/dev/null; then
             msg_err "用户 $username 报告生成失败"
-            ((failed+=1))
+            ((failed += 1))
             continue
         fi
 
@@ -982,14 +993,14 @@ send_all_user_reports() {
         email=$(get_user_email "$username")
         if [[ -z "$email" ]]; then
             msg_warn "用户 $username 无邮箱，跳过"
-            ((skipped+=1))
+            ((skipped += 1))
             continue
         fi
 
         if send_user_report_email "$username" "$report_file"; then
-            ((sent+=1))
+            ((sent += 1))
         else
-            ((failed+=1))
+            ((failed += 1))
         fi
     done
 
@@ -1013,7 +1024,10 @@ setup_weekly_report_cron() {
         return 0
     fi
 
-    if (crontab -l 2>/dev/null; echo "$cron_entry") | crontab -; then
+    if (
+        crontab -l 2>/dev/null
+        echo "$cron_entry"
+    ) | crontab -; then
         msg_ok "每周报告定时任务已创建（每周一 09:00）"
         msg_step "命令: ${cron_cmd}"
     else
@@ -1076,8 +1090,8 @@ analyze_operation_trends() {
     fi
 
     local total_ops
-    total_ops=$(( $(wc -l < "$USER_CREATION_LOG") - 1 ))
-    if (( total_ops <= 0 )); then
+    total_ops=$(($(wc -l <"$USER_CREATION_LOG") - 1))
+    if ((total_ops <= 0)); then
         msg_info "暂无操作记录"
         return 0
     fi
@@ -1112,7 +1126,7 @@ analyze_operation_trends() {
     }' | sort | while read -r date count; do
         local bar=""
         local i
-        for (( i = 0; i < count && i < 40; i++ )); do
+        for ((i = 0; i < count && i < 40; i++)); do
             bar="${bar}#"
         done
         printf "  ${C_DIM}%-12s${C_RESET} ${C_RESET}%-40s${C_RESET} ${C_BOLD}%d${C_RESET}\n" "$date" "$bar" "$count"
@@ -1142,10 +1156,10 @@ analyze_operation_trends() {
     }' | while read -r hour count; do
         local bar=""
         local i
-        for (( i = 0; i < count && i < 30; i++ )); do
+        for ((i = 0; i < count && i < 30; i++)); do
             bar="${bar}#"
         done
-        if (( count > 0 )); then
+        if ((count > 0)); then
             printf "  ${C_DIM}%s:00${C_RESET} ${C_BGREEN}%-30s${C_RESET} %d\n" "$hour" "$bar" "$count"
         fi
     done
@@ -1181,10 +1195,10 @@ analyze_anomalies() {
     local today_ops
     today_ops=$(tail -n +2 "$USER_CREATION_LOG" | awk -F',' -v d="$today" 'substr($1,1,10)==d {c++} END {print c+0}')
 
-    if (( today_ops > 20 )); then
+    if ((today_ops > 20)); then
         echo ""
         msg_warn "⚠ 今日操作次数异常偏高: ${C_BRED}$today_ops${C_RESET} 次"
-        ((anomaly_count+=1))
+        ((anomaly_count += 1))
     fi
 
     # 2. 检测频繁密码修改（同一用户 7 天内 >3 次）
@@ -1219,9 +1233,9 @@ analyze_anomalies() {
         $1 >= cutoff && $3 ~ /delete|DELETE/ {c++}
         END {print c+0}')
 
-    if (( delete_count > 3 )); then
+    if ((delete_count > 3)); then
         msg_warn "⚠ 24小时内删除操作: ${C_BRED}$delete_count${C_RESET} 次"
-        ((anomaly_count+=1))
+        ((anomaly_count += 1))
     else
         msg_ok "  未发现异常 (删除 $delete_count 次)"
     fi
@@ -1246,7 +1260,7 @@ analyze_anomalies() {
     fi
 
     echo ""
-    if (( anomaly_count == 0 )); then
+    if ((anomaly_count == 0)); then
         msg_ok "未发现明显异常"
     else
         msg_warn "发现 $anomaly_count 个潜在异常，请关注"
@@ -1263,10 +1277,10 @@ generate_log_summary() {
     fi
 
     local total_ops
-    total_ops=$(( $(wc -l < "$USER_CREATION_LOG") - 1 ))
-    (( total_ops < 0 )) && total_ops=0
+    total_ops=$(($(wc -l <"$USER_CREATION_LOG") - 1))
+    ((total_ops < 0)) && total_ops=0
 
-    if (( total_ops == 0 )); then
+    if ((total_ops == 0)); then
         msg_info "暂无操作记录"
         return 0
     fi
@@ -1310,9 +1324,9 @@ show_user_creation_log() {
     fi
 
     local total_lines
-    total_lines=$(wc -l < "$USER_CREATION_LOG")
+    total_lines=$(wc -l <"$USER_CREATION_LOG")
 
-    if (( total_lines <= 1 )); then
+    if ((total_lines <= 1)); then
         msg_info "暂无操作记录"
         return 0
     fi
@@ -1322,21 +1336,21 @@ show_user_creation_log() {
 
     # 表头
     printf "  ${C_BOLD}${C_WHITE}%-20s %-14s %-10s %-10s %-16s %-20s %s${C_RESET}\n" \
-           "时间" "用户名" "操作" "类型" "挂载点" "主目录" "配额(GB)"
+        "时间" "用户名" "操作" "类型" "挂载点" "主目录" "配额(GB)"
     draw_line 70
 
     tail -n +2 "$USER_CREATION_LOG" | while IFS=',' read -r timestamp username action user_type mountpoint home quota_gb; do
         local action_color="$C_RESET"
         case "$action" in
-            *create*|*CREATE*) action_color="$C_BGREEN" ;;
-            *delete*|*DELETE*) action_color="$C_BRED" ;;
-            *update*|*UPDATE*|*modify*) action_color="$C_RESET" ;;
-            *suspend*|*disable*) action_color="$C_BRED" ;;
-            *enable*|*restore*) action_color="$C_RESET" ;;
+        *create* | *CREATE*) action_color="$C_BGREEN" ;;
+        *delete* | *DELETE*) action_color="$C_BRED" ;;
+        *update* | *UPDATE* | *modify*) action_color="$C_RESET" ;;
+        *suspend* | *disable*) action_color="$C_BRED" ;;
+        *enable* | *restore*) action_color="$C_RESET" ;;
         esac
 
         printf "  ${C_DIM}%-20s${C_RESET} ${C_BOLD}%-14s${C_RESET} ${action_color}%-10s${C_RESET} %-10s %-16s %-20s %s\n" \
-               "$timestamp" "$username" "$action" "$user_type" "$mountpoint" "$home" "$quota_gb"
+            "$timestamp" "$username" "$action" "$user_type" "$mountpoint" "$home" "$quota_gb"
     done
 
     echo ""
@@ -1361,7 +1375,7 @@ query_user_history() {
     echo ""
 
     printf "  ${C_BOLD}${C_WHITE}%-20s %-10s %-10s %-16s %-20s %s${C_RESET}\n" \
-           "时间" "操作" "类型" "挂载点" "主目录" "配额(GB)"
+        "时间" "操作" "类型" "挂载点" "主目录" "配额(GB)"
     draw_line 60
 
     tail -n +2 "$USER_CREATION_LOG" | while IFS=',' read -r timestamp uname action user_type mountpoint home quota_gb; do
@@ -1369,15 +1383,15 @@ query_user_history() {
 
         local action_color="$C_RESET"
         case "$action" in
-            *create*|*CREATE*) action_color="$C_BGREEN" ;;
-            *delete*|*DELETE*) action_color="$C_BRED" ;;
-            *update*|*UPDATE*|*modify*) action_color="$C_RESET" ;;
-            *suspend*|*disable*) action_color="$C_BRED" ;;
-            *enable*|*restore*) action_color="$C_RESET" ;;
+        *create* | *CREATE*) action_color="$C_BGREEN" ;;
+        *delete* | *DELETE*) action_color="$C_BRED" ;;
+        *update* | *UPDATE* | *modify*) action_color="$C_RESET" ;;
+        *suspend* | *disable*) action_color="$C_BRED" ;;
+        *enable* | *restore*) action_color="$C_RESET" ;;
         esac
 
         printf "  ${C_DIM}%-20s${C_RESET} ${action_color}%-10s${C_RESET} %-10s %-16s %-20s %s\n" \
-               "$timestamp" "$action" "$user_type" "$mountpoint" "$home" "$quota_gb"
+            "$timestamp" "$action" "$user_type" "$mountpoint" "$home" "$quota_gb"
     done
 
     echo ""
@@ -1402,7 +1416,7 @@ query_by_date_range() {
     echo ""
 
     printf "  ${C_BOLD}${C_WHITE}%-20s %-14s %-10s %-10s %-16s %-20s %s${C_RESET}\n" \
-           "时间" "用户名" "操作" "类型" "挂载点" "主目录" "配额(GB)"
+        "时间" "用户名" "操作" "类型" "挂载点" "主目录" "配额(GB)"
     draw_line 70
 
     tail -n +2 "$USER_CREATION_LOG" | while IFS=',' read -r timestamp username action user_type mountpoint home quota_gb; do
@@ -1413,13 +1427,13 @@ query_by_date_range() {
         if [[ ! "$record_date" < "$start_date" && ! "$record_date" > "$end_date" ]]; then
             local action_color="$C_RESET"
             case "$action" in
-                *create*|*CREATE*) action_color="$C_BGREEN" ;;
-                *delete*|*DELETE*) action_color="$C_BRED" ;;
-                *update*|*UPDATE*|*modify*) action_color="$C_RESET" ;;
+            *create* | *CREATE*) action_color="$C_BGREEN" ;;
+            *delete* | *DELETE*) action_color="$C_BRED" ;;
+            *update* | *UPDATE* | *modify*) action_color="$C_RESET" ;;
             esac
 
             printf "  ${C_DIM}%-20s${C_RESET} ${C_BOLD}%-14s${C_RESET} ${action_color}%-10s${C_RESET} %-10s %-16s %-20s %s\n" \
-                   "$timestamp" "$username" "$action" "$user_type" "$mountpoint" "$home" "$quota_gb"
+                "$timestamp" "$username" "$action" "$user_type" "$mountpoint" "$home" "$quota_gb"
         fi
     done
 
@@ -1448,10 +1462,10 @@ generate_user_statistics() {
     # 操作日志统计
     if [[ -f "$USER_CREATION_LOG" ]]; then
         local total_ops=0 create_ops=0 delete_ops=0 update_ops=0
-        total_ops=$(( $(wc -l < "$USER_CREATION_LOG") - 1 ))
-        (( total_ops < 0 )) && total_ops=0
+        total_ops=$(($(wc -l <"$USER_CREATION_LOG") - 1))
+        ((total_ops < 0)) && total_ops=0
 
-        if (( total_ops > 0 )); then
+        if ((total_ops > 0)); then
             create_ops=$(tail -n +2 "$USER_CREATION_LOG" | awk -F',' '$3 ~ /create|CREATE/ {c++} END {print c+0}')
             delete_ops=$(tail -n +2 "$USER_CREATION_LOG" | awk -F',' '$3 ~ /delete|DELETE/ {c++} END {print c+0}')
             update_ops=$(tail -n +2 "$USER_CREATION_LOG" | awk -F',' '$3 ~ /update|UPDATE|modify/ {c++} END {print c+0}')
@@ -1480,12 +1494,12 @@ generate_user_statistics() {
             local home
             home=$(get_user_home "$username" 2>/dev/null)
             if [[ "$home" == "${mp}/"* ]]; then
-                ((disk_user_count+=1))
+                ((disk_user_count += 1))
             fi
         done
 
         local color="$C_RESET"
-        (( disk_user_count > 0 )) && color="$C_RESET"
+        ((disk_user_count > 0)) && color="$C_RESET"
         printf "  ${C_DIM}data${idx}${C_RESET}  ${color}%3d 个用户${C_RESET}\n" "$disk_user_count"
     done
 
@@ -1500,13 +1514,13 @@ generate_quota_report() {
     draw_header "配额使用报告"
     echo ""
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         msg_info "暂无托管用户"
         return 0
     fi
 
     printf "  ${C_BOLD}${C_WHITE}%-16s %-14s %-12s %-12s %-24s %s${C_RESET}\n" \
-           "用户名" "挂载点" "已用" "配额" "使用率" "状态"
+        "用户名" "挂载点" "已用" "配额" "使用率" "状态"
     draw_line 60
 
     for username in "${managed_users[@]}"; do
@@ -1519,11 +1533,11 @@ generate_quota_report() {
         quota_info=$(get_user_quota_info "$username" "$mp" 2>/dev/null)
         used_bytes="${quota_info%%:*}"
         limit_bytes="${quota_info#*:}"
-        [[ "$used_bytes" =~ ^[0-9]+$ ]]  || used_bytes=0
+        [[ "$used_bytes" =~ ^[0-9]+$ ]] || used_bytes=0
         [[ "$limit_bytes" =~ ^[0-9]+$ ]] || limit_bytes=0
 
         pct=0
-        (( limit_bytes > 0 )) && pct=$((used_bytes * 100 / limit_bytes))
+        ((limit_bytes > 0)) && pct=$((used_bytes * 100 / limit_bytes))
 
         local used_h limit_h
         used_h=$(bytes_to_human "$used_bytes")
@@ -1532,7 +1546,7 @@ generate_quota_report() {
         local mp_short="${mp##*/}"
 
         printf "  ${C_BOLD}%-16s${C_RESET} %-14s %-12s %-12s " \
-               "$username" "$mp_short" "$used_h" "$limit_h"
+            "$username" "$mp_short" "$used_h" "$limit_h"
         draw_usage_bar "$pct" 16
         echo ""
     done
@@ -1548,13 +1562,13 @@ generate_resource_report() {
     draw_header "资源限制报告"
     echo ""
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         msg_info "暂无托管用户"
         return 0
     fi
 
     printf "  ${C_BOLD}${C_WHITE}%-18s %-12s %-12s %s${C_RESET}\n" \
-           "用户名" "CPU 配额" "内存限制" "状态"
+        "用户名" "CPU 配额" "内存限制" "状态"
     draw_line 52
 
     local configured=0
@@ -1567,7 +1581,7 @@ generate_resource_report() {
         if [[ -n "$cpu" || -n "$memory" ]]; then
             status_text="已配置"
             status_color="$C_BGREEN"
-            ((configured+=1))
+            ((configured += 1))
         else
             status_text="未设置"
             status_color="$C_DIM"
@@ -1600,13 +1614,13 @@ show_user_resource_usage() {
     draw_header "用户实时资源使用"
     echo ""
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         msg_info "暂无托管用户"
         return 0
     fi
 
     printf "  ${C_BOLD}${C_WHITE}%-16s %-8s %-8s %-10s %-12s %-12s %-18s %-10s %-8s %-20s %s${C_RESET}\n" \
-           "用户名" "进程数" "线程数" "CPU %" "内存(RSS)" "磁盘I/O" "流量使用" "任务提交数" "登录数" "登录IP/来源" "登录状态"
+        "用户名" "进程数" "线程数" "CPU %" "内存(RSS)" "磁盘I/O" "流量使用" "任务提交数" "登录数" "登录IP/来源" "登录状态"
     draw_line 140
 
     for username in "${managed_users[@]}"; do
@@ -1621,7 +1635,7 @@ show_user_resource_usage() {
         login_sources="$REPORT_LOGIN_SOURCES"
         [[ ${#login_sources} -gt 20 ]] && login_sources="${login_sources:0:17}..."
 
-        if (( proc_count > 0 )); then
+        if ((proc_count > 0)); then
             cpu_pct=$(ps -u "$username" --no-headers -o pcpu 2>/dev/null | awk '{sum+=$1} END {printf "%.1f", sum}')
             mem_rss=$(ps -u "$username" --no-headers -o rss 2>/dev/null | awk '{sum+=$1} END {
                 if (sum >= 1048576) printf "%.1f GB", sum/1048576
@@ -1644,9 +1658,9 @@ show_user_resource_usage() {
             fi
         done < <(ps -u "$username" --no-headers -o pid 2>/dev/null | head -n "${REPORT_MAX_PROCESS_SCAN:-500}" | tr -d ' ')
 
-        if (( total_io >= 1073741824 )); then
+        if ((total_io >= 1073741824)); then
             io_total=$(awk "BEGIN {printf \"%.1f GB\", $total_io / 1073741824}")
-        elif (( total_io >= 1048576 )); then
+        elif ((total_io >= 1048576)); then
             io_total=$(awk "BEGIN {printf \"%.1f MB\", $total_io / 1048576}")
         else
             io_total="0 KB"
@@ -1662,14 +1676,14 @@ show_user_resource_usage() {
         local cpu_color="$C_RESET"
         local cpu_val
         cpu_val=$(echo "$cpu_pct" | awk '{printf "%d", $1}')
-        if (( cpu_val >= 80 )); then
+        if ((cpu_val >= 80)); then
             cpu_color="$C_BRED"
-        elif (( cpu_val >= 50 )); then
+        elif ((cpu_val >= 50)); then
             cpu_color="$C_RESET"
         fi
 
         printf "  ${C_BOLD}%-16s${C_RESET} %-8s %-8s ${cpu_color}%-10s${C_RESET} %-12s %-12s %-18s %-10s %-8s %-20s " \
-               "$username" "$proc_count" "${thread_count:-0}" "${cpu_pct}%" "$mem_rss" "$io_total" "$traffic_usage" "${job_submissions:-0}" "${login_count:-0}" "$login_sources"
+            "$username" "$proc_count" "${thread_count:-0}" "${cpu_pct}%" "$mem_rss" "$io_total" "$traffic_usage" "${job_submissions:-0}" "${login_count:-0}" "$login_sources"
         echo -e "$login_status"
     done
 
@@ -1698,7 +1712,7 @@ show_single_user_resource() {
     draw_info_card "近期登录次数:" "${login_count:-0}"
     draw_info_card "登录IP/来源:" "$login_sources"
 
-    if (( proc_count > 0 )); then
+    if ((proc_count > 0)); then
         local total_cpu total_mem
         total_cpu=$(ps -u "$username" --no-headers -o pcpu 2>/dev/null | awk '{sum+=$1} END {printf "%.1f", sum}')
         total_mem=$(ps -u "$username" --no-headers -o rss 2>/dev/null | awk '{sum+=$1} END {
@@ -1775,14 +1789,14 @@ export_full_report() {
             quota_info=$(get_user_quota_info "$username" "$mp" 2>/dev/null)
             used_bytes="${quota_info%%:*}"
             limit_bytes="${quota_info#*:}"
-            [[ "$used_bytes" =~ ^[0-9]+$ ]]  || used_bytes=0
+            [[ "$used_bytes" =~ ^[0-9]+$ ]] || used_bytes=0
             [[ "$limit_bytes" =~ ^[0-9]+$ ]] || limit_bytes=0
 
             pct=0
-            (( limit_bytes > 0 )) && pct=$((used_bytes * 100 / limit_bytes))
+            ((limit_bytes > 0)) && pct=$((used_bytes * 100 / limit_bytes))
 
             printf "%-16s %-14s %-12s %-12s %d%%\n" \
-                   "$username" "${mp##*/}" "$(bytes_to_human "$used_bytes")" "$(bytes_to_human "$limit_bytes")" "$pct"
+                "$username" "${mp##*/}" "$(bytes_to_human "$used_bytes")" "$(bytes_to_human "$limit_bytes")" "$pct"
         done
         echo ""
 
@@ -1808,11 +1822,11 @@ export_full_report() {
         echo "----------------------------------------------"
         if [[ -f "$USER_CREATION_LOG" ]]; then
             printf "%-20s %-14s %-10s %-10s %-16s %-20s %s\n" \
-                   "时间" "用户名" "操作" "类型" "挂载点" "主目录" "配额(GB)"
+                "时间" "用户名" "操作" "类型" "挂载点" "主目录" "配额(GB)"
             echo "----------------------------------------------"
             tail -n +2 "$USER_CREATION_LOG" | tail -20 | while IFS=',' read -r timestamp username action user_type mountpoint home quota_gb; do
                 printf "%-20s %-14s %-10s %-10s %-16s %-20s %s\n" \
-                       "$timestamp" "$username" "$action" "$user_type" "$mountpoint" "$home" "$quota_gb"
+                    "$timestamp" "$username" "$action" "$user_type" "$mountpoint" "$home" "$quota_gb"
             done
         else
             echo "无日志记录"
@@ -1822,7 +1836,7 @@ export_full_report() {
         echo "=============================================="
         echo "  报告结束"
         echo "=============================================="
-    } > "$output_file"
+    } >"$output_file"
 
     msg_ok "完整报告已导出: ${C_BOLD}${output_file}${C_RESET}"
 }
@@ -1853,9 +1867,9 @@ export_users_csv() {
                 quota_info=$(get_user_quota_info "$username" "$mp" 2>/dev/null)
                 used_bytes="${quota_info%%:*}"
                 limit_bytes="${quota_info#*:}"
-                [[ "$used_bytes" =~ ^[0-9]+$ ]]  || used_bytes=0
+                [[ "$used_bytes" =~ ^[0-9]+$ ]] || used_bytes=0
                 [[ "$limit_bytes" =~ ^[0-9]+$ ]] || limit_bytes=0
-                (( limit_bytes > 0 )) && pct=$((used_bytes * 100 / limit_bytes))
+                ((limit_bytes > 0)) && pct=$((used_bytes * 100 / limit_bytes))
             fi
 
             local limits cpu memory
@@ -1864,9 +1878,9 @@ export_users_csv() {
             memory="${limits#*:}"
 
             printf '%s,%s,%s,%s,%s,%d,%s,%s\n' \
-                   "$username" "$home" "${mp:--}" "$used_bytes" "$limit_bytes" "$pct" "${cpu:--}" "${memory:--}"
+                "$username" "$home" "${mp:--}" "$used_bytes" "$limit_bytes" "$pct" "${cpu:--}" "${memory:--}"
         done
-    } > "$output_file"
+    } >"$output_file"
 
     msg_ok "CSV 已导出: ${C_BOLD}${output_file}${C_RESET} (${#managed_users[@]} 个用户)"
 }

@@ -10,15 +10,15 @@
 
 # 标准 ulimit 资源类型
 readonly ULIMIT_TYPES=(
-    "core"      # 核心文件大小
-    "data"      # 数据段大小
-    "fsize"     # 文件大小
-    "memlock"   # 锁定内存
-    "nofile"    # 打开文件数
-    "nproc"     # 进程数
-    "rss"       # 驻留集大小
-    "stack"     # 栈大小
-    "cpu"       # CPU 时间
+    "core"    # 核心文件大小
+    "data"    # 数据段大小
+    "fsize"   # 文件大小
+    "memlock" # 锁定内存
+    "nofile"  # 打开文件数
+    "nproc"   # 进程数
+    "rss"     # 驻留集大小
+    "stack"   # 栈大小
+    "cpu"     # CPU 时间
 )
 
 # ============================================================
@@ -31,17 +31,23 @@ readonly ULIMIT_TYPES=(
 as_user() {
     local username="$1"
     shift
-    
+
     # 验证参数
-    [[ -z "$username" ]] && { msg_err "as_user: 用户名不能为空"; return 1; }
-    [[ $# -eq 0 ]] && { msg_err "as_user: 命令不能为空"; return 1; }
-    
+    [[ -z "$username" ]] && {
+        msg_err "as_user: 用户名不能为空"
+        return 1
+    }
+    [[ $# -eq 0 ]] && {
+        msg_err "as_user: 命令不能为空"
+        return 1
+    }
+
     # 检查用户是否存在
     if ! id "$username" &>/dev/null; then
         msg_err "as_user: 用户不存在: $username"
         return 1
     fi
-    
+
     # 执行命令
     if [[ "${SUDO_NONINTERACTIVE:-0}" == "1" ]]; then
         sudo -n -u "$username" "$@" 2>&1
@@ -55,16 +61,16 @@ as_user() {
 _ulimit_opt_from_resource() {
     local resource="$1"
     case "$resource" in
-        core)   echo "c" ;;
-        data)   echo "d" ;;
-        fsize)  echo "f" ;;
-        memlock)echo "l" ;;
-        nofile) echo "n" ;;
-        nproc)  echo "u" ;;
-        rss)    echo "m" ;;
-        stack)  echo "s" ;;
-        cpu)    echo "t" ;;
-        *)      echo "n" ;; # 默认使用 nofile (n)
+    core) echo "c" ;;
+    data) echo "d" ;;
+    fsize) echo "f" ;;
+    memlock) echo "l" ;;
+    nofile) echo "n" ;;
+    nproc) echo "u" ;;
+    rss) echo "m" ;;
+    stack) echo "s" ;;
+    cpu) echo "t" ;;
+    *) echo "n" ;; # 默认使用 nofile (n)
     esac
 }
 
@@ -73,28 +79,28 @@ get_user_ulimit() {
     local username="$1"
     local resource="${2:-nofile}"
     local limit_type="${3:-soft}"
-    
+
     # 验证用户存在
     if ! id "$username" &>/dev/null; then
         msg_err "用户不存在: $username"
         return 1
     fi
-    
+
     # 将资源名称映射到 ulimit 选项字母
     local opt
     opt=$(_ulimit_opt_from_resource "$resource")
-    
+
     # 构建 ulimit 命令
     local cmd="ulimit -${opt}"
     [[ "$limit_type" == "hard" ]] && cmd="ulimit -H -${opt}"
-    
+
     # 使用最小权限封装执行（替代直接 sudo -u）
     local result
     result=$(as_user "$username" bash -c "$cmd" 2>&1) || {
         msg_err "获取 ulimit 失败: $result"
         return 1
     }
-    
+
     echo "$result"
 }
 
@@ -104,44 +110,45 @@ set_user_ulimit() {
     local resource="$2"
     local soft_limit="$3"
     local hard_limit="${4:-$3}"
-    
+
     # 验证用户存在
     if ! id "$username" &>/dev/null; then
         msg_err "用户不存在: $username"
         return 1
     fi
-    
+
     # 创建 limits.d 配置文件
     local limits_file="/etc/security/limits.d/90-user-manager-${username}.conf"
-    
+
     # 读取现有配置
     local existing_config=""
     if [[ -f "$limits_file" ]]; then
         existing_config=$(grep -v "^#" "$limits_file" 2>/dev/null | grep -v "^${username}\s*${resource}\s*" || true)
     fi
-    
+
     # 写入新配置
     local rendered_config
     rendered_config=$(
-    {
-        echo "# 由 user-manager 自动生成 - 用户 $username 的资源限制"
-        echo "# 更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
-        echo ""
-        # 保留其他资源类型的配置
-        if [[ -n "$existing_config" ]]; then
-            echo "$existing_config"
+        {
+            echo "# 由 user-manager 自动生成 - 用户 $username 的资源限制"
+            echo "# 更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
             echo ""
-        fi
-        # 添加新的限制
-        echo "$username    ${soft_limit}    ${resource}"
-        [[ "$soft_limit" != "$hard_limit" ]] && echo "$username    ${hard_limit}    ${resource}"
-    })
+            # 保留其他资源类型的配置
+            if [[ -n "$existing_config" ]]; then
+                echo "$existing_config"
+                echo ""
+            fi
+            # 添加新的限制
+            echo "$username    ${soft_limit}    ${resource}"
+            [[ "$soft_limit" != "$hard_limit" ]] && echo "$username    ${hard_limit}    ${resource}"
+        }
+    )
 
     printf '%s' "$rendered_config" | write_privileged_text_file "$limits_file" "0644" "root:root" || return 1
-    
+
     msg_ok "ulimit 已设置: $username - $resource (soft: $soft_limit, hard: $hard_limit)"
     msg_warn "用户需要重新登录才能生效"
-    
+
     return 0
 }
 
@@ -149,14 +156,14 @@ set_user_ulimit() {
 remove_user_ulimit() {
     local username="$1"
     local resource="${2:-}"
-    
+
     local limits_file="/etc/security/limits.d/90-user-manager-${username}.conf"
-    
+
     if [[ ! -f "$limits_file" ]]; then
         msg_info "用户 $username 没有 ulimit 配置"
         return 0
     fi
-    
+
     if [[ -n "$resource" ]]; then
         # 删除特定资源的配置
         local filtered_config
@@ -172,50 +179,50 @@ remove_user_ulimit() {
         priv_rm -f "$limits_file"
         msg_ok "已移除用户 $username 的所有 ulimit 配置"
     fi
-    
+
     return 0
 }
 
 # 显示用户的所有 ulimit 设置
 show_user_ulimits() {
     local username="$1"
-    
+
     if ! id "$username" &>/dev/null; then
         msg_err "用户不存在: $username"
         return 1
     fi
-    
+
     draw_header "用户 $username 的 ulimit 设置"
-    
+
     printf "  ${C_BOLD}${C_WHITE}%-18s %-18s %-18s${C_RESET}\n" \
         "资源类型" "软限制" "硬限制"
     draw_line 60
-    
+
     local resource
     for resource in "${ULIMIT_TYPES[@]}"; do
         local soft_val hard_val
-        
+
         soft_val=$(get_user_ulimit "$username" "$resource" "soft" 2>/dev/null || echo "N/A")
         hard_val=$(get_user_ulimit "$username" "$resource" "hard" 2>/dev/null || echo "N/A")
-        
+
         # 格式化显示
         if [[ "$soft_val" == "unlimited" || "$soft_val" == "N/A" ]]; then
             display_soft="${C_DIM}$soft_val${C_RESET}"
         else
             display_soft="${C_RESET}$soft_val${C_RESET}"
         fi
-        
+
         if [[ "$hard_val" == "unlimited" || "$hard_val" == "N/A" ]]; then
             display_hard="${C_DIM}$hard_val${C_RESET}"
         else
             display_hard="${C_RESET}$hard_val${C_RESET}"
         fi
-        
+
         printf "  %-18s %b %b\n" "$resource" "$display_soft" "$display_hard"
     done
-    
+
     echo ""
-    
+
     # 显示 limits.d 配置
     local limits_file="/etc/security/limits.d/90-user-manager-${username}.conf"
     if [[ -f "$limits_file" ]]; then
@@ -224,45 +231,45 @@ show_user_ulimits() {
         cat "$limits_file" | sed 's/^/  /'
         echo "${C_RESET}"
     fi
-    
+
     return 0
 }
 
 # 显示所有用户的 ulimit 概览
 show_all_ulimits_overview() {
     draw_header "所有用户的 ulimit 概览"
-    
+
     local managed_users=()
     mapfile -t managed_users < <(get_managed_usernames 2>/dev/null)
-    
-    if (( ${#managed_users[@]} == 0 )); then
+
+    if ((${#managed_users[@]} == 0)); then
         msg_info "暂无托管用户"
         return 0
     fi
-    
+
     printf "  ${C_BOLD}${C_WHITE}%-18s %-15s %-15s %-15s${C_RESET}\n" \
         "用户名" "打开文件数" "进程数" "配置状态"
     draw_line 70
-    
+
     local username
     for username in "${managed_users[@]}"; do
         local nofile nproc config_status
-        
+
         nofile=$(get_user_ulimit "$username" "nofile" "soft" 2>/dev/null || echo "?")
         nproc=$(get_user_ulimit "$username" "nproc" "soft" 2>/dev/null || echo "?")
-        
+
         if [[ -f "/etc/security/limits.d/90-user-manager-${username}.conf" ]]; then
             config_status="${C_BGREEN}已配置${C_RESET}"
         else
             config_status="${C_DIM}默认${C_RESET}"
         fi
-        
+
         printf "  %-18s %-15s %-15s %b\n" "$username" "$nofile" "$nproc" "$config_status"
     done
-    
+
     echo ""
     msg_info "共 ${#managed_users[@]} 个用户"
-    
+
     return 0
 }
 
@@ -273,40 +280,40 @@ show_all_ulimits_overview() {
 # 显示用户的进程资源使用情况
 show_user_process_resources() {
     local username="$1"
-    
+
     if ! id "$username" &>/dev/null; then
         msg_err "用户不存在: $username"
         return 1
     fi
-    
+
     draw_header "用户 $username 的进程资源使用情况"
-    
+
     # 获取进程信息
     local ps_output
     ps_output=$(ps -u "$username" -o pid,pcpu,pmem,nlwp,comm --sort=-pcpu 2>/dev/null | head -20)
-    
+
     if [[ -z "$ps_output" ]]; then
         msg_info "该用户没有运行中的进程"
         return 0
     fi
-    
+
     printf "  ${C_BOLD}${C_WHITE}%-8s %-8s %-8s %-8s %s${C_RESET}\n" \
         "PID" "CPU%" "MEM%" "线程" "命令"
     draw_line 60
-    
+
     echo "$ps_output" | tail -n +2 | while read -r pid pcpu pmem nlwp comm; do
         printf "  %-8s %-8s %-8s %-8s %s\n" "$pid" "$pcpu" "$pmem" "$nlwp" "$comm"
     done
-    
+
     echo ""
-    
+
     # 汇总信息
     local total_procs total_threads
     total_procs=$(ps -u "$username" --no-headers 2>/dev/null | wc -l)
     total_threads=$(ps -u "$username" -o nlwp --no-headers 2>/dev/null | awk '{sum+=$1} END {print sum}')
-    
+
     msg_info "进程总数: ${C_RESET}${total_procs}${C_RESET}  线程总数: ${C_RESET}${total_threads}${C_RESET}"
-    
+
     return 0
 }
 
@@ -362,13 +369,13 @@ rl_resource_apply_runtime_limits() {
     fi
 
     if priv_systemctl set-property --runtime "$rl_unit" "${rl_properties[@]}"; then
-        declare -F audit_success >/dev/null 2>&1 && \
+        declare -F audit_success >/dev/null 2>&1 &&
             audit_success "RESOURCE_SET_PROPERTY" "$rl_unit" "runtime ${rl_properties[*]}" || true
         return 0
     fi
 
     local rl_rc=$?
-    declare -F audit_failure >/dev/null 2>&1 && \
+    declare -F audit_failure >/dev/null 2>&1 &&
         audit_failure "RESOURCE_SET_PROPERTY" "$rl_unit" "runtime apply failed rc=$rl_rc ${rl_properties[*]}" || true
     return "$rl_rc"
 }
@@ -388,13 +395,13 @@ rl_resource_reset_runtime_limits() {
     )
 
     if priv_systemctl set-property --runtime "$rl_unit" "${rl_properties[@]}"; then
-        declare -F audit_success >/dev/null 2>&1 && \
+        declare -F audit_success >/dev/null 2>&1 &&
             audit_success "RESOURCE_RESET_PROPERTY" "$rl_unit" "runtime ${rl_properties[*]}" || true
         return 0
     fi
 
     local rl_rc=$?
-    declare -F audit_failure >/dev/null 2>&1 && \
+    declare -F audit_failure >/dev/null 2>&1 &&
         audit_failure "RESOURCE_RESET_PROPERTY" "$rl_unit" "runtime reset failed rc=$rl_rc ${rl_properties[*]}" || true
     return "$rl_rc"
 }
@@ -450,10 +457,10 @@ configure_resource_limits() {
     if ! {
         echo "[Slice]"
         echo "CPUAccounting=yes"
-        [[ -n "$cpu_quota" ]]     && echo "CPUQuota=$cpu_quota"
+        [[ -n "$cpu_quota" ]] && echo "CPUQuota=$cpu_quota"
         echo "MemoryAccounting=yes"
         [[ -n "$rl_memory_high" ]] && echo "MemoryHigh=$rl_memory_high"
-        [[ -n "$memory_limit" ]]  && echo "MemoryMax=$memory_limit"
+        [[ -n "$memory_limit" ]] && echo "MemoryMax=$memory_limit"
         echo "TasksAccounting=yes"
         [[ -n "$rl_tasks_max" ]] && echo "TasksMax=$rl_tasks_max"
         if [[ -n "$rl_io_read_bandwidth_max" || -n "$rl_io_write_bandwidth_max" ]]; then
@@ -472,8 +479,8 @@ configure_resource_limits() {
     fi
 
     msg_ok "资源限制已配置: ${C_BOLD}$username${C_RESET}"
-    [[ -n "$cpu_quota" ]]     && msg_step "CPU 配额: ${C_RESET}$cpu_quota${C_RESET}"
-    [[ -n "$memory_limit" ]]  && msg_step "内存限制: ${C_RESET}$memory_limit${C_RESET}"
+    [[ -n "$cpu_quota" ]] && msg_step "CPU 配额: ${C_RESET}$cpu_quota${C_RESET}"
+    [[ -n "$memory_limit" ]] && msg_step "内存限制: ${C_RESET}$memory_limit${C_RESET}"
 
     return 0
 }
@@ -515,7 +522,7 @@ show_resource_overview() {
     local managed_users=()
     mapfile -t managed_users < <(get_managed_usernames)
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         msg_info "暂无托管用户"
         return 0
     fi
@@ -535,7 +542,7 @@ show_resource_overview() {
         local status_badge
         if [[ -n "$cpu" || -n "$memory" ]]; then
             status_badge="${C_BGREEN}已配置${C_RESET}"
-            ((configured+=1))
+            ((configured += 1))
         else
             status_badge="${C_DIM}未设置${C_RESET}"
         fi
@@ -593,7 +600,7 @@ rl_resource_policy_apply_group() {
             configure_resource_limits "$rl_user" "$rl_cpu" "$rl_memory"
             ((rl_applied++))
         fi
-    done <<< "$rl_members"
+    done <<<"$rl_members"
     msg_ok "已为组 $rl_group 的 $rl_applied 个成员应用资源配置"
     return 0
 }
@@ -617,7 +624,7 @@ rl_resource_policy_remove_group() {
             remove_resource_limits "$rl_uid"
             ((rl_removed++))
         fi
-    done <<< "$rl_members"
+    done <<<"$rl_members"
     msg_ok "已移除组 $rl_group 的 $rl_removed 个成员资源配置"
     return 0
 }

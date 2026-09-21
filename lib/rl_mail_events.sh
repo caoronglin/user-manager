@@ -4,7 +4,11 @@
 : "${SCRIPT_DIR:=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 : "${EMAIL_TEMPLATES_DIR:=$SCRIPT_DIR/templates/email}"
 
-rl_mail_event_msg() { local rl_fn="$1"; shift; declare -F "$rl_fn" >/dev/null 2>&1 && "$rl_fn" "$*" || printf '%s\n' "$*" >&2; }
+rl_mail_event_msg() {
+    local rl_fn="$1"
+    shift
+    declare -F "$rl_fn" >/dev/null 2>&1 && "$rl_fn" "$*" || printf '%s\n' "$*" >&2
+}
 
 rl_mail_event_valid_email() {
     [[ "${1:-}" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]
@@ -19,11 +23,21 @@ rl_mail_event_subject_safe() {
 
 rl_mail_event_password_created() {
     local rl_username="$1" rl_password="$2" rl_email="$3" rl_action="${4:-密码更新}" rl_retries="${5:-3}"
-    [[ -n "$rl_username" ]] || { rl_mail_event_msg msg_err "send_password_email: 用户名不能为空"; return 1; }
-    [[ -n "$rl_password" ]] || { rl_mail_event_msg msg_err "send_password_email: 密码不能为空"; return 1; }
-    [[ -n "$rl_email" ]] || { rl_mail_event_msg msg_warn "send_password_email: 邮箱地址为空，跳过发送"; return 0; }
+    [[ -n "$rl_username" ]] || {
+        rl_mail_event_msg msg_err "send_password_email: 用户名不能为空"
+        return 1
+    }
+    [[ -n "$rl_password" ]] || {
+        rl_mail_event_msg msg_err "send_password_email: 密码不能为空"
+        return 1
+    }
+    [[ -n "$rl_email" ]] || {
+        rl_mail_event_msg msg_warn "send_password_email: 邮箱地址为空，跳过发送"
+        return 0
+    }
     if ! rl_mail_event_valid_email "$rl_email"; then
-        rl_mail_audit_log "$rl_username" "$rl_email" "$rl_action" failed invalid_email_format; return 1
+        rl_mail_audit_log "$rl_username" "$rl_email" "$rl_action" failed invalid_email_format
+        return 1
     fi
     local rl_timestamp rl_template_file rl_html_body
     rl_timestamp=$(date '+%Y-%m-%d %H:%M:%S')
@@ -35,7 +49,8 @@ rl_mail_event_password_created() {
     fi
     rl_mail_audit_log "$rl_username" "$rl_email" "$rl_action" sending
     if rl_mail_send "$rl_email" "【重要】${rl_action}通知 - ${rl_username}" "$rl_html_body" "$rl_retries"; then
-        rl_mail_audit_log "$rl_username" "$rl_email" "$rl_action" sent; return 0
+        rl_mail_audit_log "$rl_username" "$rl_email" "$rl_action" sent
+        return 0
     fi
     rl_mail_audit_log "$rl_username" "$rl_email" "$rl_action" failed max_retries_exceeded
     return 1
@@ -55,8 +70,14 @@ rl_mail_event_render() {
 
 rl_mail_event_account_notice() {
     local rl_template="$1" rl_action="$2" rl_username="$3" rl_email="$4" rl_reason="${5:-}" rl_expiry="${6:-}" rl_operator="${7:-system}" rl_status="${8:-}"
-    [[ -n "$rl_username" ]] || { rl_mail_event_msg msg_err "account notice: 用户名不能为空"; return 1; }
-    [[ -n "$rl_email" ]] || { rl_mail_event_msg msg_warn "account notice: 邮箱地址为空，跳过发送"; return 0; }
+    [[ -n "$rl_username" ]] || {
+        rl_mail_event_msg msg_err "account notice: 用户名不能为空"
+        return 1
+    }
+    [[ -n "$rl_email" ]] || {
+        rl_mail_event_msg msg_warn "account notice: 邮箱地址为空，跳过发送"
+        return 0
+    }
     if ! rl_mail_event_valid_email "$rl_email"; then
         rl_mail_audit_log "$rl_username" "$rl_email" "$rl_action" failed invalid_email_format
         return 1
@@ -79,8 +100,14 @@ send_account_restored_email() { rl_mail_event_account_notice account_restored "�
 
 send_quota_hard_limit_email() {
     local rl_username="$1" rl_email="$2" rl_quota="$3" rl_operator="${4:-system}"
-    [[ -n "$rl_username" ]] || { rl_mail_event_msg msg_err "quota notice: 用户名不能为空"; return 1; }
-    [[ -n "$rl_email" ]] || { rl_mail_event_msg msg_warn "quota notice: 邮箱地址为空，跳过发送"; return 0; }
+    [[ -n "$rl_username" ]] || {
+        rl_mail_event_msg msg_err "quota notice: 用户名不能为空"
+        return 1
+    }
+    [[ -n "$rl_email" ]] || {
+        rl_mail_event_msg msg_warn "quota notice: 邮箱地址为空，跳过发送"
+        return 0
+    }
     if ! rl_mail_event_valid_email "$rl_email"; then
         rl_mail_audit_log "$rl_username" "$rl_email" "硬配额设置" failed invalid_email_format
         return 1

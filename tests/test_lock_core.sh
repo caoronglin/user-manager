@@ -85,7 +85,7 @@ fi
 test_start "release_lock_enhanced: 双重释放安全"
 if acquire_lock_with_timeout 5; then
     release_lock_enhanced
-    release_lock_enhanced  # 第二次释放应安全
+    release_lock_enhanced # 第二次释放应安全
     test_pass
 else
     test_fail "无法获取增强锁"

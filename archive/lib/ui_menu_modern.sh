@@ -60,9 +60,9 @@ C_BORDER="${C_RESET}"
 C_HIGHLIGHT="${C_BGREEN}"
 
 # 状态颜色
-C_SELECTED_BG="\033[7;32m"  # 选中背景色
-C_SELECTED_TEXT="\033[0;0;0m"   # 选中文本色
-C_DIM_TEXT="\033[0;0;0m"    # 暗淡文本色
+C_SELECTED_BG="\033[7;32m"    # 选中背景色
+C_SELECTED_TEXT="\033[0;0;0m" # 选中文本色
+C_DIM_TEXT="\033[0;0;0m"      # 暗淡文本色
 
 # ============================================================
 # 菜单状态
@@ -80,14 +80,14 @@ MENU_SELECTED_INDEX=0
 # 绘制带图标的菜单项（高亮）
 # 参数: $1=选项数字 $2=图标 $3=标签 $4=描述 $5=是否选中
 draw_menu_item_icon() {
-    local num="$1" 
-    local icon="${2:-ICON_BULLET}" 
-    local label="$3" 
+    local num="$1"
+    local icon="${2:-ICON_BULLET}"
+    local label="$3"
     local desc="${4:-}"
     local is_selected="${5:-false}"
-    
+
     local indent="    "
-    
+
     if [[ "$is_selected" == "true" ]]; then
         # 选中样式
         printf "${indent}${C_SELECTED_TEXT}[%s]${C_RESET} ${C_SELECTED_BG}%s %s${C_RESET} ${C_DIM}%s${C_RESET}\n" \
@@ -102,9 +102,9 @@ draw_menu_item_icon() {
 # 绘制带图标的子菜单项
 # 参数: $1=选项数字 $2=标签
 draw_menu_submenu_icon() {
-    local num="$1" 
+    local num="$1"
     local label="$2"
-    
+
     printf "  ${C_DIM}[%s]${C_RESET} ${C_RESET}%s${C_RESET} ${C_RESET}›${C_RESET}\n" \
         "$num" "$label"
 }
@@ -112,7 +112,7 @@ draw_menu_submenu_icon() {
 # 绘制带图标的退出项
 draw_menu_exit_icon() {
     local label="${1:-返回}"
-    
+
     printf "\n  ${C_DIM}[%s]${C_RESET} ${C_RESET}%s${C_RESET} ${C_RESET}⏎${C_RESET}\n\n" \
         "0" "$label"
 }
@@ -124,14 +124,14 @@ draw_menu_exit_icon() {
 # 添加面包屑层级
 add_to_breadcrumb() {
     local title="$1"
-    
+
     # 如果当前层级不是新的，添加分隔符
     if [[ ${#MENU_HISTORY[@]} -gt 0 && "${MENU_HISTORY[-1]}" != "$title" ]]; then
         MENU_HISTORY+=("---")
     fi
-    
+
     MENU_HISTORY+=("$title")
-    
+
     # 如果历史过长，保留最近的 10 个
     if [[ ${#MENU_HISTORY[@]} -gt 10 ]]; then
         MENU_HISTORY=("${MENU_HISTORY[@]: -10}")
@@ -142,18 +142,18 @@ add_to_breadcrumb() {
 draw_breadcrumb() {
     local separator="${C_DIM}›${C_RESET} "
     local path=""
-    
+
     if [[ ${#MENU_HISTORY[@]} -eq 0 ]]; then
         return 0
     fi
-    
+
     for i in "${!MENU_HISTORY[@]}"; do
         if [[ "$i" != "---" ]]; then
             path+="${separator}ICON_ARROW_RIGHT ${C_BOLD}$i${C_RESET}"
         fi
         separator=" ${C_DIM}  / ${C_RESET}"
     done
-    
+
     echo -e " ${ICON_HOME}${C_RESET} ${path}"
     echo ""
 }
@@ -174,30 +174,30 @@ draw_progress_bar() {
     local total="$2"
     local width="${3:-40}"
     local label="${4:-进度}"
-    
+
     if [[ $total -eq 0 ]]; then
         return 0
     fi
-    
+
     local percent=$((current * 100 / total))
     local filled=$((width * percent / 100))
     local empty=$((width - filled))
-    
+
     # 绘制进度条
     local bar_filled=""
     local bar_empty=""
-    for ((i=0; i<filled; i++)); do
+    for ((i = 0; i < filled; i++)); do
         bar_filled+="#"
     done
-    for ((i=0; i<empty; i++)); do
+    for ((i = 0; i < empty; i++)); do
         bar_empty+="-"
     done
-    
+
     # 颜色进度指示
     local color
-    if (( percent >= 80 )); then
+    if ((percent >= 80)); then
         color="${C_BGREEN}"
-    elif (( percent >= 60 )); then
+    elif ((percent >= 60)); then
         color="${C_RESET}"
     else
         color="${C_RESET}"
@@ -220,65 +220,65 @@ interactive_menu() {
     local title="$1"
     shift
     local -a items=("$@")
-    
+
     clear
     draw_header "$title"
     draw_breadcrumb
     echo ""
-    
+
     # 显示菜单项
     for item in "${items[@]}"; do
-        IFS=':' read -r num icon label desc <<< "$item"
+        IFS=':' read -r num icon label desc <<<"$item"
         draw_menu_item_icon "$num" "$icon" "$label" "$desc"
     done
-    
+
     echo ""
     echo -e "${C_DIM}────────────────────────────────────────${C_RESET}"
     echo ""
-    
+
     # 搜索支持
     local search=""
     local -a filtered_indices=()
-    
+
     while true; do
         echo -e "${C_ICON}$ICON_SEARCH${C_RESET} ${C_DIM}搜索:_${C_RESET} ${search} ${C_DIM}[0]${C_RESET}${C_RESET} | ESC${C_RESET}"
         if ! read -rs -n 1; then
             break
         fi
-        
+
         # 显示搜索结果
         echo ""
         local found_count=0
         for index in "${filtered_indices[@]}"; do
-            IFS=':' read -r num icon label desc <<< "${items[$index]}"
+            IFS=':' read -r num icon label desc <<<"${items[$index]}"
             draw_menu_item_icon "$num" "$icon" "$label" "$desc"
             ((found_count++))
         done
-        
+
         if [[ $found_count -eq 1 ]]; then
             # 只显示一个结果，直接选择
-            IFS=':' read -r num icon label desc <<< "${items[${filtered_indices[0]}]}"
+            IFS=':' read -r num icon label desc <<<"${items[${filtered_indices[0]}]}"
             echo ""
             draw_prompt
-            
+
             read -rs -n1 key
             case "$key" in
-                '1'|'Enter')
-                    if [[ ${#filtered_indices[@]} -gt 0 ]]; then
-                        read -rp "选择： " index
-                        key="${filtered_indices[$index]}"
-                    else
-                        key="${filtered_indices[0]}"
-                    fi
-                    ;;
-                [qQ]|'Q')
-                    echo ""
-                    return 0
-                    ;;
-                '0')
-                    echo ""
-                    return 0
-                    ;;
+            '1' | 'Enter')
+                if [[ ${#filtered_indices[@]} -gt 0 ]]; then
+                    read -rp "选择： " index
+                    key="${filtered_indices[$index]}"
+                else
+                    key="${filtered_indices[0]}"
+                fi
+                ;;
+            [qQ] | 'Q')
+                echo ""
+                return 0
+                ;;
+            '0')
+                echo ""
+                return 0
+                ;;
             esac
         fi
     done
@@ -290,25 +290,25 @@ search_menu_items() {
     local -a all_items=("$@")
     local pattern="$2"
     local desc="${3:-匹配项}"
-    
+
     local -a matches=()
     local i=0
-    
+
     for item in "${all_items[@]}"; do
         local item_text
         item_text=$(echo "$item" | tr -d ":\t")
-        
+
         if [[ "$item_text" =~ $pattern ]]; then
             matches+=("$i")
             ((i++))
         fi
     done
-    
+
     if [[ ${#matches[@]} -eq 0 ]]; then
         echo -e "${C_RESET}无${ICON_WARNING} 匹配项: $desc${C_RESET}"
         return 1
     fi
-    
+
     echo -e "${C_RESET}找到 ${#matches[@]} 个匹配项:${C_RESET}"
 }
 
@@ -321,7 +321,7 @@ main_menu_modern() {
     while true; do
         clear
         draw_header "用户与系统管理器 v0.2.1"
-        
+
         # 绘制主菜单（高亮设计）
         echo ""
         draw_line 80
@@ -340,71 +340,71 @@ main_menu_modern() {
         echo ""
         draw_line 80
         echo ""
-        
+
         draw_prompt
         read -rs -n1 opt
-        
+
         case "$opt" in
-            1|CR)
-                safe_run create_or_assign_user
-                ;;
-            2|PW)
-                safe_run change_user_password
-                ;;
-            3|DEL)
-                safe_run delete_user_account
-                ;;
-            4|RN)
-                safe_run rename_user_account
-                ;;
-            5|SP)
-                safe_run suspend_or_enable_user
-                ;;
-            6|QUOTA)
-                safe_run modify_user_quota
-                ;;
-            7|RES)
-                safe_run modify_user_resource_limits
-                ;;
-            8|VW)
-                safe_run list_managed_users
-                ;;
-            9|DISK)
-                safe_run show_disk_overview
-                ;;
-            10|BK)
-                safe_run backup_menu
-                ;;
-            11|FW)
-                safe_run firewall_menu
-                ;;
-            12|DNS)
-                safe_run dns_menu
-                ;;
-            13|LK)
-                safe_run symlink_menu
-                ;;
-            14|JOB)
-                safe_run job_stats_menu
-                ;;
-            15|ROT)
-                safe_run password_rotation_menu
-                ;;
-            16|RPT)
-                safe_run report_menu
-                ;;
-            17|SYS)
-                safe_run system_menu
-                ;;
-            0|Q|q)
-                msg_ok "再见！"
-                exit 0
-                ;;
-            *)
-                msg_err "无效选项: $opt"
-                ;;
+        1 | CR)
+            safe_run create_or_assign_user
+            ;;
+        2 | PW)
+            safe_run change_user_password
+            ;;
+        3 | DEL)
+            safe_run delete_user_account
+            ;;
+        4 | RN)
+            safe_run rename_user_account
+            ;;
+        5 | SP)
+            safe_run suspend_or_enable_user
+            ;;
+        6 | QUOTA)
+            safe_run modify_user_quota
+            ;;
+        7 | RES)
+            safe_run modify_user_resource_limits
+            ;;
+        8 | VW)
+            safe_run list_managed_users
+            ;;
+        9 | DISK)
+            safe_run show_disk_overview
+            ;;
+        10 | BK)
+            safe_run backup_menu
+            ;;
+        11 | FW)
+            safe_run firewall_menu
+            ;;
+        12 | DNS)
+            safe_run dns_menu
+            ;;
+        13 | LK)
+            safe_run symlink_menu
+            ;;
+        14 | JOB)
+            safe_run job_stats_menu
+            ;;
+        15 | ROT)
+            safe_run password_rotation_menu
+            ;;
+        16 | RPT)
+            safe_run report_menu
+            ;;
+        17 | SYS)
+            safe_run system_menu
+            ;;
+        0 | Q | q)
+            msg_ok "再见！"
+            exit 0
+            ;;
+        *)
+            msg_err "无效选项: $opt"
+            ;;
         esac
-        
+
         pause_continue
     done
 }

@@ -25,9 +25,9 @@ TESTS_FAILED=0
 run_test() {
     local test_name="$1"
     shift
-    
+
     echo -ne "  测试: ${test_name} ... "
-    
+
     if "$@" &>/dev/null; then
         echo -e "${C_GREEN}✓ 通过${C_RESET}"
         ((TESTS_PASSED++))
@@ -107,10 +107,11 @@ else
     echo -e "  检查: user_manager.sh.backup ... ${C_BLUE}未提供（可接受）${C_RESET}"
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/ui_menu_modern.sh.backup" ]]; then
-    echo -e "  检查: ui_menu_modern.sh.backup ... ${C_GREEN}已存在${C_RESET}"
+# ui_menu_modern 已归档，检查归档文件而非旧 .backup。
+if [[ -f "$SCRIPT_DIR/archive/lib/ui_menu_modern.sh" ]]; then
+    echo -e "  检查: archive/lib/ui_menu_modern.sh ... ${C_GREEN}已归档${C_RESET}"
 else
-    echo -e "  检查: ui_menu_modern.sh.backup ... ${C_BLUE}未提供（可接受）${C_RESET}"
+    echo -e "  检查: archive/lib/ui_menu_modern.sh ... ${C_BLUE}未提供（可接受）${C_RESET}"
 fi
 
 echo ""

@@ -48,9 +48,9 @@ _systemd_timer_normalize_base_name() {
 
 _systemd_timer_require_profile() {
     case "${1:-}" in
-        weekly-report|account-health-check)
-            return 0
-            ;;
+    weekly-report | account-health-check)
+        return 0
+        ;;
     esac
 
     _systemd_timer_msg_err "不支持的 timer profile: ${1:-<empty>}"
@@ -59,8 +59,8 @@ _systemd_timer_require_profile() {
 
 _systemd_timer_profile_service_description() {
     case "$1" in
-        weekly-report) printf '%s\n' 'Managed User Weekly Report' ;;
-        account-health-check) printf '%s\n' 'Managed User Account Health Check' ;;
+    weekly-report) printf '%s\n' 'Managed User Weekly Report' ;;
+    account-health-check) printf '%s\n' 'Managed User Account Health Check' ;;
     esac
 }
 
@@ -69,33 +69,33 @@ _systemd_timer_profile_service_exec_start() {
     manager_entry="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/run.sh"
 
     case "$1" in
-        weekly-report)
-            printf "/bin/bash %q --weekly-report\n" "$manager_entry"
-            ;;
-        account-health-check)
-            printf "/bin/bash %q --account-health-check\n" "$manager_entry"
-            ;;
+    weekly-report)
+        printf "/bin/bash %q --weekly-report\n" "$manager_entry"
+        ;;
+    account-health-check)
+        printf "/bin/bash %q --account-health-check\n" "$manager_entry"
+        ;;
     esac
 }
 
 _systemd_timer_profile_timer_description() {
     case "$1" in
-        weekly-report) printf '%s\n' 'Weekly schedule for managed user report' ;;
-        account-health-check) printf '%s\n' 'Daily schedule for managed user account health check' ;;
+    weekly-report) printf '%s\n' 'Weekly schedule for managed user report' ;;
+    account-health-check) printf '%s\n' 'Daily schedule for managed user account health check' ;;
     esac
 }
 
 _systemd_timer_profile_on_calendar() {
     case "$1" in
-        weekly-report) printf '%s\n' 'weekly' ;;
-        account-health-check) printf '%s\n' 'daily' ;;
+    weekly-report) printf '%s\n' 'weekly' ;;
+    account-health-check) printf '%s\n' 'daily' ;;
     esac
 }
 
 _systemd_timer_profile_randomized_delay() {
     case "$1" in
-        weekly-report) printf '%s\n' '30m' ;;
-        account-health-check) printf '%s\n' '15m' ;;
+    weekly-report) printf '%s\n' '30m' ;;
+    account-health-check) printf '%s\n' '15m' ;;
     esac
 }
 

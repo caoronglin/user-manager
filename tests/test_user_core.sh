@@ -21,6 +21,7 @@ source "$PROJECT_ROOT/lib/config.sh"
 source "$PROJECT_ROOT/lib/access_control.sh"
 source "$PROJECT_ROOT/lib/privilege.sh"
 source "$PROJECT_ROOT/lib/smb_core.sh"
+source "$PROJECT_ROOT/lib/quota_core.sh"
 source "$PROJECT_ROOT/lib/user_core.sh"
 
 # SMB stubs for testing
@@ -96,7 +97,7 @@ generate_password_pool "$test_pool" 2>/dev/null
 assert_file_exists "$test_pool"
 
 test_start "generate_password_pool: 密码池行数正确"
-count=$(wc -l < "$test_pool" 2>/dev/null || echo "0")
+count=$(wc -l <"$test_pool" 2>/dev/null || echo "0")
 assert_equals "8568" "$count" "密码池应该包含 8568 个密码"
 
 test_start "generate_password_pool: 密码格式正确（长度为8）"
@@ -105,7 +106,6 @@ assert_equals "8" "${#first_password}" "密码长度应该为 8"
 
 test_start "generate_password_pool: 密码格式正确（包含特殊字符）"
 special_chars='!@#$%^&*?'
-has_special=false
 sample_passwords=$(head -n 10 "$test_pool")
 
 if [[ "$sample_passwords" =~ [$special_chars] ]]; then
@@ -145,7 +145,7 @@ PASSWORD_POOL_FILE="$old_password_pool_file"
 
 test_start "update_user_config: 更新用户配置"
 test_config="$TEST_TMPDIR/test_user_config.json"
-echo "{}" > "$test_config"
+echo "{}" >"$test_config"
 
 # 临时替换配置文件
 original_config="$USER_CONFIG_FILE"
@@ -199,23 +199,32 @@ test_start "ensure_user_proxy_function: 写入 bashrc 和 zshrc"
 proxy_home="$TEST_TMPDIR/proxy_home"
 mkdir -p "$proxy_home"
 PROXY_PRIV_CALL_LOG="$TEST_TMPDIR/proxy_priv_calls.log"
-priv_touch() { printf 'touch %s\n' "$*" >> "$PROXY_PRIV_CALL_LOG"; : > "$1"; }
+priv_touch() {
+    printf 'touch %s\n' "$*" >>"$PROXY_PRIV_CALL_LOG"
+    : >"$1"
+}
 priv_tee() {
-    printf 'tee %s\n' "$*" >> "$PROXY_PRIV_CALL_LOG"
+    printf 'tee %s\n' "$*" >>"$PROXY_PRIV_CALL_LOG"
     if [[ "${1:-}" == "-a" ]]; then
         shift
-        cat >> "$1"
+        cat >>"$1"
     else
-        cat > "$1"
+        cat >"$1"
     fi
 }
-priv_chown() { printf 'chown %s\n' "$*" >> "$PROXY_PRIV_CALL_LOG"; return 0; }
-priv_chmod() { printf 'chmod %s\n' "$*" >> "$PROXY_PRIV_CALL_LOG"; chmod "$@"; }
-if declare -F ensure_user_proxy_function >/dev/null && ensure_user_proxy_function "testuser" "$proxy_home" >/dev/null 2>&1 && \
-   grep -q 'proxy()' "$proxy_home/.bashrc" && \
-   grep -q 'proxy()' "$proxy_home/.zshrc" && \
-   grep -q 'http_proxy' "$proxy_home/.bashrc" && \
-   grep -q 'http_proxy' "$proxy_home/.zshrc"; then
+priv_chown() {
+    printf 'chown %s\n' "$*" >>"$PROXY_PRIV_CALL_LOG"
+    return 0
+}
+priv_chmod() {
+    printf 'chmod %s\n' "$*" >>"$PROXY_PRIV_CALL_LOG"
+    chmod "$@"
+}
+if declare -F ensure_user_proxy_function >/dev/null && ensure_user_proxy_function "testuser" "$proxy_home" >/dev/null 2>&1 &&
+    grep -q 'proxy()' "$proxy_home/.bashrc" &&
+    grep -q 'proxy()' "$proxy_home/.zshrc" &&
+    grep -q 'http_proxy' "$proxy_home/.bashrc" &&
+    grep -q 'http_proxy' "$proxy_home/.zshrc"; then
     test_pass
 else
     test_fail "proxy() 未同时写入 .bashrc 和 .zshrc"
@@ -261,37 +270,55 @@ id() {
 }
 getent() {
     case "${1:-}:${2:-}" in
-        passwd:alice) printf 'alice:x:1001:1001:Alice:%s:/bin/bash\n' "$permission_home" ;;
-        group:dev) return 2 ;;
-        group:sudo) printf 'sudo:x:27:alice\n' ;;
-        *) return 2 ;;
+    passwd:alice) printf 'alice:x:1001:1001:Alice:%s:/bin/bash\n' "$permission_home" ;;
+    group:dev) return 2 ;;
+    group:sudo) printf 'sudo:x:27:alice\n' ;;
+    *) return 2 ;;
     esac
 }
-priv_groupadd() { printf 'groupadd %s\n' "$*" >> "$group_call_log"; return 0; }
-priv_usermod() { printf 'usermod %s\n' "$*" >> "$group_call_log"; return 0; }
-priv_deluser() { printf 'deluser %s\n' "$*" >> "$group_call_log"; return 0; }
-priv_groupdel() { printf 'groupdel %s\n' "$*" >> "$group_call_log"; return 0; }
-priv_chmod() { printf 'chmod %s\n' "$*" >> "$group_call_log"; return 0; }
-priv_chgrp() { printf 'chgrp %s\n' "$*" >> "$group_call_log"; return 0; }
+priv_groupadd() {
+    printf 'groupadd %s\n' "$*" >>"$group_call_log"
+    return 0
+}
+priv_usermod() {
+    printf 'usermod %s\n' "$*" >>"$group_call_log"
+    return 0
+}
+priv_deluser() {
+    printf 'deluser %s\n' "$*" >>"$group_call_log"
+    return 0
+}
+priv_groupdel() {
+    printf 'groupdel %s\n' "$*" >>"$group_call_log"
+    return 0
+}
+priv_chmod() {
+    printf 'chmod %s\n' "$*" >>"$group_call_log"
+    return 0
+}
+priv_chgrp() {
+    printf 'chgrp %s\n' "$*" >>"$group_call_log"
+    return 0
+}
 record_user_event() { return 0; }
-if add_user_to_group alice dev >/dev/null 2>&1 && \
-   grep -q '^groupadd dev$' "$group_call_log" && \
-   grep -q '^usermod -aG dev alice$' "$group_call_log"; then
+if add_user_to_group alice dev >/dev/null 2>&1 &&
+    grep -q '^groupadd dev$' "$group_call_log" &&
+    grep -q '^usermod -aG dev alice$' "$group_call_log"; then
     test_pass
 else
     test_fail "add_user_to_group 未创建组或未追加用户，日志: $(cat "$group_call_log" 2>/dev/null)"
 fi
 
 test_start "权限管理: 设置主目录权限和管理员权限"
-: > "$group_call_log"
-if set_user_home_mode alice 750 >/dev/null 2>&1 && \
-   set_user_home_group alice sudo >/dev/null 2>&1 && \
-   grant_user_admin_permission alice >/dev/null 2>&1 && \
-   revoke_user_admin_permission alice >/dev/null 2>&1 && \
-   grep -q "^chmod 750 $permission_home$" "$group_call_log" && \
-   grep -q "^chgrp sudo $permission_home$" "$group_call_log" && \
-   grep -q '^usermod -aG sudo alice$' "$group_call_log" && \
-   grep -q '^deluser alice sudo$' "$group_call_log"; then
+: >"$group_call_log"
+if set_user_home_mode alice 750 >/dev/null 2>&1 &&
+    set_user_home_group alice sudo >/dev/null 2>&1 &&
+    grant_user_admin_permission alice >/dev/null 2>&1 &&
+    revoke_user_admin_permission alice >/dev/null 2>&1 &&
+    grep -q "^chmod 750 $permission_home$" "$group_call_log" &&
+    grep -q "^chgrp sudo $permission_home$" "$group_call_log" &&
+    grep -q '^usermod -aG sudo alice$' "$group_call_log" &&
+    grep -q '^deluser alice sudo$' "$group_call_log"; then
     test_pass
 else
     test_fail "权限管理操作未按预期调用权限封装，日志: $(cat "$group_call_log" 2>/dev/null)"
@@ -310,12 +337,16 @@ write_privileged_text_file() {
     local owner_group="${3:-root:root}"
     local file_content
     file_content="$(cat)"
-    printf '%s' "$file_content" > "$rotation_capture"
-    printf '%s|%s|%s\n' "$target_path" "$file_mode" "$owner_group" > "$TEST_TMPDIR/password_rotate_target.txt"
+    printf '%s' "$file_content" >"$rotation_capture"
+    printf '%s|%s|%s\n' "$target_path" "$file_mode" "$owner_group" >"$TEST_TMPDIR/password_rotate_target.txt"
     return 0
 }
 priv_chmod() { return 0; }
-priv_crontab() { cat >/dev/null; return 0; }
+priv_crontab() {
+    # 仅当作为“安装 crontab”被调用时消费 stdin；-l 查询不能读取继承 stdin。
+    [[ "${1:-}" == "-" ]] && cat >/dev/null
+    return 0
+}
 draw_header() { return 0; }
 draw_info_card() { return 0; }
 msg_step() { return 0; }
@@ -324,21 +355,21 @@ msg_err() { return 0; }
 PASSWORD_POOL_DIR="$TEST_TMPDIR/password_pools"
 PASSWORD_POOL_FILE="$PASSWORD_POOL_DIR/password_pool_current.txt"
 mkdir -p "$PASSWORD_POOL_DIR"
-if configure_password_rotation 30 >/dev/null 2>&1 && \
-   [[ -f "$rotation_capture" ]] && \
-   grep -q 'source "\$MANAGER_DIR/lib/user_core.sh"' "$rotation_capture" && \
-   grep -q 'source "\$MANAGER_DIR/lib/email_core.sh"' "$rotation_capture" && \
-   grep -q 'source "\$MANAGER_DIR/lib/smb_core.sh"' "$rotation_capture" && \
-   grep -q 'NEW_PASS=$(get_random_password' "$rotation_capture" && \
-   ! grep -q 'PASSWORD_POOL_FILE="${PASSWORD_POOL_FILE:-' "$rotation_capture" && \
-   ! grep -q 'TOTAL_PASSWORDS=' "$rotation_capture" && \
-   ! grep -q 'RAND_LINE=' "$rotation_capture" && \
-   grep -q 'priv_chpasswd' "$rotation_capture" && \
-   grep -q 'smb_set_password "\$username" "\$NEW_PASS"' "$rotation_capture" && \
-   grep -q 'send_password_email "\$username" "\$NEW_PASS" "\$EMAIL" "定时密码更新"' "$rotation_capture" && \
-   ! grep -q '| chpasswd' "$rotation_capture" && \
-   ! grep -q 'sendmail -t' "$rotation_capture" && \
-   ! grep -q 'echo "From:' "$rotation_capture"; then
+if configure_password_rotation 30 >/dev/null 2>&1 &&
+    [[ -f "$rotation_capture" ]] &&
+    grep -q 'source "\$MANAGER_DIR/lib/user_core.sh"' "$rotation_capture" &&
+    grep -q 'source "\$MANAGER_DIR/lib/email_core.sh"' "$rotation_capture" &&
+    grep -q 'source "\$MANAGER_DIR/lib/smb_core.sh"' "$rotation_capture" &&
+    grep -q 'NEW_PASS=$(get_random_password' "$rotation_capture" &&
+    ! grep -q 'PASSWORD_POOL_FILE="${PASSWORD_POOL_FILE:-' "$rotation_capture" &&
+    ! grep -q 'TOTAL_PASSWORDS=' "$rotation_capture" &&
+    ! grep -q 'RAND_LINE=' "$rotation_capture" &&
+    grep -q 'priv_chpasswd' "$rotation_capture" &&
+    grep -q 'smb_set_password "\$username" "\$NEW_PASS"' "$rotation_capture" &&
+    grep -q 'send_password_email "\$username" "\$NEW_PASS" "\$EMAIL" "定时密码更新"' "$rotation_capture" &&
+    ! grep -q '| chpasswd' "$rotation_capture" &&
+    ! grep -q 'sendmail -t' "$rotation_capture" &&
+    ! grep -q 'echo "From:' "$rotation_capture"; then
     test_pass
 else
     test_fail "轮换脚本未复用 get_random_password/邮件/SMB 模块，或仍直接读取密码池/调用 chpasswd/sendmail"
@@ -351,13 +382,13 @@ unset -f write_privileged_text_file priv_chmod priv_crontab draw_header draw_inf
 
 ACCOUNT_DISABLE_LOG="$TEST_TMPDIR/account_disable_calls.log"
 DISABLED_USERS_FILE="$TEST_TMPDIR/disabled_users.tsv"
-: > "$ACCOUNT_DISABLE_LOG"
+: >"$ACCOUNT_DISABLE_LOG"
 
 id() {
     case "${1:-}" in
-        root) return 0 ;;
-        alice|bob|sysdaemon) return 0 ;;
-        *) return 1 ;;
+    root) return 0 ;;
+    alice | bob | sysdaemon) return 0 ;;
+    *) return 1 ;;
     esac
 }
 PASSWD_STATUS_LOCKED=0
@@ -366,11 +397,11 @@ ROLLBACK_RECORD_FAIL=0
 getent() {
     if [[ "${1:-}" == "passwd" ]]; then
         case "${2:-}" in
-            alice) printf 'alice:x:1001:1001:Alice:/home/alice:/bin/bash\n' ;;
-            bob) printf 'bob:x:1002:1002:Bob:/home/bob:/bin/zsh\n' ;;
-            root) printf 'root:x:0:0:root:/root:/bin/bash\n' ;;
-            sysdaemon) printf 'sysdaemon:x:999:999:System:/nonexistent:/usr/sbin/nologin\n' ;;
-            *) return 2 ;;
+        alice) printf 'alice:x:1001:1001:Alice:/home/alice:/bin/bash\n' ;;
+        bob) printf 'bob:x:1002:1002:Bob:/home/bob:/bin/zsh\n' ;;
+        root) printf 'root:x:0:0:root:/root:/bin/bash\n' ;;
+        sysdaemon) printf 'sysdaemon:x:999:999:System:/nonexistent:/usr/sbin/nologin\n' ;;
+        *) return 2 ;;
         esac
         return 0
     fi
@@ -399,14 +430,35 @@ chage() {
     fi
     return 1
 }
-priv_usermod() { printf 'usermod %s\n' "$*" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
-priv_chage() { printf 'chage %s\n' "$*" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
-_um_write_disabled_records() { [[ "$ROLLBACK_RECORD_FAIL" != "1" ]] || return 1; command cp "$1" "$DISABLED_USERS_FILE"; }
-record_user_event() { printf 'event %s|%s|%s\n' "${1:-}" "${2:-}" "${3:-}" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
+priv_usermod() {
+    printf 'usermod %s\n' "$*" >>"$ACCOUNT_DISABLE_LOG"
+    return 0
+}
+priv_chage() {
+    printf 'chage %s\n' "$*" >>"$ACCOUNT_DISABLE_LOG"
+    return 0
+}
+_um_write_disabled_records() {
+    [[ "$ROLLBACK_RECORD_FAIL" != "1" ]] || return 1
+    command cp "$1" "$DISABLED_USERS_FILE"
+}
+record_user_event() {
+    printf 'event %s|%s|%s\n' "${1:-}" "${2:-}" "${3:-}" >>"$ACCOUNT_DISABLE_LOG"
+    return 0
+}
 get_user_email() { [[ "${1:-}" == "alice" ]] && printf 'alice@example.com\n'; }
-send_account_disabled_email() { printf 'mail-disabled %s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" >> "$ACCOUNT_DISABLE_LOG"; [[ "${ACCOUNT_MAIL_FAIL:-0}" != "1" ]]; }
-send_account_suspended_email() { printf 'mail-suspended %s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
-send_account_restored_email() { printf 'mail-restored %s|%s|%s\n' "$1" "$2" "$3" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
+send_account_disabled_email() {
+    printf 'mail-disabled %s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" >>"$ACCOUNT_DISABLE_LOG"
+    [[ "${ACCOUNT_MAIL_FAIL:-0}" != "1" ]]
+}
+send_account_suspended_email() {
+    printf 'mail-suspended %s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" >>"$ACCOUNT_DISABLE_LOG"
+    return 0
+}
+send_account_restored_email() {
+    printf 'mail-restored %s|%s|%s\n' "$1" "$2" "$3" >>"$ACCOUNT_DISABLE_LOG"
+    return 0
+}
 msg_info() { return 0; }
 msg_warn() { return 0; }
 msg_err() { return 0; }
@@ -415,10 +467,10 @@ msg_ok() { return 0; }
 test_start "disable_user_account: 拒绝 root、当前用户和系统 UID 用户"
 old_user_for_disable="$USER"
 USER="bob"
-if ! disable_user_account root "maint" "permanent" >/dev/null 2>&1 && \
-   ! disable_user_account bob "maint" "permanent" >/dev/null 2>&1 && \
-   ! disable_user_account sysdaemon "maint" "permanent" >/dev/null 2>&1 && \
-   [[ ! -s "$ACCOUNT_DISABLE_LOG" ]]; then
+if ! disable_user_account root "maint" "permanent" >/dev/null 2>&1 &&
+    ! disable_user_account bob "maint" "permanent" >/dev/null 2>&1 &&
+    ! disable_user_account sysdaemon "maint" "permanent" >/dev/null 2>&1 &&
+    [[ ! -s "$ACCOUNT_DISABLE_LOG" ]]; then
     test_pass
 else
     test_fail "禁用保护未拒绝 root/current/system user 或产生了特权调用"
@@ -426,26 +478,26 @@ fi
 USER="$old_user_for_disable"
 
 test_start "disable_user_account: 锁定密码、设置过期、切换 nologin 并记录状态"
-: > "$ACCOUNT_DISABLE_LOG"
-if disable_user_account alice $'维护,原因\n换行' "2026-01-02" >/dev/null 2>&1 && \
-   grep -q '^usermod -L alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^chage -E 0 alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^usermod -s .*nologin alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^mail-disabled alice|alice@example.com|维护 原因 换行|2026-01-02|' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q $'^alice\t' "$DISABLED_USERS_FILE" && \
-   grep -q $'\t/bin/bash\t' "$DISABLED_USERS_FILE" && \
-   [[ "$(wc -l < "$DISABLED_USERS_FILE" | tr -d ' ')" == "1" ]] && \
-   ! grep -q ',' "$DISABLED_USERS_FILE"; then
+: >"$ACCOUNT_DISABLE_LOG"
+if disable_user_account alice $'维护,原因\n换行' "2026-01-02" >/dev/null 2>&1 &&
+    grep -q '^usermod -L alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^chage -E 0 alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^usermod -s .*nologin alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^mail-disabled alice|alice@example.com|维护 原因 换行|2026-01-02|' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q $'^alice\t' "$DISABLED_USERS_FILE" &&
+    grep -q $'\t/bin/bash\t' "$DISABLED_USERS_FILE" &&
+    [[ "$(wc -l <"$DISABLED_USERS_FILE" | tr -d ' ')" == "1" ]] &&
+    ! grep -q ',' "$DISABLED_USERS_FILE"; then
     test_pass
 else
     test_fail "disable_user_account 未执行完整停用序列或状态记录不安全"
 fi
 
 test_start "disable_user_account: 重复禁用幂等且不重复写记录"
-: > "$ACCOUNT_DISABLE_LOG"
-before_disable_lines=$(wc -l < "$DISABLED_USERS_FILE" | tr -d ' ')
+: >"$ACCOUNT_DISABLE_LOG"
+before_disable_lines=$(wc -l <"$DISABLED_USERS_FILE" | tr -d ' ')
 disable_user_account alice "重复" "2026-01-03" >/dev/null 2>&1 || true
-after_disable_lines=$(wc -l < "$DISABLED_USERS_FILE" | tr -d ' ')
+after_disable_lines=$(wc -l <"$DISABLED_USERS_FILE" | tr -d ' ')
 if [[ "$before_disable_lines" == "$after_disable_lines" ]] && [[ ! -s "$ACCOUNT_DISABLE_LOG" ]]; then
     test_pass
 else
@@ -453,42 +505,42 @@ else
 fi
 
 test_start "enable_user_account: 恢复锁定、过期和原 shell 并移除状态"
-: > "$ACCOUNT_DISABLE_LOG"
-if enable_user_account alice >/dev/null 2>&1 && \
-   grep -q '^usermod -U alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^chage -E -1 alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^usermod -s /bin/bash alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^mail-restored alice|alice@example.com|' "$ACCOUNT_DISABLE_LOG" && \
-   ! grep -q $'^alice\t' "$DISABLED_USERS_FILE"; then
+: >"$ACCOUNT_DISABLE_LOG"
+if enable_user_account alice >/dev/null 2>&1 &&
+    grep -q '^usermod -U alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^chage -E -1 alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^usermod -s /bin/bash alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^mail-restored alice|alice@example.com|' "$ACCOUNT_DISABLE_LOG" &&
+    ! grep -q $'^alice\t' "$DISABLED_USERS_FILE"; then
     test_pass
 else
     test_fail "enable_user_account 未恢复账户状态或未清理状态记录"
 fi
 
 test_start "enable_user_account: 保留停用前已锁定和已过期状态"
-: > "$ACCOUNT_DISABLE_LOG"
-printf 'alice\tlocked\t2026-01-01\tpermanent\t/bin/bash\tlocked\t2026-03-04\tdisable\n' > "$DISABLED_USERS_FILE"
-if enable_user_account alice >/dev/null 2>&1 && \
-   ! grep -q '^usermod -U alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^chage -E 2026-03-04 alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^usermod -s /bin/bash alice$' "$ACCOUNT_DISABLE_LOG"; then
+: >"$ACCOUNT_DISABLE_LOG"
+printf 'alice\tlocked\t2026-01-01\tpermanent\t/bin/bash\tlocked\t2026-03-04\tdisable\n' >"$DISABLED_USERS_FILE"
+if enable_user_account alice >/dev/null 2>&1 &&
+    ! grep -q '^usermod -U alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^chage -E 2026-03-04 alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^usermod -s /bin/bash alice$' "$ACCOUNT_DISABLE_LOG"; then
     test_pass
 else
     test_fail "恢复不应解锁原本锁定账户，且应恢复原过期日期"
 fi
 
 test_start "disable_user_account: 状态记录失败时回滚已执行的账户变更"
-: > "$ACCOUNT_DISABLE_LOG"
+: >"$ACCOUNT_DISABLE_LOG"
 PASSWD_STATUS_LOCKED=0
 CHAGE_EXPIRE_VALUE="2026-05-06"
 ROLLBACK_RECORD_FAIL=1
-if ! disable_user_account alice "记录失败" "2026-06-01" >/dev/null 2>&1 && \
-   grep -q '^usermod -L alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^chage -E 0 alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^usermod -s .*nologin alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^usermod -U alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^chage -E 2026-05-06 alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^usermod -s /bin/bash alice$' "$ACCOUNT_DISABLE_LOG"; then
+if ! disable_user_account alice "记录失败" "2026-06-01" >/dev/null 2>&1 &&
+    grep -q '^usermod -L alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^chage -E 0 alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^usermod -s .*nologin alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^usermod -U alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^chage -E 2026-05-06 alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^usermod -s /bin/bash alice$' "$ACCOUNT_DISABLE_LOG"; then
     test_pass
 else
     test_fail "状态记录失败时应回滚锁定、过期和 shell 变更"
@@ -498,11 +550,11 @@ CHAGE_EXPIRE_VALUE="-1"
 PASSWD_STATUS_LOCKED=0
 
 test_start "disable_user_account: 通知失败不阻断账户禁用"
-: > "$ACCOUNT_DISABLE_LOG"
+: >"$ACCOUNT_DISABLE_LOG"
 ACCOUNT_MAIL_FAIL=1
-if disable_user_account alice "通知失败" "2026-01-04" >/dev/null 2>&1 && \
-   grep -q '^usermod -L alice$' "$ACCOUNT_DISABLE_LOG" && \
-   grep -q '^mail-disabled alice|alice@example.com|通知失败|2026-01-04|' "$ACCOUNT_DISABLE_LOG"; then
+if disable_user_account alice "通知失败" "2026-01-04" >/dev/null 2>&1 &&
+    grep -q '^usermod -L alice$' "$ACCOUNT_DISABLE_LOG" &&
+    grep -q '^mail-disabled alice|alice@example.com|通知失败|2026-01-04|' "$ACCOUNT_DISABLE_LOG"; then
     test_pass
 else
     test_fail "通知失败不应阻断账户禁用"
@@ -511,24 +563,25 @@ unset ACCOUNT_MAIL_FAIL
 enable_user_account alice >/dev/null 2>&1 || true
 
 test_start "check_expired_suspensions: 到期记录调用 enable_user_account"
-: > "$ACCOUNT_DISABLE_LOG"
-printf 'alice\ttest\t2000-01-01\t2000-01-02\t/bin/bash\tactive\tdisable\n' > "$DISABLED_USERS_FILE"
-enable_user_account() { printf 'enable-called %s\n' "$1" >> "$ACCOUNT_DISABLE_LOG"; return 0; }
-if check_expired_suspensions >/dev/null 2>&1 && grep -q '^enable-called alice$' "$ACCOUNT_DISABLE_LOG"; then
+: >"$ACCOUNT_DISABLE_LOG"
+printf 'alice\ttest\t2000-01-01\t2000-01-02\t/bin/bash\tactive\tdisable\n' >"$DISABLED_USERS_FILE"
+if (
+    enable_user_account() {
+        printf 'enable-called %s\n' "$1" >>"$ACCOUNT_DISABLE_LOG"
+        return 0
+    }
+    check_expired_suspensions >/dev/null 2>&1
+) && grep -q '^enable-called alice$' "$ACCOUNT_DISABLE_LOG"; then
     test_pass
 else
     test_fail "过期暂停检查未委托 enable_user_account"
 fi
-unset -f enable_user_account
 
 unset -f id getent passwd chage priv_usermod priv_chage _um_write_disabled_records record_user_event get_user_email send_account_disabled_email send_account_suspended_email send_account_restored_email msg_info msg_warn msg_err msg_ok
 
 # ------------------------------------------------------------
 # SMB 集成测试
 # ------------------------------------------------------------
-
-# 重新加载 user_core.sh（前面测试取消了 enable_user_account 等函数）
-source "$PROJECT_ROOT/lib/user_core.sh"
 
 # 为 create_user/update_user 准备 stub
 priv_useradd() { return 0; }
@@ -545,7 +598,10 @@ msg_ok() { return 0; }
 
 test_start "create_user: SMB 同步成功时不影响用户创建"
 smb_called=0
-_smb_sync_password() { smb_called=1; return 0; }
+_smb_sync_password() {
+    smb_called=1
+    return 0
+}
 create_user "smbtest01" "TestPass123!" "/tmp/smbtest01_home" 2>/dev/null
 if [[ $? -eq 0 && $smb_called -eq 1 ]]; then
     test_pass
@@ -579,8 +635,8 @@ test_start "disable_user_account: SMB 禁用失败（非致命，仍返回 0）"
 id() { return 0; }
 getent() {
     case "${2:-}" in
-        smbtest_d1) printf 'smbtest_d1:x:1001:1001:Test:/home/smbtest_d1:/bin/bash\n' ;;
-        *) return 2 ;;
+    smbtest_d1) printf 'smbtest_d1:x:1001:1001:Test:/home/smbtest_d1:/bin/bash\n' ;;
+    *) return 2 ;;
     esac
 }
 passwd() {
@@ -599,12 +655,12 @@ chage() {
 }
 priv_usermod() { return 0; }
 priv_chage() { return 0; }
-_um_write_disabled_records() { : > "$DISABLED_USERS_FILE"; }
+_um_write_disabled_records() { : >"$DISABLED_USERS_FILE"; }
 get_user_email() { return 1; }
 validate_username() { return 0; }
 smb_disable_user() { return 1; }
 DISABLED_USERS_FILE="$TEST_TMPDIR/disabled_smb_test.tsv"
-: > "$DISABLED_USERS_FILE"
+: >"$DISABLED_USERS_FILE"
 disable_user_account "smbtest_d1" "test" "permanent" >/dev/null 2>&1
 if [[ $? -eq 0 ]]; then
     test_pass
@@ -615,7 +671,7 @@ fi
 test_start "enable_user_account: SMB 启用失败（非致命，仍返回 0）"
 smb_enable_existing_user() { return 1; }
 # 重新写入禁用记录供 enable 读取
-printf 'smbtest_d1\ttest\t2026-01-01\tpermanent\t/bin/bash\tactive\t-1\tdisable\n' > "$DISABLED_USERS_FILE"
+printf 'smbtest_d1\ttest\t2026-01-01\tpermanent\t/bin/bash\tactive\t-1\tdisable\n' >"$DISABLED_USERS_FILE"
 enable_user_account "smbtest_d1" >/dev/null 2>&1
 if [[ $? -eq 0 ]]; then
     test_pass
@@ -631,10 +687,12 @@ _SMB_STUB_STATE=1
 # 用户组管理测试
 # ------------------------------------------------------------
 
-test_start "get_managed_usernames: 获取受管理用户列表"
-users=$(get_managed_usernames 2>/dev/null || echo "")
-# 只要不报错就算通过
-test_pass
+test_start "get_managed_usernames: 可调用且返回成功"
+if get_managed_usernames >/dev/null 2>&1; then
+    test_pass
+else
+    test_fail "get_managed_usernames 返回非零"
+fi
 
 # ============================================================
 # 测试结束

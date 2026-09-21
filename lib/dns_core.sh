@@ -18,7 +18,7 @@ init_dns_whitelist() {
 
     msg_step "创建 DNS 白名单配置文件..."
 
-    cat > "$DNS_CONFIG_FILE" << 'EOF'
+    cat >"$DNS_CONFIG_FILE" <<'EOF'
 # DNS 白名单配置 - 每行一个域名
 # 以 # 开头的行为注释，空行会被忽略
 # 修改后需执行 refresh_dns_rules 使其生效
@@ -74,10 +74,10 @@ show_dns_whitelist() {
         if [[ "$line" =~ ^[[:space:]]*# ]]; then
             echo -e "  ${C_DIM}$line${C_RESET}"
         else
-            ((idx+=1))
+            ((idx += 1))
             printf "  ${C_BGREEN}%3d${C_RESET}  ${C_RESET}%s${C_RESET}\n" "$idx" "$line"
         fi
-    done < "$DNS_CONFIG_FILE"
+    done <"$DNS_CONFIG_FILE"
 
     echo ""
     draw_line 50
@@ -109,7 +109,7 @@ add_dns_entry() {
         return 1
     fi
 
-    echo "$domain" >> "$DNS_CONFIG_FILE"
+    echo "$domain" >>"$DNS_CONFIG_FILE"
     msg_ok "已添加域名: ${C_RESET}$domain${C_RESET}"
     msg_info "提示: 执行 ${C_BOLD}refresh_dns_rules${C_RESET} 使更改生效"
     return 0
@@ -231,7 +231,7 @@ apply_dns_restrictions() {
 
     while IFS= read -r domain; do
         [[ -z "$domain" ]] && continue
-        ((domain_count+=1))
+        ((domain_count += 1))
 
         ip_list=$(_resolve_domain "$domain")
         if [[ -z "$ip_list" ]]; then
@@ -243,23 +243,23 @@ apply_dns_restrictions() {
         while IFS= read -r ip; do
             [[ -z "$ip" ]] && continue
             # 允许到该 IP 的 HTTP/HTTPS/DNS 流量
-            priv_iptables -A "$chain" -d "$ip" -p tcp --dport 80  -j ACCEPT
+            priv_iptables -A "$chain" -d "$ip" -p tcp --dport 80 -j ACCEPT
             priv_iptables -A "$chain" -d "$ip" -p tcp --dport 443 -j ACCEPT
-            priv_iptables -A "$chain" -d "$ip" -p udp --dport 53  -j ACCEPT
-            priv_iptables -A "$chain" -d "$ip" -p tcp --dport 53  -j ACCEPT
-            ((ip_count+=1))
-        done <<< "$ip_list"
+            priv_iptables -A "$chain" -d "$ip" -p udp --dport 53 -j ACCEPT
+            priv_iptables -A "$chain" -d "$ip" -p tcp --dport 53 -j ACCEPT
+            ((ip_count += 1))
+        done <<<"$ip_list"
 
-        ((resolved_count+=1))
+        ((resolved_count += 1))
         msg_info "  ${C_RESET}$domain${C_RESET} → ${C_BGREEN}$ip_count${C_RESET} 个 IP"
     done < <(_get_whitelist_domains)
 
     # --- 阻止该用户所有出站 DNS/HTTP/HTTPS ---
     msg_step "添加默认阻止规则..."
-    priv_iptables -A "$chain" -p tcp --dport 80  -j DROP
+    priv_iptables -A "$chain" -p tcp --dport 80 -j DROP
     priv_iptables -A "$chain" -p tcp --dport 443 -j DROP
-    priv_iptables -A "$chain" -p udp --dport 53  -j DROP
-    priv_iptables -A "$chain" -p tcp --dport 53  -j DROP
+    priv_iptables -A "$chain" -p udp --dport 53 -j DROP
+    priv_iptables -A "$chain" -p tcp --dport 53 -j DROP
 
     # --- 将自定义链挂载到 OUTPUT ---
     msg_step "应用规则到 OUTPUT 链..."
@@ -297,7 +297,7 @@ remove_dns_restrictions() {
     # 从 OUTPUT 中移除引用（可能有多条，循环删除）
     local removed=0
     while priv_iptables -D OUTPUT -m owner --uid-owner "$uid" -j "$chain" 2>/dev/null; do
-        ((removed+=1))
+        ((removed += 1))
     done
 
     # 清空并删除自定义链
@@ -305,7 +305,7 @@ remove_dns_restrictions() {
         priv_iptables -X "$chain" 2>/dev/null
     fi
 
-    if (( removed > 0 )); then
+    if ((removed > 0)); then
         msg_ok "DNS 限制已移除 — 用户: ${C_BOLD}$username${C_RESET}"
         record_user_event "$username" "dns_unrestrict" "移除 DNS 白名单限制"
     else
@@ -405,14 +405,17 @@ apply_all_dns_restrictions() {
         # 跳过重复
         local already=false
         for u in "${users[@]}"; do
-            [[ "$u" == "$uname" ]] && { already=true; break; }
+            [[ "$u" == "$uname" ]] && {
+                already=true
+                break
+            }
         done
         $already && continue
         # 检查用户是否仍然存在
         id "$uname" &>/dev/null && users+=("$uname")
-    done < "$USER_CREATION_LOG"
+    done <"$USER_CREATION_LOG"
 
-    if (( ${#users[@]} == 0 )); then
+    if ((${#users[@]} == 0)); then
         msg_warn "没有找到任何被管理的用户"
         return 0
     fi
@@ -423,9 +426,9 @@ apply_all_dns_restrictions() {
     local success=0 fail=0
     for uname in "${users[@]}"; do
         if apply_dns_restrictions "$uname"; then
-            ((success+=1))
+            ((success += 1))
         else
-            ((fail+=1))
+            ((fail += 1))
         fi
         echo ""
     done
@@ -460,9 +463,9 @@ refresh_dns_rules() {
         if id "$username" &>/dev/null; then
             msg_step "刷新用户: ${C_BOLD}$username${C_RESET}"
             if apply_dns_restrictions "$username"; then
-                ((refreshed+=1))
+                ((refreshed += 1))
             else
-                ((failed+=1))
+                ((failed += 1))
             fi
         else
             msg_warn "用户 ${C_BOLD}$username${C_RESET} 不存在，跳过（链: DNS_WL_${chain_suffix}）"

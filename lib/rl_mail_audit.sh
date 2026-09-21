@@ -31,9 +31,9 @@ rl_mail_audit_log() {
     rl_status=$(rl_mail_header_sanitize "$rl_status")
     rl_message=$(rl_mail_audit_sanitize_message "$rl_message")
     if [[ -n "$rl_message" ]]; then
-        printf '[%s] %s | user=%s email=%s action=%s status=%s msg=%s\n' "$rl_timestamp" "$$" "$rl_username" "$rl_email" "$rl_action" "$rl_status" "$rl_message" >> "$EMAIL_LOG_FILE"
+        printf '[%s] %s | user=%s email=%s action=%s status=%s msg=%s\n' "$rl_timestamp" "$$" "$rl_username" "$rl_email" "$rl_action" "$rl_status" "$rl_message" >>"$EMAIL_LOG_FILE"
     else
-        printf '[%s] %s | user=%s email=%s action=%s status=%s\n' "$rl_timestamp" "$$" "$rl_username" "$rl_email" "$rl_action" "$rl_status" >> "$EMAIL_LOG_FILE"
+        printf '[%s] %s | user=%s email=%s action=%s status=%s\n' "$rl_timestamp" "$$" "$rl_username" "$rl_email" "$rl_action" "$rl_status" >>"$EMAIL_LOG_FILE"
     fi
 }
 

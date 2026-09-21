@@ -58,24 +58,24 @@ generate_password_pool() {
 
     {
         local i j k m
-        for (( i = 0; i <= ${#upper_row} - 3; i++ )); do
+        for ((i = 0; i <= ${#upper_row} - 3; i++)); do
             local tri="${upper_row:i:3}"
-            for (( j = 0; j < ${#lower_chars}; j++ )); do
+            for ((j = 0; j < ${#lower_chars}; j++)); do
                 local lc="${lower_chars:j:1}"
-                for (( k = 0; k <= ${#digit_row} - 3; k++ )); do
+                for ((k = 0; k <= ${#digit_row} - 3; k++)); do
                     local dig="${digit_row:k:3}"
-                    for (( m = 0; m < ${#specials}; m++ )); do
+                    for ((m = 0; m < ${#specials}; m++)); do
                         echo "${tri}${lc}${dig}${specials:m:1}"
                     done
                 done
             done
         done
-    } > "$tmp_file"
+    } >"$tmp_file"
 
     # 使用时间戳作为随机种子进行洗牌，确保每次生成的池唯一
     if [[ -z "$custom_path" ]] || [[ "$custom_path" == "$PASSWORD_POOL_FILE" ]]; then
-        if ! shuf --random-source=<(printf '%s' "$timestamp$RANDOM") "$tmp_file" > "$pool_file" 2>/dev/null; then
-            shuf "$tmp_file" > "$pool_file" || {
+        if ! shuf --random-source=<(printf '%s' "$timestamp$RANDOM") "$tmp_file" >"$pool_file" 2>/dev/null; then
+            shuf "$tmp_file" >"$pool_file" || {
                 rm -f "$tmp_file"
                 umask "$old_umask"
                 msg_err "密码池生成失败"
@@ -83,7 +83,7 @@ generate_password_pool() {
             }
         fi
     else
-        shuf "$tmp_file" > "$pool_file" || {
+        shuf "$tmp_file" >"$pool_file" || {
             rm -f "$tmp_file"
             umask "$old_umask"
             msg_err "密码池生成失败"
@@ -106,7 +106,7 @@ generate_password_pool() {
     fi
 
     local count
-    count=$(wc -l < "$pool_file")
+    count=$(wc -l <"$pool_file")
     msg_ok "密码池已生成：${pool_file}（${count} 个密码）"
 
     echo "$pool_file"
@@ -118,12 +118,23 @@ get_random_password() {
     local pool_dir="${PASSWORD_POOL_DIR}"
     mkdir -p "$pool_dir"
 
+    # 原子消费：对整个密码池目录加排他锁，避免并发取到同一密码。
+    local pool_lock="$pool_dir/.password_pool.lock"
+    if command -v flock >/dev/null 2>&1; then
+        exec 9>>"$pool_lock" || return 1
+        flock -x 9 || {
+            exec 9>&-
+            return 1
+        }
+        trap 'flock -u 9 2>/dev/null; exec 9>&- 2>/dev/null' RETURN
+    fi
+
     # 查找最新的密码池文件
     local pool_file
     pool_file=$(ls -t "$pool_dir"/password_pool_*.txt 2>/dev/null | head -1)
 
     # 如果没有密码池或最新池为空，生成新池
-    if [[ -z "$pool_file" ]] || [[ ! -f "$pool_file" ]] || [[ $(wc -l < "$pool_file" 2>/dev/null) -lt 1 ]]; then
+    if [[ -z "$pool_file" ]] || [[ ! -f "$pool_file" ]] || [[ $(wc -l <"$pool_file" 2>/dev/null) -lt 1 ]]; then
         pool_file=$(generate_password_pool 2>/dev/null | tail -n 1) || return 1
         [[ -f "$pool_file" ]] || return 1
     fi
@@ -132,20 +143,20 @@ get_random_password() {
     touch "$used_file" 2>/dev/null || true
 
     local total_passwords
-    total_passwords=$(wc -l < "$pool_file")
+    total_passwords=$(wc -l <"$pool_file")
 
     # 获取已使用的密码数量
     local used_count
-    used_count=$(wc -l < "$used_file" 2>/dev/null || echo 0)
+    used_count=$(wc -l <"$used_file" 2>/dev/null || echo 0)
 
     # 如果所有密码都已使用，生成新池
-    if (( used_count >= total_passwords )); then
+    if ((used_count >= total_passwords)); then
         msg_warn "当前密码池已耗尽，生成新密码池..." >&2
         pool_file=$(generate_password_pool 2>/dev/null | tail -n 1) || return 1
         [[ -f "$pool_file" ]] || return 1
         used_file="${pool_file%.txt}.used"
         touch "$used_file" 2>/dev/null || true
-        total_passwords=$(wc -l < "$pool_file")
+        total_passwords=$(wc -l <"$pool_file")
     fi
 
     # 在未使用的密码中随机选取
@@ -153,7 +164,7 @@ get_random_password() {
     local max_attempts=200
     local attempt=0
 
-    while [[ -z "$selected_password" ]] && (( attempt < max_attempts )); do
+    while [[ -z "$selected_password" ]] && ((attempt < max_attempts)); do
         local random_line
         random_line=$(shuf -i 1-"$total_passwords" -n 1)
         local candidate
@@ -163,7 +174,7 @@ get_random_password() {
             # 检查是否已被使用
             if ! grep -qxF "$candidate" "$used_file" 2>/dev/null; then
                 selected_password="$candidate"
-                echo "$candidate" >> "$used_file"
+                echo "$candidate" >>"$used_file"
             fi
         fi
         ((attempt++))
@@ -175,10 +186,10 @@ get_random_password() {
         [[ -f "$pool_file" ]] || return 1
         used_file="${pool_file%.txt}.used"
         touch "$used_file" 2>/dev/null || true
-        total_passwords=$(wc -l < "$pool_file")
+        total_passwords=$(wc -l <"$pool_file")
         random_line=$(shuf -i 1-"$total_passwords" -n 1)
         selected_password=$(sed -n "${random_line}p" "$pool_file")
-        echo "$selected_password" >> "$used_file"
+        echo "$selected_password" >>"$used_file"
     fi
 
     echo "$selected_password"
@@ -196,14 +207,14 @@ cleanup_old_password_pools() {
         pool_files+=("$f")
     done < <(ls -t "$pool_dir"/password_pool_*.txt 2>/dev/null)
 
-    if (( ${#pool_files[@]} > keep )); then
+    if ((${#pool_files[@]} > keep)); then
         local cleaned=0
-        for (( i = keep; i < ${#pool_files[@]}; i++ )); do
+        for ((i = keep; i < ${#pool_files[@]}; i++)); do
             local f="${pool_files[$i]}"
             local used_file="${f%.txt}.used"
             rm -f "$f" "$used_file" 2>/dev/null && ((cleaned++))
         done
-        (( cleaned > 0 )) && msg_info "已清理 ${cleaned} 个旧密码池"
+        ((cleaned > 0)) && msg_info "已清理 ${cleaned} 个旧密码池"
     fi
 
     return 0
@@ -218,7 +229,7 @@ init_user_config() {
     mkdir -p "$(dirname "$USER_CONFIG_FILE")"
 
     if [[ ! -f "$USER_CONFIG_FILE" ]]; then
-        echo "{}" > "$USER_CONFIG_FILE"
+        echo "{}" >"$USER_CONFIG_FILE"
     fi
 }
 
@@ -235,17 +246,20 @@ update_user_config() {
 
     if command -v jq &>/dev/null; then
         local temp_file
-        temp_file=$(mktemp) || { msg_err "无法创建临时文件"; return 1; }
+        temp_file=$(mktemp) || {
+            msg_err "无法创建临时文件"
+            return 1
+        }
         if jq --arg user "$username" \
-           --arg mail "$email" \
-           --arg cpu "$cpu_quota" \
-           --arg mem "$memory_limit" \
-           '.[$user] = {
+            --arg mail "$email" \
+            --arg cpu "$cpu_quota" \
+            --arg mem "$memory_limit" \
+            '.[$user] = {
                "email": $mail,
                "cpu_quota": $cpu,
                "memory_limit": $mem,
                "created": (now | strftime("%Y-%m-%d %H:%M:%S"))
-           }' "$USER_CONFIG_FILE" > "$temp_file"; then
+           }' "$USER_CONFIG_FILE" >"$temp_file"; then
             mv "$temp_file" "$USER_CONFIG_FILE"
             return $?
         else
@@ -266,7 +280,7 @@ get_user_config() {
 
     if command -v jq &>/dev/null; then
         jq -r --arg user "$username" --arg field "$field" \
-           '.[$user][$field] // empty' "$USER_CONFIG_FILE" 2>/dev/null
+            '.[$user][$field] // empty' "$USER_CONFIG_FILE" 2>/dev/null
     fi
 }
 
@@ -284,7 +298,7 @@ init_email_config() {
     mkdir -p "$(dirname "$EMAIL_CONFIG_FILE")"
 
     if [[ ! -f "$EMAIL_CONFIG_FILE" ]]; then
-        cat > "$EMAIL_CONFIG_FILE" << 'EOF'
+        cat >"$EMAIL_CONFIG_FILE" <<'EOF'
 {
   "smtp_server": "smtp.example.com",
   "smtp_port": "587",
@@ -311,7 +325,6 @@ get_email_config() {
     fi
 }
 
-
 # ============================================================
 # 用户事件记录
 # ============================================================
@@ -329,13 +342,13 @@ record_user_event() {
     local timestamp quota_gb="N/A"
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
-    if [[ "$quota_bytes" =~ ^[0-9]+$ ]] && (( quota_bytes > 0 )); then
+    if [[ "$quota_bytes" =~ ^[0-9]+$ ]] && ((quota_bytes > 0)); then
         quota_gb=$(bytes_to_gb "$quota_bytes")
     fi
 
     printf '%s,%s,%s,%s,%s,%s,%s\n' \
         "$timestamp" "$username" "$action" "$user_type" "$mountpoint" "$home" "$quota_gb" \
-        >> "$USER_CREATION_LOG"
+        >>"$USER_CREATION_LOG"
 }
 
 # ============================================================
@@ -347,13 +360,20 @@ ensure_user_proxy_function() {
     local user_home="$2"
     local proxy_url="${USER_MANAGER_PROXY_URL:-http://127.0.0.1:7890}"
 
-    [[ -z "$username" ]] && { msg_err "用户名不能为空"; return 1; }
-    [[ -z "$user_home" ]] && { msg_err "主目录不能为空"; return 1; }
+    [[ -z "$username" ]] && {
+        msg_err "用户名不能为空"
+        return 1
+    }
+    [[ -z "$user_home" ]] && {
+        msg_err "主目录不能为空"
+        return 1
+    }
 
     mkdir -p "$user_home" 2>/dev/null || true
 
     local block
-    block=$(cat << EOF
+    block=$(
+        cat <<EOF
 # >>> user-manager proxy helper >>>
 proxy() {
     local proxy_url="\${1:-$proxy_url}"
@@ -369,7 +389,7 @@ unproxy() {
 }
 # <<< user-manager proxy helper <<<
 EOF
-)
+    )
 
     local rc_file
     for rc_file in "$user_home/.bashrc" "$user_home/.zshrc"; do
@@ -386,7 +406,7 @@ EOF
             else
                 {
                     printf '\n%s\n' "$block"
-                } >> "$rc_file" || return 1
+                } >>"$rc_file" || return 1
             fi
         fi
         if id "$username" >/dev/null 2>&1; then
@@ -406,13 +426,25 @@ create_user() {
     local install_miniforge="${4:-false}"
 
     # 参数验证
-    [[ -z "$username" ]] && { msg_err "用户名不能为空"; return 1; }
-    [[ -z "$password" ]] && { msg_err "密码不能为空"; return 1; }
-    [[ -z "$home" ]] && { msg_err "主目录不能为空"; return 1; }
-    
+    [[ -z "$username" ]] && {
+        msg_err "用户名不能为空"
+        return 1
+    }
+    [[ -z "$password" ]] && {
+        msg_err "密码不能为空"
+        return 1
+    }
+    [[ -z "$home" ]] && {
+        msg_err "主目录不能为空"
+        return 1
+    }
+
     # 路径安全验证
     if declare -f validate_path_safety &>/dev/null; then
-        validate_path_safety "$home" || { msg_err "主目录路径不安全: $home"; return 1; }
+        validate_path_safety "$home" || {
+            msg_err "主目录路径不安全: $home"
+            return 1
+        }
     fi
 
     priv_useradd -d "$home" -s /bin/bash -m "$username" || return 1
@@ -452,12 +484,21 @@ update_user() {
     local home="$3"
 
     # 参数验证
-    [[ -z "$username" ]] && { msg_err "用户名不能为空"; return 1; }
-    [[ -z "$password" ]] && { msg_err "密码不能为空"; return 1; }
-    
+    [[ -z "$username" ]] && {
+        msg_err "用户名不能为空"
+        return 1
+    }
+    [[ -z "$password" ]] && {
+        msg_err "密码不能为空"
+        return 1
+    }
+
     # 路径安全验证（如果提供了 home）
     if [[ -n "$home" ]] && declare -f validate_path_safety &>/dev/null; then
-        validate_path_safety "$home" || { msg_err "主目录路径不安全: $home"; return 1; }
+        validate_path_safety "$home" || {
+            msg_err "主目录路径不安全: $home"
+            return 1
+        }
     fi
 
     echo "$username:$password" | priv_chpasswd || return 1
@@ -513,7 +554,7 @@ normalize_group_list() {
                 if ($i != "" && ! seen[$i]++) print $i
             }
         }
-    ' <<< "$raw"
+    ' <<<"$raw"
 }
 
 user_group_exists() {
@@ -551,10 +592,10 @@ apply_user_groups() {
     while IFS= read -r group_name; do
         [[ -n "$group_name" ]] || continue
         add_user_to_group "$username" "$group_name" || return 1
-        ((applied+=1))
+        ((applied += 1))
     done < <(normalize_group_list "$groups_raw")
 
-    (( applied > 0 )) && msg_ok "用户组处理完成: $applied 个"
+    ((applied > 0)) && msg_ok "用户组处理完成: $applied 个"
     return 0
 }
 
@@ -562,7 +603,10 @@ remove_user_from_group() {
     local username="${1:-}" group_name="${2:-}"
     require_user "$username" || return 1
     validate_group_name "$group_name" || return 1
-    user_group_exists "$group_name" || { msg_err "用户组不存在: $group_name"; return 1; }
+    user_group_exists "$group_name" || {
+        msg_err "用户组不存在: $group_name"
+        return 1
+    }
     priv_deluser "$username" "$group_name" || return 1
     record_user_event "$username" "group_remove" "$group_name" 2>/dev/null || true
     msg_ok "已将用户 ${C_BOLD}$username${C_RESET} 移出用户组 ${C_BOLD}$group_name${C_RESET}"
@@ -577,14 +621,20 @@ list_user_groups() {
 list_group_members() {
     local group_name="${1:-}"
     validate_group_name "$group_name" || return 1
-    user_group_exists "$group_name" || { msg_err "用户组不存在: $group_name"; return 1; }
+    user_group_exists "$group_name" || {
+        msg_err "用户组不存在: $group_name"
+        return 1
+    }
     getent group "$group_name" | awk -F: '{gsub(/,/, "\n", $4); print $4}' | sed '/^$/d' | sort
 }
 
 delete_user_group() {
     local group_name="${1:-}"
     validate_group_name "$group_name" || return 1
-    user_group_exists "$group_name" || { msg_info "用户组不存在: $group_name"; return 0; }
+    user_group_exists "$group_name" || {
+        msg_info "用户组不存在: $group_name"
+        return 0
+    }
     priv_groupdel "$group_name" || return 1
     msg_ok "用户组已删除: ${C_BOLD}$group_name${C_RESET}"
 }
@@ -603,7 +653,10 @@ get_admin_group() {
 grant_user_admin_permission() {
     local username="${1:-}" admin_group
     require_user "$username" || return 1
-    [[ "$username" != "root" ]] || { msg_info "root 已拥有最高权限"; return 0; }
+    [[ "$username" != "root" ]] || {
+        msg_info "root 已拥有最高权限"
+        return 0
+    }
     admin_group=$(get_admin_group)
     ensure_user_group "$admin_group" || return 1
     priv_usermod -aG "$admin_group" "$username" || return 1
@@ -614,12 +667,15 @@ grant_user_admin_permission() {
 revoke_user_admin_permission() {
     local username="${1:-}" group_name revoked=0
     require_user "$username" || return 1
-    [[ "$username" != "root" ]] || { msg_err "禁止移除 root 权限"; return 1; }
+    [[ "$username" != "root" ]] || {
+        msg_err "禁止移除 root 权限"
+        return 1
+    }
     for group_name in sudo wheel admin; do
         user_group_exists "$group_name" || continue
         if id -nG "$username" 2>/dev/null | tr ' ' '\n' | grep -Fxq "$group_name"; then
             priv_deluser "$username" "$group_name" || return 1
-            ((revoked+=1))
+            ((revoked += 1))
         fi
     done
     record_user_event "$username" "permission_revoke" "admin_groups=${revoked}" 2>/dev/null || true
@@ -634,9 +690,15 @@ validate_home_mode() {
 set_user_home_mode() {
     local username="${1:-}" mode="${2:-700}" home
     require_user "$username" || return 1
-    validate_home_mode "$mode" || { msg_err "权限模式无效，应形如 700 或 0750"; return 1; }
+    validate_home_mode "$mode" || {
+        msg_err "权限模式无效，应形如 700 或 0750"
+        return 1
+    }
     home=$(get_user_home "$username")
-    [[ -n "$home" && -d "$home" ]] || { msg_err "无法获取用户主目录: $username"; return 1; }
+    [[ -n "$home" && -d "$home" ]] || {
+        msg_err "无法获取用户主目录: $username"
+        return 1
+    }
     priv_chmod "$mode" "$home" || return 1
     record_user_event "$username" "permission_chmod" "$mode" "" "$home" 2>/dev/null || true
     msg_ok "主目录权限已更新: ${C_BOLD}$home${C_RESET} -> ${C_BGREEN}$mode${C_RESET}"
@@ -646,9 +708,15 @@ set_user_home_group() {
     local username="${1:-}" group_name="${2:-}" home
     require_user "$username" || return 1
     validate_group_name "$group_name" || return 1
-    user_group_exists "$group_name" || { msg_err "用户组不存在: $group_name"; return 1; }
+    user_group_exists "$group_name" || {
+        msg_err "用户组不存在: $group_name"
+        return 1
+    }
     home=$(get_user_home "$username")
-    [[ -n "$home" && -d "$home" ]] || { msg_err "无法获取用户主目录: $username"; return 1; }
+    [[ -n "$home" && -d "$home" ]] || {
+        msg_err "无法获取用户主目录: $username"
+        return 1
+    }
     priv_chgrp "$group_name" "$home" || return 1
     record_user_event "$username" "permission_chgrp" "$group_name" "" "$home" 2>/dev/null || true
     msg_ok "主目录属组已更新: ${C_BOLD}$home${C_RESET} -> ${C_BGREEN}$group_name${C_RESET}"
@@ -658,14 +726,17 @@ show_user_permissions() {
     local username="${1:-}" home stat_line owner_group mode mode_text acl_level acl_name groups
     require_user "$username" || return 1
     home=$(get_user_home "$username")
-    [[ -n "$home" ]] || { msg_err "无法获取用户主目录: $username"; return 1; }
+    [[ -n "$home" ]] || {
+        msg_err "无法获取用户主目录: $username"
+        return 1
+    }
 
     if [[ -e "$home" ]]; then
         stat_line=$(stat -c '%U:%G|%a|%A' "$home" 2>/dev/null || printf -- '-|-|-')
     else
         stat_line='-|-|-'
     fi
-    IFS='|' read -r owner_group mode mode_text <<< "$stat_line"
+    IFS='|' read -r owner_group mode mode_text <<<"$stat_line"
     acl_level=$(acl_get_current_level "$username" 2>/dev/null || printf '%s' "$ACL_LEVEL_GUEST")
     acl_name="${ACL_LEVEL_NAMES[$acl_level]:-unknown}"
     groups=$(list_user_groups "$username" 2>/dev/null | paste -sd ', ' -)
@@ -682,10 +753,13 @@ show_user_permissions() {
 # 删除用户
 delete_user() {
     local username="$1"
-    
+
     # 参数验证
-    [[ -z "$username" ]] && { msg_err "用户名不能为空"; return 1; }
-    
+    [[ -z "$username" ]] && {
+        msg_err "用户名不能为空"
+        return 1
+    }
+
     # 清理 Miniforge/Mamba 配置（如果存在）
     if [[ -f "${SCRIPT_DIR}/lib/miniforge_core.sh" ]]; then
         # shellcheck source=lib/miniforge_core.sh
@@ -695,7 +769,7 @@ delete_user() {
             uninstall_miniforge_for_user "$username" || true
         fi
     fi
-    
+
     priv_userdel -r "$username" 2>/dev/null
     return $?
 }
@@ -733,8 +807,8 @@ _um_user_lock_state() {
     status_line=$(passwd -S "$username" 2>/dev/null || true)
     status_field=$(awk '{print $2}' <<<"$status_line")
     case "$status_field" in
-        L|LK) printf 'locked' ;;
-        *) printf 'active' ;;
+    L | LK) printf 'locked' ;;
+    *) printf 'active' ;;
     esac
 }
 
@@ -743,8 +817,8 @@ _um_user_expiry_state() {
     expiry_line=$(chage -l "$username" 2>/dev/null | awk -F: '/^Account expires/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}' || true)
     expiry_value="${expiry_line:-never}"
     case "$expiry_value" in
-        never|Never|"") printf -- '-1' ;;
-        *) printf '%s' "$(_um_disabled_sanitize_field "$expiry_value")" ;;
+    never | Never | "") printf -- '-1' ;;
+    *) printf '%s' "$(_um_disabled_sanitize_field "$expiry_value")" ;;
     esac
 }
 
@@ -779,7 +853,7 @@ _um_append_disabled_record() {
     local temp_records
     temp_records="$(mktemp)" || return 1
     if [[ -f "$DISABLED_USERS_FILE" ]]; then
-        grep -F -v -- "${username}"$'\t' "$DISABLED_USERS_FILE" > "$temp_records" || true
+        grep -F -v -- "${username}"$'\t' "$DISABLED_USERS_FILE" >"$temp_records" || true
     fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$(_um_disabled_sanitize_field "$username")" \
@@ -789,7 +863,7 @@ _um_append_disabled_record() {
         "$(_um_disabled_sanitize_field "$original_shell")" \
         "$(_um_disabled_sanitize_field "$original_lock_state")" \
         "$(_um_disabled_sanitize_field "$original_expiry")" \
-        "$(_um_disabled_sanitize_field "$mode")" >> "$temp_records"
+        "$(_um_disabled_sanitize_field "$mode")" >>"$temp_records"
     _um_write_disabled_records "$temp_records"
     local rc=$?
     rm -f "$temp_records"
@@ -820,7 +894,7 @@ _um_remove_disabled_record() {
     [[ -f "$DISABLED_USERS_FILE" ]] || return 0
     local temp_records
     temp_records="$(mktemp)" || return 1
-    grep -F -v -- "${username}"$'\t' "$DISABLED_USERS_FILE" > "$temp_records" || true
+    grep -F -v -- "${username}"$'\t' "$DISABLED_USERS_FILE" >"$temp_records" || true
     _um_write_disabled_records "$temp_records"
     local rc=$?
     rm -f "$temp_records"
@@ -834,18 +908,18 @@ _um_send_account_state_notice() {
     email=$(get_user_email "$username" 2>/dev/null || true)
     [[ -n "$email" ]] || return 0
     case "$event" in
-        suspend)
-            declare -F send_account_suspended_email >/dev/null 2>&1 && \
-                send_account_suspended_email "$username" "$email" "$reason" "$expiry_date" "system" >/dev/null 2>&1 || true
-            ;;
-        disable)
-            declare -F send_account_disabled_email >/dev/null 2>&1 && \
-                send_account_disabled_email "$username" "$email" "$reason" "$expiry_date" "system" >/dev/null 2>&1 || true
-            ;;
-        restore)
-            declare -F send_account_restored_email >/dev/null 2>&1 && \
-                send_account_restored_email "$username" "$email" "system" >/dev/null 2>&1 || true
-            ;;
+    suspend)
+        declare -F send_account_suspended_email >/dev/null 2>&1 &&
+            send_account_suspended_email "$username" "$email" "$reason" "$expiry_date" "system" >/dev/null 2>&1 || true
+        ;;
+    disable)
+        declare -F send_account_disabled_email >/dev/null 2>&1 &&
+            send_account_disabled_email "$username" "$email" "$reason" "$expiry_date" "system" >/dev/null 2>&1 || true
+        ;;
+    restore)
+        declare -F send_account_restored_email >/dev/null 2>&1 &&
+            send_account_restored_email "$username" "$email" "system" >/dev/null 2>&1 || true
+        ;;
     esac
 }
 
@@ -855,16 +929,31 @@ disable_user_account() {
     local expiry_date="${3:-permanent}"
     local mode="${4:-disable}"
 
-    [[ -n "$username" ]] || { msg_err "用户名不能为空"; return 1; }
+    [[ -n "$username" ]] || {
+        msg_err "用户名不能为空"
+        return 1
+    }
     validate_username "$username" >/dev/null 2>&1 || return 1
-    [[ "$username" != "root" ]] || { msg_err "禁止禁用 root 用户"; return 1; }
-    [[ "$username" != "${USER:-}" ]] || { msg_err "禁止禁用当前执行用户"; return 1; }
-    id "$username" >/dev/null 2>&1 || { msg_err "用户不存在: $username"; return 1; }
+    [[ "$username" != "root" ]] || {
+        msg_err "禁止禁用 root 用户"
+        return 1
+    }
+    [[ "$username" != "${USER:-}" ]] || {
+        msg_err "禁止禁用当前执行用户"
+        return 1
+    }
+    id "$username" >/dev/null 2>&1 || {
+        msg_err "用户不存在: $username"
+        return 1
+    }
 
     local uid original_shell original_lock_state original_expiry
     uid="$(_um_user_uid "$username")" || return 1
     [[ "$uid" =~ ^[0-9]+$ ]] || return 1
-    (( uid >= 1000 )) || { msg_err "禁止禁用系统用户: $username"; return 1; }
+    ((uid >= 1000)) || {
+        msg_err "禁止禁用系统用户: $username"
+        return 1
+    }
 
     if is_user_disabled "$username"; then
         msg_info "用户 $username 已处于停用状态"
@@ -902,11 +991,14 @@ disable_user_account() {
 
 enable_user_account() {
     local username="$1"
-    [[ -n "$username" ]] || { msg_err "用户名不能为空"; return 1; }
+    [[ -n "$username" ]] || {
+        msg_err "用户名不能为空"
+        return 1
+    }
 
     local record original_shell original_lock_state original_expiry record_mode
     record="$(_um_get_disabled_record "$username")" || return 0
-    IFS=$'\t' read -r _ _ _ _ original_shell original_lock_state original_expiry record_mode <<< "$record"
+    IFS=$'\t' read -r _ _ _ _ original_shell original_lock_state original_expiry record_mode <<<"$record"
     [[ -n "$original_shell" ]] || original_shell="/bin/bash"
     [[ -n "$original_lock_state" ]] || original_lock_state="active"
     if [[ "$original_expiry" == "disable" || "$original_expiry" == "suspend" ]]; then
@@ -941,9 +1033,9 @@ check_expired_suspensions() {
     while IFS= read -r line; do
         [[ -n "$line" ]] || continue
         if [[ "$line" == *$'\t'* ]]; then
-            IFS=$'\t' read -r username _ _ expiry_date _ _ _ <<< "$line"
+            IFS=$'\t' read -r username _ _ expiry_date _ _ _ <<<"$line"
         else
-            IFS=, read -r username _ _ expiry_date <<< "$line"
+            IFS=, read -r username _ _ expiry_date <<<"$line"
         fi
         [[ -z "$username" ]] && continue
 
@@ -957,15 +1049,15 @@ check_expired_suspensions() {
 
         [[ -z "$expiry_epoch" ]] && continue
 
-        if (( today_epoch >= expiry_epoch )); then
+        if ((today_epoch >= expiry_epoch)); then
             if id "$username" &>/dev/null; then
                 enable_user_account "$username" || continue
                 expired_users+=("$username")
             fi
         fi
-    done < "$DISABLED_USERS_FILE"
+    done <"$DISABLED_USERS_FILE"
 
-    if (( ${#expired_users[@]} > 0 )); then
+    if ((${#expired_users[@]} > 0)); then
         for username in "${expired_users[@]}"; do
             remove_file_entry "$DISABLED_USERS_FILE" "^${username},"
         done
@@ -1014,13 +1106,13 @@ record_job_stats() {
 
     # 如果文件不存在，写入表头
     if [[ ! -f "$stats_file" ]]; then
-        echo "timestamp,process_count" > "$stats_file"
+        echo "timestamp,process_count" >"$stats_file"
     fi
 
     local process_count
     process_count=$(collect_user_jobs "$username")
 
-    printf '%s,%s\n' "$timestamp" "$process_count" >> "$stats_file"
+    printf '%s,%s\n' "$timestamp" "$process_count" >>"$stats_file"
 }
 
 # 获取最近 7 天的作业统计摘要
@@ -1110,7 +1202,7 @@ collect_all_job_stats() {
     local usernames=()
     mapfile -t usernames < <(get_managed_usernames)
 
-    if (( ${#usernames[@]} == 0 )); then
+    if ((${#usernames[@]} == 0)); then
         msg_warn "未找到托管用户，跳过作业统计收集"
         return 0
     fi
@@ -1120,7 +1212,7 @@ collect_all_job_stats() {
     local recorded=0
     for username in "${usernames[@]}"; do
         record_job_stats "$username"
-        ((recorded+=1))
+        ((recorded += 1))
     done
 
     msg_ok "已完成 ${recorded} 个用户的作业统计记录"
@@ -1160,7 +1252,8 @@ configure_password_rotation() {
     msg_step "创建密码轮换脚本..."
 
     local script_content
-    script_content=$(cat << GENEOF
+    script_content=$(
+        cat <<GENEOF
 #!/bin/bash
 # 自动密码轮换脚本
 # 由用户管理系统生成于 $(date '+%Y-%m-%d %H:%M:%S')
@@ -1260,7 +1353,7 @@ if [[ -f "\$LOG_FILE" ]]; then
     fi
 fi
 GENEOF
-)
+    )
 
     if printf '%s' "$script_content" | write_privileged_text_file "$script_path" "0755" "root:root"; then
         priv_chmod +x "$script_path"
@@ -1369,7 +1462,7 @@ manual_password_rotation() {
     local managed_users=()
     mapfile -t managed_users < <(get_managed_usernames)
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         msg_warn "没有托管用户"
         return 0
     fi
@@ -1387,14 +1480,14 @@ manual_password_rotation() {
     local log_file="${LOG_DIR:-$SCRIPT_DIR/logs}/password_rotate.log"
     mkdir -p "$(dirname "$log_file")"
 
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] === 手动密码轮换开始 ===" >> "$log_file"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] === 手动密码轮换开始 ===" >>"$log_file"
 
     for username in "${managed_users[@]}"; do
         local newpass
         newpass=$(get_random_password)
         if [[ -z "$newpass" ]]; then
             msg_err "  $username: 无法获取密码"
-            ((failed+=1))
+            ((failed += 1))
             continue
         fi
 
@@ -1406,9 +1499,9 @@ manual_password_rotation() {
 
             msg_ok "  $username: 密码已更新"
             results+=("$username:$newpass")
-            ((success+=1))
+            ((success += 1))
 
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] 成功: $username" >> "$log_file"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] 成功: $username" >>"$log_file"
 
             # 发送邮件
             local email
@@ -1420,12 +1513,12 @@ manual_password_rotation() {
             record_user_event "$username" "password_rotate" "手动密码轮换"
         else
             msg_err "  $username: 更新失败"
-            ((failed+=1))
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] 失败: $username" >> "$log_file"
+            ((failed += 1))
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] 失败: $username" >>"$log_file"
         fi
     done
 
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] === 轮换完成: 成功 $success, 失败 $failed ===" >> "$log_file"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] === 轮换完成: 成功 $success, 失败 $failed ===" >>"$log_file"
 
     echo ""
     draw_header "轮换完成"
@@ -1434,7 +1527,7 @@ manual_password_rotation() {
         draw_info_card "失败:" "${C_BRED}$failed${C_RESET}"
     fi
 
-    if (( ${#results[@]} > 0 )); then
+    if ((${#results[@]} > 0)); then
         echo ""
         msg_info "新密码清单:"
         printf "  ${C_DIM}%-18s %s${C_RESET}\n" "用户名" "新密码"

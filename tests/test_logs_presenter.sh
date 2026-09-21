@@ -17,29 +17,29 @@ setup_test_env
 
 mock_journalctl() {
     case "$*" in
-        *"-b 0"*)
-            printf 'current boot line\nshared boot line\n'
-            ;;
-        *"-u ssh.service"*)
-            printf 'ssh recent line one\nssh recent line two\n'
-            ;;
-        *)
-            printf 'generic journal line\n'
-            ;;
+    *"-b 0"*)
+        printf 'current boot line\nshared boot line\n'
+        ;;
+    *"-u ssh.service"*)
+        printf 'ssh recent line one\nssh recent line two\n'
+        ;;
+    *)
+        printf 'generic journal line\n'
+        ;;
     esac
 }
 
 mock_systemctl() {
     case "$*" in
-        *"--failed"*)
-            cat <<'OUT'
+    *"--failed"*)
+        cat <<'OUT'
 UNIT LOAD ACTIVE SUB DESCRIPTION
 ssh.service loaded failed failed OpenSSH server
 OUT
-            ;;
-        *)
-            printf 'systemctl mock\n'
-            ;;
+        ;;
+    *)
+        printf 'systemctl mock\n'
+        ;;
     esac
 }
 

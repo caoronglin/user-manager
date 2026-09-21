@@ -144,7 +144,7 @@ ICON_LOCATION='📍'
 glass_clear() {
     # 清除屏幕
     printf '\033[2J\033[H'
-    
+
     # 设置玻璃拟态背景（深色半透明效果）
     printf '%b' "$C_GLASS_BG"
 }
@@ -160,24 +160,24 @@ glass_panel() {
     local title="$1"
     local width="${2:-60}"
     local height="${3:-10}"
-    
+
     # 上边框
     printf '%b┌' "$C_GLASS_ACCENT"
     printf '%*s' $((width - 2)) '' | tr ' ' '─'
     printf '┐%b\n' "$C_RESET"
-    
+
     # 标题行
     printf '%b│%b %b%s%b %*s%b│%b\n' \
         "$C_GLASS_ACCENT" "$C_RESET" \
         "$C_BOLD" "$title" "$C_RESET" \
         $((width - ${#title} - 4)) '' \
         "$C_GLASS_ACCENT" "$C_RESET"
-    
+
     # 分隔线
     printf '%b├' "$C_GLASS_ACCENT"
     printf '%*s' $((width - 2)) '' | tr ' ' '─'
     printf '┤%b\n' "$C_RESET"
-    
+
     # 内容区域（空行）
     local i
     for ((i = 0; i < height - 4; i++)); do
@@ -186,7 +186,7 @@ glass_panel() {
             $((width - 2)) '' \
             "$C_GLASS_ACCENT" "$C_RESET"
     done
-    
+
     # 下边框
     printf '%b└' "$C_GLASS_ACCENT"
     printf '%*s' $((width - 2)) '' | tr ' ' '─'
@@ -200,34 +200,34 @@ glass_button() {
     local text="$1"
     local type="${2:-primary}"
     local width="${3:-20}"
-    
+
     # 根据类型选择颜色
     local color="$C_GLASS_ACCENT"
     case "$type" in
-        primary) color="$C_GLASS_ACCENT" ;;
-        secondary) color="$C_GLASS_FG" ;;
-        success) color="$C_GLASS_SUCCESS" ;;
-        warning) color="$C_GLASS_WARN" ;;
-        danger) color="$C_GLASS_ERROR" ;;
+    primary) color="$C_GLASS_ACCENT" ;;
+    secondary) color="$C_GLASS_FG" ;;
+    success) color="$C_GLASS_SUCCESS" ;;
+    warning) color="$C_GLASS_WARN" ;;
+    danger) color="$C_GLASS_ERROR" ;;
     esac
-    
+
     # 计算内边距
     local text_len=${#text}
-    local padding=$(( (width - text_len - 2) / 2 ))
-    local padding_right=$(( width - text_len - 2 - padding ))
-    
+    local padding=$(((width - text_len - 2) / 2))
+    local padding_right=$((width - text_len - 2 - padding))
+
     # 绘制按钮
     printf '%b╭' "$color"
     printf '%*s' $((width - 2)) '' | tr ' ' '─'
     printf '╮%b\n' "$C_RESET"
-    
+
     printf '%b│%b%*s%b%s%b%*s%b│%b\n' \
         "$color" "$C_RESET" \
         $padding '' \
         "$C_BOLD" "$text" "$C_RESET" \
         $padding_right '' \
         "$color" "$C_RESET"
-    
+
     printf '%b╰' "$color"
     printf '%*s' $((width - 2)) '' | tr ' ' '─'
     printf '╯%b\n' "$C_RESET"
@@ -238,7 +238,7 @@ glass_button() {
 glass_input() {
     local label="$1"
     local width="${2:-50}"
-    
+
     printf '%b%s:%b\n' "$C_GLASS_FG" "$label" "$C_RESET"
     printf '%b┌' "$C_GLASS_ACCENT"
     printf '%*s' $((width - 2)) '' | tr ' ' '─'
@@ -258,14 +258,14 @@ glass_input() {
 glass_separator() {
     local width="${1:-60}"
     local style="${2:-single}"
-    
+
     local char='─'
     case "$style" in
-        single) char='─' ;;
-        double) char='═' ;;
-        dashed) char='╌' ;;
+    single) char='─' ;;
+    double) char='═' ;;
+    dashed) char='╌' ;;
     esac
-    
+
     printf '%b%*s%b\n' "$C_GLASS_FG" "$width" '' "$C_RESET" | tr ' ' "$char"
 }
 
@@ -279,10 +279,10 @@ glass_fade_in() {
     local duration="${1:-500}"
     local steps=10
     local delay=$((duration / steps))
-    
+
     # 清屏
     printf '\033[2J\033[H'
-    
+
     # 模拟淡入（通过延迟显示）
     local i
     for ((i = 0; i < steps; i++)); do
@@ -290,7 +290,7 @@ glass_fade_in() {
         printf '%bLoading...%b\n' "$C_DIM" "$C_RESET"
         sleep "$(printf '%.3f' "$(echo "${delay} / 1000" | bc -l 2>/dev/null || echo "0.1")")"
     done
-    
+
     printf '\033[2J\033[H'
 }
 
@@ -299,7 +299,7 @@ glass_fade_in() {
 glass_typewriter() {
     local text="$1"
     local delay="${2:-50}"
-    
+
     local i
     for ((i = 0; i < ${#text}; i++)); do
         printf '%s' "${text:$i:1}"
@@ -314,11 +314,11 @@ glass_progress() {
     local current="$1"
     local total="$2"
     local width="${3:-40}"
-    
+
     local percentage=$((current * 100 / total))
     local filled=$((current * width / total))
     local empty=$((width - filled))
-    
+
     printf '%b[' "$C_GLASS_ACCENT"
     printf '%*s' "$filled" '' | tr ' ' '#'
     printf '%*s' "$empty" '' | tr ' ' '-'
@@ -333,23 +333,23 @@ glass_progress() {
 glass_detect_terminal() {
     local term="${TERM:-unknown}"
     local colors=8
-    
+
     # 检测颜色支持
     if [[ -n "${COLORTERM:-}" ]]; then
         case "$COLORTERM" in
-            truecolor|24bit) colors=16777216 ;;
-            *) colors=256 ;;
+        truecolor | 24bit) colors=16777216 ;;
+        *) colors=256 ;;
         esac
     elif [[ "$term" == *"256color"* ]]; then
         colors=256
     fi
-    
+
     # 检测 Unicode 支持
     local unicode_support=false
     if [[ "${LANG:-}" == *"UTF"* ]] || [[ "${LC_ALL:-}" == *"UTF"* ]]; then
         unicode_support=true
     fi
-    
+
     echo "{
   \"terminal\": \"$term\",
   \"colors\": $colors,
@@ -361,7 +361,7 @@ glass_detect_terminal() {
 glass_init() {
     # 清屏并设置背景
     printf '\033[2J\033[H'
-    
+
     # 显示初始化信息
     printf '%b%b %s%b\n' "$C_DIM" "$ICON_INFO" "Initializing glassmorphism UI..." "$C_RESET"
 }

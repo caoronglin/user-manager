@@ -1,6 +1,10 @@
 #!/bin/bash
 # rl-system-overview.sh - 系统概览 (glances 包装)
-set -euo pipefail
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+# ERR trap：严格模式错误报告（行号 + 失败命令 + 退出码）
+trap 'echo "错误: 行 $LINENO: $BASH_COMMAND (exit $?)" >&2' ERR
 
 # shellcheck disable=SC2034  # used to derive PROJECT_ROOT (now unused after deletion)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,17 +34,17 @@ if ! command -v glances &>/dev/null; then
 fi
 
 case "${1:-}" in
-    --web)
-        echo "启动 glances Web 模式 (http://localhost:61208)..."
-        exec glances -w
-        ;;
-    --processes)
-        exec glances --disable-cpu --disable-mem --disable-swap --disable-io --disable-net --disable-disk --disable-fs --disable-sensors --disable-irq
-        ;;
-    --quick)
-        exec glances --time 1 --quiet
-        ;;
-    *)
-        exec glances "$@"
-        ;;
+--web)
+    echo "启动 glances Web 模式 (http://localhost:61208)..."
+    exec glances -w
+    ;;
+--processes)
+    exec glances --disable-cpu --disable-mem --disable-swap --disable-io --disable-net --disable-disk --disable-fs --disable-sensors --disable-irq
+    ;;
+--quick)
+    exec glances --time 1 --quiet
+    ;;
+*)
+    exec glances "$@"
+    ;;
 esac

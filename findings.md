@@ -100,3 +100,32 @@
 - 当前没有真正执行完整交互工作流的回归测试；`test_bootstrap_integration.sh` 只验证该函数已导出。
 - 该控制器文件不在当前未提交修改列表中；但依赖的 `user_core.sh`、`privilege.sh`、`bootstrap.sh` 等有既有未提交改动，不能在没有实际 stderr/输入上下文时归因于此前的 CI/测试质量修复。
 - 等待完整非敏感终端输出、入口路径、账户是否已存在、输入选择以及锁/挂载状态后继续根因定位；不得在此之前猜测性修改创建流程。
+
+## 2026-07-21 功能与 TUI 渲染探索
+
+- `safe_run` 只保留 `create_or_assign_user` 的返回码，项目当前没有针对该工作流失败的统一持久化日志；`created_users.txt` 只在成功结束后记录。当前锁不存在，已读取的历史审计日志仅含无法关联本次报告的旧 `quota` 失败。
+- 只读复现：清除 `LANG`、`LC_ALL`、`LC_CTYPE` 后调用 `tui_detect_terminal` 会因 `lib/tui_core.sh:28` 的直接 `$LANG` 引用在 nounset 模式下失败：`LANG: unbound variable`。
+- 主 TUI 使用 `tui_manager.sh` + `tui_menus.sh`，不使用 `ui_menu_modern.sh`。数据驱动 `_tui_draw_menu` 未使用 `tui_core.sh` 已有分页逻辑；22 项报告菜单可在常见 24 行终端中溢出。
+- 已识别的附加渲染风险包括宽字符/emoji 列宽、窄终端时状态栏负宽度或光标列、标题未裁剪；这些需真实终端证据后才应决定是否修复，避免范围扩大。
+
+## 2026-07-21 TUI 渲染韧性设计
+
+- 主线导航还有两项已稳定确认的功能根因：`_tui_draw_menu` 每次 redraw 重置菜单状态；22 个 handler 通过 `$(tui_menu_handle_key ...)` 在子 shell 运行导航，UP/DOWN/HOME/END 的状态更新会丢失。
+- 已按用户给定范围拟定最小方案：保持 `tui_menu_handle_key` 默认 stdout 协议，新增 state 模式及当前 shell bridge；仅同一菜单首次进入时初始化状态；用共享 viewport 与显示列宽工具处理分页、中文/常见单 emoji、ANSI 测量和窄状态栏。
+- 完整本地设计在 `docs/superpowers/specs/2026-07-21-tui-rendering-resilience-design.md`；未提交，等待用户审阅后才可进入实现计划。
+
+## 2026-07-21 TUI 设计复核补充
+
+- `tui_run` 也以 command substitution 调用主 handler；只迁移各 handler不能修复主菜单状态持久化，必须为主循环增加父 shell state 模式。
+- `tui_init` 清空菜单数组；数据驱动菜单仅按 ID 缓存会导致同 ID 重绘空菜单，因此缓存失效必须与 `tui_init` 和新原生菜单循环统一。
+- TERM 缺失不仅影响颜色检测；现代渲染路径无条件读取颜色 token，token 初始化和无颜色 no-op 同属 nounset 修复。
+- 正常标题/边框/状态栏布局最少需要 7 行；1–6 行必须使用紧凑、无标题/无边框/无状态栏的安全 fallback。
+- 迁移范围包含 22 个 key handler 与 `tests/test_tui_native_forms.sh` 的两个 stdout-only mock；以源码契约和真实主循环测试防止遗漏。
+
+## 2026-08-13 跨服务器与 GPU 扩展设计
+
+- 项目已有 action registry、能力探测、GPU/VM 基础模块和结构化日志，可作为 Provider 与 Planner 的复用边界。
+- 适合当前 Bash 项目的路径是 SSH-first：本机保持默认，SSH 只执行白名单 action，不立即引入中心控制面。
+- GPU 首期限制为只读设备与进程监控；调度、MIG、容器/cgroup 隔离需要独立安全设计。
+- 多主机操作不具备天然事务性，应明确逐主机终态和 best-effort 语义，不能承诺原子回滚。
+- 用户可见错误不应暴露内部函数名和裸返回码，应统一为发生事项、可能原因、建议操作和诊断编号。

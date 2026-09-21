@@ -1,7 +1,11 @@
 #!/bin/bash
 # check_sensitive_files.sh - 检查已跟踪的敏感文件和常见密钥内容
 
-set -euo pipefail
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+# ERR trap：严格模式错误报告（行号 + 失败命令 + 退出码）
+trap 'echo "错误: 行 $LINENO: $BASH_COMMAND (exit $?)" >&2' ERR
 
 REPO_ROOT="${1:-.}"
 
@@ -21,9 +25,9 @@ declare -a sensitive_matches=()
 while IFS= read -r -d '' file_path; do
     base_name="$(basename "$file_path")"
     case "$base_name" in
-        .env|.env.*|*.pem|*.key|*.p12|*.pfx|id_rsa|id_dsa|id_ecdsa|id_ed25519|.npmrc|.pypirc|.netrc|credentials.json|secrets.json|service-account.json|service_account.json)
-            suspicious_files+=("$file_path")
-            ;;
+    .env | .env.* | *.pem | *.key | *.p12 | *.pfx | id_rsa | id_dsa | id_ecdsa | id_ed25519 | .npmrc | .pypirc | .netrc | credentials.json | secrets.json | service-account.json | service_account.json)
+        suspicious_files+=("$file_path")
+        ;;
     esac
 done < <(git -C "$REPO_ROOT" ls-files -z)
 
@@ -50,19 +54,19 @@ while IFS= read -r -d '' file_path; do
     done
 done < <(git -C "$REPO_ROOT" ls-files -z)
 
-if (( ${#suspicious_files[@]} == 0 && ${#sensitive_matches[@]} == 0 )); then
+if ((${#suspicious_files[@]} == 0 && ${#sensitive_matches[@]} == 0)); then
     echo "No sensitive tracked files detected."
     exit 0
 fi
 
 echo "Sensitive tracked files or secrets detected:" >&2
 
-if (( ${#suspicious_files[@]} > 0 )); then
+if ((${#suspicious_files[@]} > 0)); then
     echo "[Filenames]" >&2
     printf '  %s\n' "${suspicious_files[@]}" >&2
 fi
 
-if (( ${#sensitive_matches[@]} > 0 )); then
+if ((${#sensitive_matches[@]} > 0)); then
     echo "[Contents]" >&2
     printf '  %s\n' "${sensitive_matches[@]}" >&2
 fi

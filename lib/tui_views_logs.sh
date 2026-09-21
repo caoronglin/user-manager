@@ -24,29 +24,29 @@ tui_logs_render_text() {
 
     [[ "$scroll_offset" =~ ^[0-9]+$ ]] || scroll_offset=0
     [[ "$max_rows" =~ ^[0-9]+$ ]] || max_rows=18
-    (( max_rows < 1 )) && max_rows=1
+    ((max_rows < 1)) && max_rows=1
 
-    if declare -F tui_clear >/dev/null 2>&1 \
-        && declare -F tui_draw_center >/dev/null 2>&1 \
-        && declare -F tui_statusbar_draw >/dev/null 2>&1; then
+    if declare -F tui_clear >/dev/null 2>&1 &&
+        declare -F tui_draw_center >/dev/null 2>&1 &&
+        declare -F tui_statusbar_draw >/dev/null 2>&1; then
         tui_clear
         tui_draw_center 1 "$title" "${TUI_COLOR_ACCENT:-6}"
 
         local row=4 index=0 printed=0 line
         while IFS= read -r line || [[ -n "$line" ]]; do
-            if (( index++ < scroll_offset )); then
+            if ((index++ < scroll_offset)); then
                 continue
             fi
-            (( printed >= max_rows )) && break
+            ((printed >= max_rows)) && break
             if declare -F tui_move >/dev/null 2>&1; then
                 tui_move "$row" 2
             fi
             printf '%s\n' "$line"
             ((row++))
             ((printed++))
-        done <<< "$body"
+        done <<<"$body"
 
-        if (( printed == 0 )); then
+        if ((printed == 0)); then
             tui_draw_center 5 "没有可显示的日志" "${TUI_COLOR_MUTED:-8}"
         fi
 
@@ -57,14 +57,14 @@ tui_logs_render_text() {
     printf '== %s ==\n' "$title"
     local index=0 printed=0 line
     while IFS= read -r line || [[ -n "$line" ]]; do
-        if (( index++ < scroll_offset )); then
+        if ((index++ < scroll_offset)); then
             continue
         fi
-        (( printed >= max_rows )) && break
+        ((printed >= max_rows)) && break
         printf '%s\n' "$line"
         ((printed++))
-    done <<< "$body"
-    (( printed > 0 )) || printf '没有可显示的日志\n'
+    done <<<"$body"
+    ((printed > 0)) || printf '没有可显示的日志\n'
     printf '\n%s\n' "↑/↓ 滚动  r 刷新  q 返回"
 }
 
@@ -92,12 +92,12 @@ _tui_logs_read_key() {
 
     IFS= read -rsn1 key || return 1
     case "$key" in
-        $'\e')
-            TUI_LOGS_KEY="ESC"
-            ;;
-        *)
-            TUI_LOGS_KEY="$key"
-            ;;
+    $'\e')
+        TUI_LOGS_KEY="ESC"
+        ;;
+    *)
+        TUI_LOGS_KEY="$key"
+        ;;
     esac
 }
 
@@ -114,7 +114,7 @@ tui_logs_open_action() {
     fi
 
     max_rows=$((${TUI_LINES:-24} - 6))
-    (( max_rows < 1 )) && max_rows=1
+    ((max_rows < 1)) && max_rows=1
 
     while true; do
         if output="$(logs_present_tui "$action_id" "${action_args[@]}" 2>&1)"; then
@@ -134,22 +134,21 @@ tui_logs_open_action() {
                 key="q"
             fi
             case "$key" in
-                q|Q|ESC)
-                    return "$last_rc"
-                    ;;
-                r|R)
-                    break
-                    ;;
-                UP|k|K)
-                    (( scroll_offset > 0 )) && ((scroll_offset--))
-                    tui_logs_render_text "$action_id" "$output" "$scroll_offset" "$max_rows"
-                    ;;
-                DOWN|j|J)
-                    ((scroll_offset++))
-                    tui_logs_render_text "$action_id" "$output" "$scroll_offset" "$max_rows"
-                    ;;
-                *)
-                    ;;
+            q | Q | ESC)
+                return "$last_rc"
+                ;;
+            r | R)
+                break
+                ;;
+            UP | k | K)
+                ((scroll_offset > 0)) && ((scroll_offset--))
+                tui_logs_render_text "$action_id" "$output" "$scroll_offset" "$max_rows"
+                ;;
+            DOWN | j | J)
+                ((scroll_offset++))
+                tui_logs_render_text "$action_id" "$output" "$scroll_offset" "$max_rows"
+                ;;
+            *) ;;
             esac
         done
     done

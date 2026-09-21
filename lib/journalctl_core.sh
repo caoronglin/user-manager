@@ -87,8 +87,8 @@ journalctl_summarize_error_diff() {
         return 1
     }
 
-    printf '%s\n' "$current_raw" | journalctl_unique_lines > "$current_file"
-    printf '%s\n' "$previous_raw" | journalctl_unique_lines > "$previous_file"
+    printf '%s\n' "$current_raw" | journalctl_unique_lines >"$current_file"
+    printf '%s\n' "$previous_raw" | journalctl_unique_lines >"$previous_file"
 
     awk '
         FNR == NR {

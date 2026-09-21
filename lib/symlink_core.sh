@@ -75,7 +75,7 @@ create_user_symlink() {
     fi
 
     # 安全检查：不允许链接到敏感路径
-    local -a forbidden_paths=( "/etc" "/boot" "/root" "/proc" "/sys" "/dev" )
+    local -a forbidden_paths=("/etc" "/boot" "/root" "/proc" "/sys" "/dev")
     for fp in "${forbidden_paths[@]}"; do
         if [[ "$resolved_target" == "$fp" || "$resolved_target" == "$fp/"* ]]; then
             msg_err "不允许创建指向系统关键目录的链接: $fp"
@@ -299,7 +299,7 @@ cleanup_broken_symlinks() {
             target=$(readlink "$link")
             priv_rm "$link"
             msg_ok "已移除断链: ${C_BOLD}$lname${C_RESET} → $target"
-            ((cleaned+=1))
+            ((cleaned += 1))
         fi
     done < <(find "$user_home" -maxdepth 1 -type l -print0 2>/dev/null)
 
@@ -363,7 +363,7 @@ create_shared_for_all() {
     local managed_users=()
     mapfile -t managed_users < <(get_managed_usernames)
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         msg_warn "没有托管用户"
         return 0
     fi
@@ -371,9 +371,9 @@ create_shared_for_all() {
     local success=0 failed=0
     for username in "${managed_users[@]}"; do
         if create_user_symlink "$username" "shared_${shared_name}" "$shared_path" 2>/dev/null; then
-            ((success+=1))
+            ((success += 1))
         else
-            ((failed+=1))
+            ((failed += 1))
         fi
     done
 
@@ -390,7 +390,7 @@ show_all_symlinks_overview() {
     local managed_users=()
     mapfile -t managed_users < <(get_managed_usernames)
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         msg_warn "没有托管用户"
         return 0
     fi
@@ -420,7 +420,7 @@ show_all_symlinks_overview() {
 
             printf "  ${C_BOLD}%-16s${C_RESET} ${C_RESET}%-24s${C_RESET} %-36s ${status_color}%s${C_RESET}\n" \
                 "$username" "$lname" "$target" "$status"
-            ((total_links+=1))
+            ((total_links += 1))
         done < <(find "$user_home" -maxdepth 1 -type l -print0 2>/dev/null | sort -z)
     done
 

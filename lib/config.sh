@@ -11,7 +11,6 @@
 #   export USER_MANAGER_QUOTA_DEFAULT=$((1000 * 1024**3))
 #   bash run.sh
 
-
 # === 路径配置 ===
 # shellcheck disable=SC2034
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,7 +28,7 @@ USER_PORT_MAP_FILE="${USER_MANAGER_USER_PORT_MAP_FILE:-$DATA_DIR/user_port_map.t
 # 密码池目录（每次执行生成带时间戳的新池）
 PASSWORD_POOL_DIR="${USER_MANAGER_PASSWORD_POOL_DIR:-$DATA_DIR/password_pools}"
 PASSWORD_POOL_FILE="${USER_MANAGER_PASSWORD_POOL_FILE:-$PASSWORD_POOL_DIR/password_pool.txt}"
-PASSWORD_POOL_KEEP="${USER_MANAGER_PASSWORD_POOL_KEEP:-5}"  # 保留最近 N 个密码池
+PASSWORD_POOL_KEEP="${USER_MANAGER_PASSWORD_POOL_KEEP:-5}" # 保留最近 N 个密码池
 USER_CONFIG_FILE="${USER_MANAGER_USER_CONFIG_FILE:-$DATA_DIR/user_config.json}"
 EMAIL_CONFIG_FILE="${USER_MANAGER_EMAIL_CONFIG_FILE:-$DATA_DIR/email_config.json}"
 DNS_CONFIG_FILE="${USER_MANAGER_DNS_CONFIG_FILE:-$DATA_DIR/dns_whitelist.txt}"
@@ -44,7 +43,7 @@ ALL_DISKS=(1 2 3 4 5 6 7)
 # === 资源配额配置 ===
 DEFAULT_CPU_QUOTA="${USER_MANAGER_DEFAULT_CPU_QUOTA:-50%}"
 DEFAULT_MEMORY_LIMIT="${USER_MANAGER_DEFAULT_MEMORY_LIMIT:-8G}"
-QUOTA_DEFAULT="${USER_MANAGER_QUOTA_DEFAULT:-$((500 * 1024**3))}"  # 500GB
+QUOTA_DEFAULT="${USER_MANAGER_QUOTA_DEFAULT:-$((500 * 1024 ** 3))}" # 500GB
 
 # === systemd 配置 ===
 RESOURCE_LIMIT_FILENAME="${USER_MANAGER_RESOURCE_LIMIT_FILENAME:-90-user-manager-limits.conf}"
@@ -71,7 +70,10 @@ init_directories() {
     # 仅创建项目本地目录；外部系统目录（如备份根目录）由对应操作按需创建
     local dirs=("$DATA_DIR" "$REPORT_DIR" "$JOB_STATS_DIR" "$LOG_DIR" "$PASSWORD_POOL_DIR")
     for dir in "${dirs[@]}"; do
-        [[ -d "$dir" ]] || mkdir -p "$dir" 2>/dev/null || { msg_err "无法创建目录: $dir"; return 1; }
+        [[ -d "$dir" ]] || mkdir -p "$dir" 2>/dev/null || {
+            msg_err "无法创建目录: $dir"
+            return 1
+        }
     done
     return 0
 }
@@ -80,7 +82,7 @@ init_groups() { return 0; }
 
 init_log_file() {
     if [[ ! -f "$USER_CREATION_LOG" ]] || [[ ! -s "$USER_CREATION_LOG" ]]; then
-        printf 'timestamp,username,action,user_type,mountpoint,home,quota_gb\n' > "$USER_CREATION_LOG"
+        printf 'timestamp,username,action,user_type,mountpoint,home,quota_gb\n' >"$USER_CREATION_LOG"
     fi
 }
 
@@ -91,7 +93,7 @@ load_config() {
     init_directories || return 1
     init_groups || return 1
     init_log_file || return 1
-    
+
     # 检查敏感文件权限
     if declare -f check_sensitive_file_permissions &>/dev/null; then
         check_sensitive_file_permissions \
@@ -105,6 +107,6 @@ load_config() {
     if declare -f cleanup_old_password_pools &>/dev/null; then
         cleanup_old_password_pools "$PASSWORD_POOL_KEEP" 2>/dev/null || true
     fi
-    
+
     return 0
 }

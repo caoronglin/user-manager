@@ -18,7 +18,9 @@ C_BG_YELLOW='\033[43m'
 
 # 兼容旧变量名
 # shellcheck disable=SC2034
-Red="$C_RED"; Green="$C_GREEN"; Color_Off="$C_RESET"
+Red="$C_RED"
+Green="$C_GREEN"
+Color_Off="$C_RESET"
 
 # === 语义化配色 ===
 # 根据终端能力自动选择 256 色或标准色
@@ -47,12 +49,12 @@ fi
 MENU_WIDTH=54
 
 # === 消息函数 ===
-msg()       { echo -e "$*"; }
-msg_info()  { echo -e " ${C_GREEN}●${C_RESET} $*"; }
-msg_warn()  { echo -e " ${C_RED}▲${C_RESET} $*"; }
-msg_err()   { echo -e " ${C_BRED}✗${C_RESET} $*" >&2; }
-msg_ok()    { echo -e " ${C_BGREEN}✓${C_RESET} $*"; }
-msg_step()  { echo -e " ${C_GREEN}→${C_RESET} $*"; }
+msg() { echo -e "$*"; }
+msg_info() { echo -e " ${C_GREEN}●${C_RESET} $*"; }
+msg_warn() { echo -e " ${C_RED}▲${C_RESET} $*"; }
+msg_err() { echo -e " ${C_BRED}✗${C_RESET} $*" >&2; }
+msg_ok() { echo -e " ${C_BGREEN}✓${C_RESET} $*"; }
+msg_step() { echo -e " ${C_GREEN}→${C_RESET} $*"; }
 msg_debug() {
     if [[ "${DEBUG:-0}" == "1" ]]; then
         echo -e " ${C_DIM}[DEBUG] $*${C_RESET}" >&2
@@ -90,10 +92,10 @@ run_privileged() {
     fi
 
     case "$cmd" in
-        bash|sh|sudo|su)
-            msg_err "run_privileged: 拒绝执行不安全的 shell trampoline: $cmd"
-            return 1
-            ;;
+    bash | sh | sudo | su)
+        msg_err "run_privileged: 拒绝执行不安全的 shell trampoline: $cmd"
+        return 1
+        ;;
     esac
 
     if is_root; then
@@ -145,7 +147,7 @@ draw_line() {
     local width="${1:-$MENU_WIDTH}"
     local line=""
     local i
-    for ((i=0; i<width; i++)); do line+="─"; done
+    for ((i = 0; i < width; i++)); do line+="─"; done
     printf "  ${C_SUBTLE}%s${C_RESET}\n" "$line"
 }
 
@@ -154,7 +156,7 @@ draw_header() {
     echo ""
     local hline=""
     local _i
-    for ((_i=0; _i<MENU_WIDTH; _i++)); do hline+="─"; done
+    for ((_i = 0; _i < MENU_WIDTH; _i++)); do hline+="─"; done
     printf "  ${C_SUBTLE}%s${C_RESET}\n" "$hline"
     echo -e "  ${C_PRIMARY}■${C_RESET} ${C_BOLD}${C_WHITE}${title}${C_RESET}"
     printf "  ${C_SUBTLE}%s${C_RESET}\n" "$hline"
@@ -192,10 +194,14 @@ pause_continue() {
 # 使用率颜色
 get_usage_color() {
     local pct="$1"
-    if (( pct >= 90 )); then   echo "$C_BRED"
-    elif (( pct >= 70 )); then echo "$C_RED"
-    elif (( pct >= 50 )); then echo "$C_GREEN"
-    else                       echo "$C_BGREEN"
+    if ((pct >= 90)); then
+        echo "$C_BRED"
+    elif ((pct >= 70)); then
+        echo "$C_RED"
+    elif ((pct >= 50)); then
+        echo "$C_GREEN"
+    else
+        echo "$C_BGREEN"
     fi
 }
 
@@ -243,7 +249,7 @@ source "$LIB_DIR/lock_core.sh"
 # shellcheck disable=SC2034
 USERNAMES_CACHE=""
 USERNAMES_CACHE_TIME=0
-USERNAMES_CACHE_TTL=300  # 5 分钟 TTL
+USERNAMES_CACHE_TTL=300 # 5 分钟 TTL
 
 # 清除用户名缓存
 clear_usernames_cache() {
@@ -265,14 +271,16 @@ validate_cpu_quota() {
     local value="$1"
     [[ -z "$value" ]] && return 1
     [[ "$value" =~ ^[0-9]+(\.[0-9]+)?%$ ]] && return 0
-    msg_err "CPU 配额格式无效，应形如 50% 或 200%"; return 1
+    msg_err "CPU 配额格式无效，应形如 50% 或 200%"
+    return 1
 }
 
 validate_memory_limit() {
     local value="$1"
     [[ -z "$value" ]] && return 1
     [[ "$value" =~ ^[0-9]+(\.[0-9]+)?[KMGTP]$ ]] && return 0
-    msg_err "内存配额格式无效，应形如 512M、32G、1T"; return 1
+    msg_err "内存配额格式无效，应形如 512M、32G、1T"
+    return 1
 }
 
 # === 工具函数 ===
@@ -283,8 +291,8 @@ parse_quota_input() {
     if [[ "$input" =~ ^([0-9]+\.?[0-9]*)([GT])?$ ]]; then
         local num="${BASH_REMATCH[1]}" unit="${BASH_REMATCH[2]}"
         case "$unit" in
-            G) awk "BEGIN {printf \"%.0f\", $num * 1024^3}" ;; T) awk "BEGIN {printf \"%.0f\", $num * 1024^4}" ;;
-            *) awk "BEGIN {printf \"%.0f\", $num * 1024^3}" ;; esac
+        G) awk "BEGIN {printf \"%.0f\", $num * 1024^3}" ;; T) awk "BEGIN {printf \"%.0f\", $num * 1024^4}" ;;
+        *) awk "BEGIN {printf \"%.0f\", $num * 1024^3}" ;; esac
         return 0
     else return 1; fi
 }
@@ -292,29 +300,50 @@ parse_quota_input() {
 bytes_to_gb() {
     local bytes="$1"
     # 验证输入为数字
-    [[ -z "$bytes" ]] && { echo "0.00"; return 1; }
-    [[ "$bytes" =~ ^[0-9]+$ ]] || { echo "0.00"; return 1; }
+    [[ -z "$bytes" ]] && {
+        echo "0.00"
+        return 1
+    }
+    [[ "$bytes" =~ ^[0-9]+$ ]] || {
+        echo "0.00"
+        return 1
+    }
     awk "BEGIN {printf \"%.2f\", $bytes / 1073741824}"
 }
 
 bytes_to_human() {
     local b="$1"
     # 验证输入
-    [[ -z "$b" ]] && { echo "0 B"; return 1; }
-    [[ "$b" =~ ^[0-9]+$ ]] || { echo "0 B"; return 1; }
-    if   (( b >= 1099511627776 )); then awk "BEGIN {printf \"%.1f TB\", $b / 1099511627776}"
-    elif (( b >= 1073741824 ));    then awk "BEGIN {printf \"%.1f GB\", $b / 1073741824}"
-    elif (( b >= 1048576 ));       then awk "BEGIN {printf \"%.1f MB\", $b / 1048576}"
-    else                                awk "BEGIN {printf \"%.1f KB\", $b / 1024}"; fi
+    [[ -z "$b" ]] && {
+        echo "0 B"
+        return 1
+    }
+    [[ "$b" =~ ^[0-9]+$ ]] || {
+        echo "0 B"
+        return 1
+    }
+    if ((b >= 1099511627776)); then
+        awk "BEGIN {printf \"%.1f TB\", $b / 1099511627776}"
+    elif ((b >= 1073741824)); then
+        awk "BEGIN {printf \"%.1f GB\", $b / 1073741824}"
+    elif ((b >= 1048576)); then
+        awk "BEGIN {printf \"%.1f MB\", $b / 1048576}"
+    else awk "BEGIN {printf \"%.1f KB\", $b / 1024}"; fi
 }
 
 remove_file_entry() {
     local file="$1" pattern="$2"
     [[ -f "$file" ]] || return 0
     local tmp
-    tmp=$(mktemp) || { msg_err "无法创建临时文件"; return 1; }
-    grep -v "$pattern" "$file" > "$tmp" || true
-    mv "$tmp" "$file" || { rm -f "$tmp"; return 1; }
+    tmp=$(mktemp) || {
+        msg_err "无法创建临时文件"
+        return 1
+    }
+    grep -v "$pattern" "$file" >"$tmp" || true
+    mv "$tmp" "$file" || {
+        rm -f "$tmp"
+        return 1
+    }
 }
 
 check_dependencies() {
@@ -322,8 +351,9 @@ check_dependencies() {
     for cmd in "${required[@]}"; do
         command -v "$cmd" &>/dev/null || missing+=("$cmd")
     done
-    if (( ${#missing[@]} > 0 )); then
-        msg_err "缺少必要命令: ${missing[*]}"; return 1
+    if ((${#missing[@]} > 0)); then
+        msg_err "缺少必要命令: ${missing[*]}"
+        return 1
     fi
     return 0
 }
@@ -349,7 +379,7 @@ _cleanup_on_error() {
     local lineno="$1"
     # 构建函数调用栈上下文
     local stack="" i
-    for (( i=1; i<${#FUNCNAME[@]}; i++ )); do
+    for ((i = 1; i < ${#FUNCNAME[@]}; i++)); do
         [[ "${FUNCNAME[$i]}" == "main" ]] && continue
         if [[ -n "$stack" ]]; then
             stack="${FUNCNAME[$i]} → $stack"
@@ -422,7 +452,7 @@ require_user() {
 # 安全的数值检查
 is_positive_int() {
     local value="$1"
-    [[ "$value" =~ ^[0-9]+$ ]] && (( value > 0 ))
+    [[ "$value" =~ ^[0-9]+$ ]] && ((value > 0))
 }
 
 # 安全的挂载点检查
@@ -458,27 +488,27 @@ write_privileged_text_file() {
     }
 
     if declare -F priv_tee >/dev/null 2>&1; then
-        printf '%s' "$file_content" | priv_tee "$target_file" > /dev/null || {
+        printf '%s' "$file_content" | priv_tee "$target_file" >/dev/null || {
             msg_err "写入文件失败: $target_file"
             return 1
         }
     else
-        printf '%s' "$file_content" | run_privileged tee "$target_file" > /dev/null || {
+        printf '%s' "$file_content" | run_privileged tee "$target_file" >/dev/null || {
             msg_err "写入文件失败: $target_file"
             return 1
         }
     fi
 
     if declare -F priv_chown >/dev/null 2>&1; then
-        priv_chown "$owner_group" "$target_file" > /dev/null 2>&1 || true
+        priv_chown "$owner_group" "$target_file" >/dev/null 2>&1 || true
     else
-        run_privileged chown "$owner_group" "$target_file" > /dev/null 2>&1 || true
+        run_privileged chown "$owner_group" "$target_file" >/dev/null 2>&1 || true
     fi
 
     if declare -F priv_chmod >/dev/null 2>&1; then
-        priv_chmod "$file_mode" "$target_file" > /dev/null 2>&1 || true
+        priv_chmod "$file_mode" "$target_file" >/dev/null 2>&1 || true
     else
-        run_privileged chmod "$file_mode" "$target_file" > /dev/null 2>&1 || true
+        run_privileged chmod "$file_mode" "$target_file" >/dev/null 2>&1 || true
     fi
     return 0
 }
@@ -486,7 +516,6 @@ write_privileged_text_file() {
 # Cron 辅助函数（已迁移到 system_core.sh）
 # shellcheck disable=SC1091
 source "$LIB_DIR/system_core.sh"
-
 
 # 超时包装器：prevent 长时间阻塞的操作
 run_with_timeout() {
@@ -508,11 +537,11 @@ run_with_timeout() {
 safe_run() {
     local rc=0
     "$@" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         msg_warn "函数 '$1' 执行失败 (返回码: $rc)"
         msg_debug "函数 '$1' 参数: ${*:2}"
     fi
-    return 0   # 始终返回 0，防止主循环退出
+    return 0 # 始终返回 0，防止主循环退出
 }
 
 # 统一交互式输入（带标签和默认值）
@@ -535,7 +564,8 @@ read_username() {
     read_input "$prompt"
     [[ "$REPLY_INPUT" == "0" || "$REPLY_INPUT" == "q" || "$REPLY_INPUT" == "Q" ]] && return 1
     if [[ -z "$REPLY_INPUT" ]]; then
-        msg_err "用户名不能为空"; return 1
+        msg_err "用户名不能为空"
+        return 1
     fi
     validate_username "$REPLY_INPUT" || return 1
     return 0
@@ -546,7 +576,8 @@ read_existing_username() {
     local prompt="${1:-请输入用户名}"
     read_username "$prompt" || return 1
     if ! id "$REPLY_INPUT" &>/dev/null; then
-        msg_err "用户 '${REPLY_INPUT}' 不存在"; return 1
+        msg_err "用户 '${REPLY_INPUT}' 不存在"
+        return 1
     fi
     return 0
 }
@@ -597,7 +628,7 @@ rl_menu_max_option() {
     for entry in "$@"; do
         [[ "$entry" == "---" ]] && continue
         num="${entry%%:*}"
-        if [[ "$num" =~ ^[0-9]+$ ]] && (( num > max )); then
+        if [[ "$num" =~ ^[0-9]+$ ]] && ((num > max)); then
             max="$num"
         fi
     done
@@ -607,7 +638,7 @@ rl_menu_max_option() {
 rl_menu_prefix_can_extend() {
     local prefix="$1" max_option="${2:-0}"
     [[ "$prefix" =~ ^[0-9]+$ && "$max_option" =~ ^[0-9]+$ ]] || return 1
-    (( max_option >= prefix * 10 ))
+    ((max_option >= prefix * 10))
 }
 
 # 单键读取；连续数字可组成 10/11 等编号，无需回车确认。

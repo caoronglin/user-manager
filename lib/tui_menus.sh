@@ -52,10 +52,17 @@ _TUI_MENU_STATUS_RIGHT["disk"]="↑/↓ 导航  Enter 选择  q 返回"
 
 # 网络与安全管理
 _TUI_MENU_TITLE["network"]="网络与安全管理"
-_TUI_MENU_ITEMS["network"]="防火墙规则|DNS 访问控制|符号链接与共享|SSH 与 Fail2ban|网络栈诊断|返回主菜单"
+_TUI_MENU_ITEMS["network"]="防火墙规则|DNS 访问控制|符号链接与共享|SSH 与 Fail2ban|网络栈诊断|SMB 管理|返回主菜单"
 _TUI_MENU_WIDTH["network"]=50
 _TUI_MENU_STATUS_LEFT["network"]="网络与安全管理"
 _TUI_MENU_STATUS_RIGHT["network"]="↑/↓ 导航  Enter 选择  q 返回"
+
+# SMB 管理
+_TUI_MENU_TITLE["smb"]="SMB 管理"
+_TUI_MENU_ITEMS["smb"]="SMB 服务状态|列出 SMB 用户|查看用户 SMB 状态|设置 SMB 密码|禁用 SMB 用户|启用 SMB 用户|移除 SMB 用户|列出 SMB 共享|新增 SMB 共享|移除 SMB 共享|主配置 include 托管配置|返回上级"
+_TUI_MENU_WIDTH["smb"]=50
+_TUI_MENU_STATUS_LEFT["smb"]="SMB 管理"
+_TUI_MENU_STATUS_RIGHT["smb"]="↑/↓ 导航  Enter 选择  q 返回"
 
 # 防火墙规则
 _TUI_MENU_TITLE["firewall"]="防火墙规则"
@@ -177,7 +184,7 @@ _TUI_MENU_STATUS_RIGHT["audit_advanced"]="↑/↓ 导航  Enter 选择  q 返回
 
 _tui_menu_number_for_index() {
     local index="$1" item_count="$2"
-    if (( index == item_count - 1 )); then
+    if ((index == item_count - 1)); then
         printf '0'
     else
         printf '%d' "$((index + 1))"
@@ -188,174 +195,279 @@ _tui_menu_number_for_index() {
 _tui_menu_icon() {
     local menu_id="${1:-main}"
     case "$menu_id" in
-        main)    echo "⚙" ;;
-        user)    echo "👤" ;;
-        user_group) echo "👥" ;;
-        permission) echo "🔐" ;;
-        disk)    echo "💾" ;;
-        network) echo "🌐" ;;
-        firewall)echo "🛡" ;;
-        dns)     echo "🌍" ;;
-        symlink) echo "🔗" ;;
-        ssh_fail2ban) echo "🔐" ;;
-        backup)  echo "📦" ;;
-        backup_advanced) echo "📦" ;;
-        report_stats) echo "📊" ;;
-        report)  echo "📋" ;;
-        job_stats) echo "📈" ;;
-        password_rotation) echo "🔑" ;;
-        system)  echo "🖥" ;;
-        system_details) echo "🔧" ;;
-        systemd_timer) echo "⏰" ;;
-        compute) echo "🧮" ;;
-        audit)   echo "📝" ;;
-        audit_advanced) echo "🔍" ;;
-        *)       echo "▸" ;;
+    main) echo "⚙" ;;
+    user) echo "👤" ;;
+    user_group) echo "👥" ;;
+    permission) echo "🔐" ;;
+    disk) echo "💾" ;;
+    network) echo "🌐" ;;
+    smb) echo "🖧" ;;
+    firewall) echo "🛡" ;;
+    dns) echo "🌍" ;;
+    symlink) echo "🔗" ;;
+    ssh_fail2ban) echo "🔐" ;;
+    backup) echo "📦" ;;
+    backup_advanced) echo "📦" ;;
+    report_stats) echo "📊" ;;
+    report) echo "📋" ;;
+    job_stats) echo "📈" ;;
+    password_rotation) echo "🔑" ;;
+    system) echo "🖥" ;;
+    system_details) echo "🔧" ;;
+    systemd_timer) echo "⏰" ;;
+    compute) echo "🧮" ;;
+    audit) echo "📝" ;;
+    audit_advanced) echo "🔍" ;;
+    *) echo "▸" ;;
     esac
 }
 
-# 绘制现代风格标题栏（双线框 + 渐变效果）
-_tui_draw_modern_header() {
-    local title="$1"
-    local menu_id="${2:-main}"
-    local icon
-    icon=$(_tui_menu_icon "$menu_id")
-    local header_text=" ${icon}  ${title}"
+# 输出固定数量的边框字符；调用方已保证数量非负。
+_tui_menu_rule() {
+    local rl_count="$1" rl_char="$2" rl_i
+    for ((rl_i = 0; rl_i < rl_count; rl_i++)); do
+        printf '%s' "$rl_char"
+    done
+}
 
-    # 顶部双线
+# 绘制现代标题栏。此函数只由正常布局调用（至少 3 列、7 行）。
+_tui_draw_modern_header() {
+    local rl_title="$1" rl_menu_id="${2:-main}"
+    local rl_cols="${TUI_COLS:-0}" rl_inner rl_icon rl_text
+    ((rl_cols >= 3)) || return 0
+
+    rl_inner=$((rl_cols - 2))
+    rl_icon=$(_tui_menu_icon "$rl_menu_id")
+    rl_text=" ${rl_icon}  ${rl_title}"
+
     tui_move 0 0
     tui_fg "$TUI_COLOR_BORDER"
-    printf '╔%s╗\n' "$(printf '═%.0s' $(seq 1 $((TUI_COLS - 2))))"
+    printf '╔'
+    _tui_menu_rule "$rl_inner" '═'
+    printf '╗'
     tui_reset
 
-    # 标题行
-    tui_move 1 2
+    tui_move 1 0
     tui_fg "$TUI_COLOR_BG"
     tui_bg "$TUI_COLOR_ACCENT"
-    printf ' %-*s ' $((TUI_COLS - 4)) "$header_text"
+    tui_pad_display "$(tui_truncate_display "$rl_text" "$rl_cols")" "$rl_cols"
     tui_reset
 
-    # 闭合双线
     tui_move 2 0
     tui_fg "$TUI_COLOR_BORDER"
-    printf '╚%s╝\n' "$(printf '═%.0s' $(seq 1 $((TUI_COLS - 2))))"
+    printf '╚'
+    _tui_menu_rule "$rl_inner" '═'
+    printf '╝'
     tui_reset
 }
 
-# 绘制现代风格状态栏
+# 绘制现代风格状态栏，并在窄列数中按显示宽度裁剪两端内容。
 _tui_draw_modern_statusbar() {
-    local left="$1" right="$2"
-    local left_len=${#left}
-    local right_len=${#right}
+    local rl_left="$1" rl_right="$2" rl_right_suffix="${3:-}"
+    local rl_cols="${TUI_COLS:-0}" rl_row="${TUI_LINES:-0}"
+    local rl_left_width rl_right_width rl_suffix_width rl_left_room rl_right_room
+    local rl_separator_col rl_right_prefix rl_right_render
+    ((rl_cols > 0 && rl_row > 0)) || return 0
+    rl_row=$((rl_row - 1))
 
-    tui_move $((TUI_LINES - 1)) 0
-    # 背景填充
+    tui_move "$rl_row" 0
     tui_bg "$TUI_COLOR_SURFACE"
     tui_fg "$TUI_COLOR_MUTED"
-    printf '%*s' "$TUI_COLS" ' '
-    
-    # 左侧文字
-    tui_move $((TUI_LINES - 1)) 2
-    printf '%s' "$left"
+    printf '%*s' "$rl_cols" ''
 
-    # 分隔符
-    tui_move $((TUI_LINES - 1)) $((left_len + 4))
-    tui_fg "$TUI_COLOR_BORDER"
-    printf '│'
-    tui_reset
+    rl_left_width=$(tui_display_width "$rl_left")
+    rl_right_width=$(tui_display_width "$rl_right")
+    rl_suffix_width=$(tui_display_width "$rl_right_suffix")
 
-    # 右侧文字
+    # 有足够空间时绝不截断：宽终端保留状态和分页范围的完整文本。
+    if ((rl_left_width + rl_right_width + 3 < rl_cols)); then
+        tui_move "$rl_row" 1
+        printf '%s' "$rl_left"
+        rl_separator_col=$((rl_left_width + 2))
+        tui_move "$rl_row" "$rl_separator_col"
+        tui_fg "$TUI_COLOR_BORDER"
+        printf '│'
+        tui_fg "$TUI_COLOR_MUTED"
+        tui_move "$rl_row" $((rl_cols - rl_right_width - 1))
+        printf '%s' "$rl_right"
+        tui_reset
+        return 0
+    fi
+
+    # 窄终端时右端优先。分页后缀从不因左端导航文本而被丢弃。
+    rl_right_room=$((rl_cols - 1))
+    ((rl_right_room < 0)) && rl_right_room=0
+    if ((rl_right_width > rl_right_room)); then
+        if ((rl_suffix_width <= rl_right_room)); then
+            rl_right_prefix="${rl_right%"$rl_right_suffix"}"
+            rl_right_prefix=$(tui_truncate_display "$rl_right_prefix" "$((rl_right_room - rl_suffix_width))")
+            rl_right_render="${rl_right_prefix}${rl_right_suffix}"
+        else
+            rl_right_render=$(tui_truncate_display "$rl_right_suffix" "$rl_right_room")
+        fi
+    else
+        rl_right_render="$rl_right"
+    fi
+    rl_right_width=$(tui_display_width "$rl_right_render")
+    rl_left_room=$((rl_cols - rl_right_width - 2))
+
+    if ((rl_left_room > 0)); then
+        rl_left=$(tui_truncate_display "$rl_left" "$rl_left_room")
+        rl_left_width=$(tui_display_width "$rl_left")
+        tui_move "$rl_row" 1
+        printf '%s' "$rl_left"
+        rl_separator_col=$((rl_left_width + 1))
+        if ((rl_separator_col < rl_cols - rl_right_width)); then
+            tui_move "$rl_row" "$rl_separator_col"
+            tui_fg "$TUI_COLOR_BORDER"
+            printf '│'
+        fi
+    fi
     tui_fg "$TUI_COLOR_MUTED"
-    tui_move $((TUI_LINES - 1)) $((TUI_COLS - right_len - 2))
-    printf '%s' "$right"
+    tui_move "$rl_row" $((rl_cols - rl_right_width))
+    printf '%s' "$rl_right_render"
     tui_reset
 }
 
-# 根据菜单 ID 绘制标准菜单
+# 根据菜单 ID 绘制标准菜单；状态和 viewport 由 tui_core.sh 维护。
 # 用法: _tui_draw_menu "main"
 _tui_draw_menu() {
-    local menu_id="${1:-main}"
-    local title="${_TUI_MENU_TITLE[$menu_id]:-未定义菜单}"
-    local items_str="${_TUI_MENU_ITEMS[$menu_id]}"
-    local width="${_TUI_MENU_WIDTH[$menu_id]:-50}"
-    local row="${_TUI_MENU_ROW[$menu_id]:-4}"
-    local status_left="${_TUI_MENU_STATUS_LEFT[$menu_id]}"
-    local status_right="${_TUI_MENU_STATUS_RIGHT[$menu_id]}"
-
-    # 绘制现代标题栏
-    _tui_draw_modern_header "$title" "$menu_id"
-
-    # 将 | 分隔的菜单项转为数组
-    local -a items=()
+    local rl_menu_id="${1:-main}"
+    local rl_title="${_TUI_MENU_TITLE[$rl_menu_id]:-未定义菜单}"
+    local rl_items_str="${_TUI_MENU_ITEMS[$rl_menu_id]:-}"
+    local rl_width="${_TUI_MENU_WIDTH[$rl_menu_id]:-50}"
+    local rl_requested_row="${_TUI_MENU_ROW[$rl_menu_id]:-4}"
+    local rl_status_left="${_TUI_MENU_STATUS_LEFT[$rl_menu_id]:-}"
+    local rl_status_right="${_TUI_MENU_STATUS_RIGHT[$rl_menu_id]:-}"
+    local rl_cols="${TUI_COLS:-0}" rl_lines="${TUI_LINES:-0}"
+    local -a rl_items=()
     local IFS='|'
-    read -ra items <<< "$items_str"
 
-    # 渲染菜单项到 TUI 内部数组
-    tui_menu_create "$title" "${items[@]}"
-
-    # 绘制菜单列表（带卡片样式背景）
-    local menu_start=$row
-    local menu_left=$(( (TUI_COLS - width) / 2 ))
-
-    # 菜单容器顶部边框
-    tui_move $((menu_start - 1)) "$menu_left"
-    tui_fg "$TUI_COLOR_BORDER"
-    printf '┌%s┐' "$(printf '─%.0s' $(seq 1 $((width - 2))))"
-    tui_reset
-
-    # 绘制菜单项
-    local i=0
-    local item_count=${#items[@]}
-    for item_name in "${items[@]}"; do
-        tui_move $((menu_start + i)) "$menu_left"
-        tui_fg "$TUI_COLOR_BORDER"
-        printf '│'
-        
-        # 菜单项内容
-        local item_num label_width
-        item_num=$(_tui_menu_number_for_index "$i" "$item_count")
-        label_width=$((width - 9))
-        if (( i == item_count - 1 )); then
-            # 最后一项（退出/返回）用暗淡色
-            printf '  '
-            tui_fg "$TUI_COLOR_ACCENT"
-            printf '%2s' "$item_num"
-            tui_fg "$TUI_COLOR_MUTED"
-            printf '. '
-            printf '%-*s' "$label_width" "$item_name"
-        else
-            tui_fg "$TUI_COLOR_ACCENT2"
-            printf '  %2s' "$item_num"
-            tui_fg "$TUI_COLOR_ACCENT"
-            printf '. '
-            tui_fg "$TUI_COLOR_FG"
-            printf '%-*s' "$label_width" "$item_name"
-        fi
-
-        tui_move $((menu_start + i)) $((menu_left + width - 1))
-        tui_fg "$TUI_COLOR_BORDER"
-        printf '│'
-        tui_reset
-        ((i++))
-    done
-
-    # 菜单容器底部边框
-    tui_move $((menu_start + i)) "$menu_left"
-    tui_fg "$TUI_COLOR_BORDER"
-    printf '└%s┘' "$(printf '─%.0s' $(seq 1 $((width - 2))))"
-    tui_reset
-
-    # 动态状态栏
-    local actual_left="$status_left"
-    local actual_right="$status_right"
-    if [[ "$menu_id" == "main" ]]; then
-        local user_count uptime_info
-        user_count=$(get_tui_managed_user_count)
-        uptime_info=$(uptime -p 2>/dev/null | sed 's/up //' || echo "unknown")
-        actual_left="👥 托管用户: $user_count"
-        actual_right="⏱ $uptime_info"
-    elif [[ "$actual_right" == *"↑/↓"* ]]; then
-        actual_right="数字直选  $actual_right"
+    # 同一 ID 的 redraw 不得重建 core 菜单状态；invalidate 会清空 active ID。
+    if [[ "${TUI_ACTIVE_MENU_ID:-}" != "$rl_menu_id" ]] || ((${#TUI_MENU_ITEMS[@]} == 0)); then
+        read -ra rl_items <<<"$rl_items_str"
+        tui_menu_create "$rl_title" "${rl_items[@]}"
+        TUI_ACTIVE_MENU_ID="$rl_menu_id"
     fi
-    _tui_draw_modern_statusbar "$actual_left" "$actual_right"
+
+    local rl_total=${#TUI_MENU_ITEMS[@]}
+    ((rl_total > 0 && rl_cols > 0 && rl_lines > 0)) || return 0
+
+    local rl_first_row rl_reserved_bottom
+    # 历史菜单可要求 row=2；正常布局中的首项从第 4 行起。
+    rl_first_row="$rl_requested_row"
+    ((rl_first_row < 4)) && rl_first_row=4
+
+    # 正常布局需要标题、两条容器边框和状态栏均有独立空间。
+    local rl_normal=false
+    if ((rl_lines >= 7 && rl_cols >= 8 && rl_first_row + 2 < rl_lines)); then
+        rl_normal=true
+    fi
+
+    if [[ "$rl_normal" == true ]]; then
+        rl_reserved_bottom=2 # 容器底边 + 最后一行状态栏
+    else
+        rl_first_row=0
+        rl_reserved_bottom=0
+    fi
+    tui_menu_update_viewport "$rl_first_row" "$rl_reserved_bottom"
+
+    local rl_start="${TUI_MENU_SCROLL_OFFSET:-0}"
+    local rl_end="${TUI_MENU_VIEWPORT_END:-$rl_total}"
+    ((rl_start < 0)) && rl_start=0
+    ((rl_end < rl_start)) && rl_end=rl_start
+    ((rl_end > rl_total)) && rl_end=rl_total
+
+    local rl_index rl_item rl_item_num rl_label_width rl_label rl_content_width rl_line
+    if [[ "$rl_normal" == true ]]; then
+        ((rl_width < 3)) && rl_width=3
+        ((rl_width > rl_cols)) && rl_width=$rl_cols
+        local rl_left=$(((rl_cols - rl_width) / 2))
+        ((rl_left < 0)) && rl_left=0
+        local rl_inner=$((rl_width - 2))
+        rl_content_width=$rl_inner
+        rl_label_width=$((rl_inner - 6))
+        ((rl_label_width < 0)) && rl_label_width=0
+
+        _tui_draw_modern_header "$rl_title" "$rl_menu_id"
+        tui_move 3 "$rl_left"
+        tui_fg "$TUI_COLOR_BORDER"
+        printf '┌'
+        _tui_menu_rule "$rl_inner" '─'
+        printf '┐'
+        tui_reset
+
+        for ((rl_index = rl_start; rl_index < rl_end; rl_index++)); do
+            rl_item="${TUI_MENU_ITEMS[$rl_index]}"
+            rl_item_num=$(_tui_menu_number_for_index "$rl_index" "$rl_total")
+            rl_label=$(tui_pad_display "$(tui_truncate_display "$rl_item" "$rl_label_width")" "$rl_label_width")
+            rl_line=$(tui_pad_display "  $(printf '%2s' "$rl_item_num"). ${rl_label}" "$rl_content_width")
+            tui_move $((rl_first_row + rl_index - rl_start)) "$rl_left"
+            tui_fg "$TUI_COLOR_BORDER"
+            printf '│'
+            if ((rl_index == TUI_MENU_INDEX)); then
+                tui_reverse
+                tui_fg "$TUI_COLOR_HIGHLIGHT"
+            elif ((rl_index == rl_total - 1)); then
+                tui_fg "$TUI_COLOR_MUTED"
+            else
+                tui_fg "$TUI_COLOR_FG"
+            fi
+            printf '%s' "$rl_line"
+            tui_reset
+            tui_move $((rl_first_row + rl_index - rl_start)) $((rl_left + rl_width - 1))
+            tui_fg "$TUI_COLOR_BORDER"
+            printf '│'
+            tui_reset
+        done
+
+        tui_move $((rl_first_row + rl_end - rl_start)) "$rl_left"
+        tui_fg "$TUI_COLOR_BORDER"
+        printf '└'
+        _tui_menu_rule "$rl_inner" '─'
+        printf '┘'
+        tui_reset
+    else
+        # Compact fallback: no title, borders or status bar; every move is in bounds.
+        rl_content_width="$rl_cols"
+        rl_label_width=$((rl_content_width - 6))
+        ((rl_label_width < 0)) && rl_label_width=0
+        for ((rl_index = rl_start; rl_index < rl_end; rl_index++)); do
+            rl_item="${TUI_MENU_ITEMS[$rl_index]}"
+            rl_item_num=$(_tui_menu_number_for_index "$rl_index" "$rl_total")
+            if ((rl_content_width < 6)); then
+                # 极窄时编号仍可让选中行保持可见，而不只是反色空格。
+                rl_line=$(tui_pad_display "$(tui_truncate_display "$rl_item_num" "$rl_content_width")" "$rl_content_width")
+            else
+                rl_label=$(tui_pad_display "$(tui_truncate_display "$rl_item" "$rl_label_width")" "$rl_label_width")
+                rl_line=$(tui_pad_display "  $(printf '%2s' "$rl_item_num"). ${rl_label}" "$rl_content_width")
+            fi
+            tui_move $((rl_first_row + rl_index - rl_start)) 0
+            if ((rl_index == TUI_MENU_INDEX)); then
+                tui_reverse
+                tui_fg "$TUI_COLOR_HIGHLIGHT"
+            elif ((rl_index == rl_total - 1)); then
+                tui_fg "$TUI_COLOR_MUTED"
+            else
+                tui_fg "$TUI_COLOR_FG"
+            fi
+            printf '%s' "$rl_line"
+            tui_reset
+        done
+        return 0
+    fi
+
+    local rl_actual_left="$rl_status_left" rl_actual_right="$rl_status_right"
+    if [[ "$rl_menu_id" == "main" ]]; then
+        local rl_user_count rl_uptime_info
+        rl_user_count=$(get_tui_managed_user_count)
+        rl_uptime_info=$(uptime -p 2>/dev/null | sed 's/up //' || printf 'unknown')
+        rl_actual_left="👥 托管用户: $rl_user_count"
+        rl_actual_right="⏱ $rl_uptime_info"
+    elif [[ "$rl_actual_right" == *"↑/↓"* ]]; then
+        rl_actual_right="数字直选  $rl_actual_right"
+    fi
+    local rl_viewport_suffix="[$((rl_start + 1))-${rl_end}/${rl_total}]"
+    rl_actual_right+="  ${rl_viewport_suffix}"
+    _tui_draw_modern_statusbar "$rl_actual_left" "$rl_actual_right" "$rl_viewport_suffix"
 }

@@ -104,7 +104,7 @@
 
 ## 2026-07-17 当前工作区检查与修复
 
-> 状态: ✅ 完成 | 分支: `main` | 工作区: 已有大量未提交改动
+> 状态: 🚧 进行中 | 分支: `main` | 工作区: 已有大量未提交改动
 
 ### 目标
 
@@ -121,6 +121,8 @@
 | C3 | 按独立问题域实施最小修复 | ✅ 完成 |
 | C4 | 运行针对性与必要回归验证 | ✅ 完成 |
 | C5 | 诊断 `create_or_assign_user` 返回码 1 | 🚧 等待运行时错误上下文 |
+| C6 | 界定代码功能与 TUI 渲染问题 | ✅ 完成 |
+| C7 | TUI 渲染韧性设计与实施 | 🚧 设计复核与实施计划完成，准备按三条 lane 实施 |
 
 ### 约束
 
@@ -183,3 +185,29 @@
 - `safe_run` 仅将下游非零状态统一显示为“函数 `create_or_assign_user` 执行失败（返回码：1）”，该信息本身不包含具体失败分支。
 - 已定位直接失败分支：实例锁、取消/非法用户名、密码池/手动密码、磁盘解析与挂载、用户组输入、确认取消、创建/更新用户、用户组配置。
 - 尚无完整运行时输出、输入序列或目标账户状态，不能安全归因或实施修复；等待用户提供报错前后的非敏感输出。
+
+### C6 当前探索
+
+- `env -u LANG -u LC_ALL -u LC_CTYPE TERM=xterm-256color bash -c 'source ./lib/tui_core.sh; tui_detect_terminal'` 稳定复现 `lib/tui_core.sh:28` 的 `LANG: unbound variable`；原因是库以 `set -u` 运行时直接引用未定义的 locale 变量。
+- 当前主线 `tui_manager.sh` 使用 `lib/tui_menus.sh` 的数据驱动绘制路径；该路径未复用 `lib/tui_core.sh` 已有的分页绘制逻辑。包含 22 项的报告菜单在常见 24 行终端中存在静态可证明的越界风险。
+- 同时发现窄终端/宽字符状态栏和菜单对齐脆弱点，但真实显示效果依赖终端、字体与 locale；需要用户提供实际入口和终端环境后，才决定是否纳入本轮最小修复。
+- 现有项目日志没有把 `create_or_assign_user` 的失败分支持久化。当前锁不存在；旧配额失败审计没有时间或操作标识关联到用户报告，不能据此归因。
+
+### C7 TUI 渲染韧性修复
+
+- 用户已明确要求 locale 防护、主线菜单分页、宽字符列宽、状态栏越界和对应回归测试；不使用 visual companion。
+- 已确认分页的前置功能缺陷：数据驱动菜单重绘时重置 index/offset，且 22 个主线 handler 以 command substitution 调用按键处理，导致 UP/DOWN/HOME/END 的状态在子 shell 中丢失。
+- 最小设计已本地写入 `docs/superpowers/specs/2026-07-21-tui-rendering-resilience-design.md`，未提交。设计限定为 TUI core、数据驱动菜单、主线按键桥接和两份 TUI 测试；不改变用户创建业务流程。
+- 设计自审已完成：补充 `TERM` 的 nounset 降级、同一菜单再进入时重置缓存、state 模式的父 shell 调用约定及测试替身迁移；无占位、范围冲突或未定义行为。
+- Oracle 设计复核的 6 项高/中风险缺口已纳入设计和计划：`tui_run` 的父 shell state 模式、`tui_init`/原生循环统一缓存失效、无 TERM 的颜色 token 安全、22 个 handler 与原生表单测试闭合、UTF-8 的实际能力验证、低于 7 行的 compact fallback 与高亮验收。
+- 本地实施计划已写入 `docs/superpowers/plans/2026-07-21-tui-rendering-resilience.md` 并完成自审。计划规定 core、menus、manager/tests 三条无重叠写入 lane；实施后执行 TUI 定向、静态门禁、P0、P1 和 diff 检查；不提交。
+
+## 2026-08-13 跨服务器与 GPU 管理基础层
+
+> 状态：设计已批准并写入本地说明，等待用户审阅
+
+- 用户在原型中最终选择 `SSH-FIRST`，并逐节批准架构、交互、首期范围和可靠性设计。
+- 首期统一脚本文案与五段式交互，建立 Inventory、Local/SSH Provider、只读能力/GPU 探测、执行计划和逐主机结果。
+- 调度、隔离、常驻 Agent 和中心控制面不在首期范围。
+- 正式设计说明：`docs/superpowers/specs/2026-08-13-remote-gpu-management-foundation-design.md`。
+- 不修改生产代码、不提交、不推送；用户审阅设计说明后才进入实施计划。

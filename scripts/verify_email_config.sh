@@ -1,6 +1,11 @@
 #!/bin/bash
 # verify_email_config.sh - 验证邮箱配置脚本 v1.0.0
 # 用于测试邮件配置是否正确
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+# ERR trap：严格模式错误报告（行号 + 失败命令 + 退出码）
+trap 'echo "错误: 行 $LINENO: $BASH_COMMAND (exit $?)" >&2' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"

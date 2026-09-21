@@ -16,7 +16,7 @@ readonly AUDIT_INDEX_FILE="$AUDIT_LOG_DIR/index.db"
 readonly AUDIT_JOURNAL_IDENTIFIER="${AUDIT_JOURNAL_IDENTIFIER:-user-manager}"
 
 # 日志轮转配置
-readonly AUDIT_MAX_SIZE=$((10 * 1024 * 1024))  # 10MB
+readonly AUDIT_MAX_SIZE=$((10 * 1024 * 1024)) # 10MB
 readonly AUDIT_MAX_FILES=10
 
 # 操作类型定义
@@ -62,10 +62,10 @@ audit_init() {
             return 1
         }
     fi
-    
+
     # 设置适当的权限
     chmod 750 "$AUDIT_LOG_DIR" 2>/dev/null || true
-    
+
     # 检查日志文件是否存在
     if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
         touch "$AUDIT_LOG_FILE" 2>/dev/null || {
@@ -74,7 +74,7 @@ audit_init() {
         }
         chmod 640 "$AUDIT_LOG_FILE" 2>/dev/null || true
     fi
-    
+
     return 0
 }
 
@@ -85,7 +85,10 @@ audit_init() {
 # 转义字段，避免破坏分隔符
 audit_escape_field() {
     local value="${1:-}"
-    [[ -z "$value" ]] && { echo ""; return 0; }
+    [[ -z "$value" ]] && {
+        echo ""
+        return 0
+    }
     value=${value//$'\n'/\\n}
     value=${value//$'\r'/}
     value=${value//|/\\|}
@@ -172,7 +175,10 @@ audit_enrich_details() {
 # 安全写入审计日志（可选 flock）
 audit_write_line() {
     local line="${1:-}"
-    [[ -z "$line" ]] && { msg_err_ctx "audit_write_line" "日志行不能为空"; return 1; }
+    [[ -z "$line" ]] && {
+        msg_err_ctx "audit_write_line" "日志行不能为空"
+        return 1
+    }
     if command -v flock &>/dev/null; then
         local fd
         if exec {fd}>>"$AUDIT_LOG_FILE" 2>/dev/null; then
@@ -182,7 +188,7 @@ audit_write_line() {
             return 0
         fi
     fi
-    if printf '%s\n' "$line" >> "$AUDIT_LOG_FILE" 2>/dev/null; then
+    if printf '%s\n' "$line" >>"$AUDIT_LOG_FILE" 2>/dev/null; then
         return 0
     fi
     if declare -F priv_exec &>/dev/null; then
@@ -195,12 +201,12 @@ audit_backend_mode() {
     mode=$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')
 
     case "$mode" in
-        file|journald|both)
-            printf '%s\n' "$mode"
-            ;;
-        *)
-            printf 'file\n'
-            ;;
+    file | journald | both)
+        printf '%s\n' "$mode"
+        ;;
+    *)
+        printf 'file\n'
+        ;;
     esac
 }
 
@@ -220,10 +226,10 @@ audit_priority_for_result() {
     local result="${1:-}"
 
     case "$result" in
-        "$AUDIT_RESULT_SUCCESS") printf '6\n' ;;
-        "$AUDIT_RESULT_DENIED") printf '4\n' ;;
-        "$AUDIT_RESULT_FAILURE"|"$AUDIT_RESULT_ERROR") printf '3\n' ;;
-        *) printf '5\n' ;;
+    "$AUDIT_RESULT_SUCCESS") printf '6\n' ;;
+    "$AUDIT_RESULT_DENIED") printf '4\n' ;;
+    "$AUDIT_RESULT_FAILURE" | "$AUDIT_RESULT_ERROR") printf '3\n' ;;
+    *) printf '5\n' ;;
     esac
 }
 
@@ -281,7 +287,7 @@ audit_extract_journal_field() {
         [[ "$line" == "$field_name="* ]] || continue
         printf '%s\n' "${line#*=}"
         return 0
-    done <<< "$payload"
+    done <<<"$payload"
 
     return 1
 }
@@ -290,7 +296,10 @@ audit_write_journal_entry() {
     local payload="${1:-}"
     local priority
 
-    [[ -z "$payload" ]] && { msg_err_ctx "audit_write_journal_entry" "journald payload 不能为空"; return 1; }
+    [[ -z "$payload" ]] && {
+        msg_err_ctx "audit_write_journal_entry" "journald payload 不能为空"
+        return 1
+    }
 
     if command -v logger &>/dev/null; then
         if printf '%s\n' "$payload" | logger --journald 2>/dev/null; then
@@ -315,7 +324,7 @@ audit_log() {
     local result="${3:-$AUDIT_RESULT_SUCCESS}"
     local details="${4:-}"
     local user="${5:-${USER:-unknown}}"
-    
+
     # 参数验证：操作类型必须存在
     if [[ -z "$op_type" ]]; then
         if declare -F msg_err_ctx &>/dev/null; then
@@ -328,13 +337,13 @@ audit_log() {
     if audit_backend_uses_file; then
         audit_rotate_check
     fi
-    
+
     # 获取当前时间（Unix时间戳 + 可读格式）
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     local unix_time
     unix_time=$(date +%s)
-    
+
     # 获取主机名和进程信息
     local hostname
     hostname=$(hostname 2>/dev/null || echo "unknown")
@@ -343,7 +352,7 @@ audit_log() {
     local audit_context enriched_details
     audit_context="$(audit_collect_context "$hostname" "$pid" "$ppid" "$user")"
     enriched_details="$(audit_enrich_details "$details" "$audit_context")"
-    
+
     local esc_hostname esc_user esc_op esc_target esc_result esc_details
     esc_hostname=$(audit_escape_field "$hostname")
     esc_user=$(audit_escape_field "$user")
@@ -351,11 +360,11 @@ audit_log() {
     esc_target=$(audit_escape_field "$target")
     esc_result=$(audit_escape_field "$result")
     esc_details=$(audit_escape_field "$enriched_details")
-    
+
     # 构建日志条目（使用 | 作为分隔符）
     # 格式: timestamp|unix_time|hostname|pid|ppid|user|op_type|target|result|details(+context)
     local log_entry="${timestamp}|${unix_time}|${esc_hostname}|${pid}|${ppid}|${esc_user}|${esc_op}|${esc_target}|${esc_result}|${esc_details}"
-    
+
     local journal_payload=""
     local write_status=1
 
@@ -364,25 +373,25 @@ audit_log() {
     fi
 
     case "$(audit_backend_mode)" in
-        file)
-            audit_write_line "$log_entry"
-            write_status=$?
-            ;;
-        journald)
-            audit_write_journal_entry "$journal_payload"
-            write_status=$?
-            ;;
-        both)
-            local file_status=1
-            local journal_status=1
-            audit_write_line "$log_entry"
-            file_status=$?
-            audit_write_journal_entry "$journal_payload"
-            journal_status=$?
-            if [[ $file_status -eq 0 || $journal_status -eq 0 ]]; then
-                write_status=0
-            fi
-            ;;
+    file)
+        audit_write_line "$log_entry"
+        write_status=$?
+        ;;
+    journald)
+        audit_write_journal_entry "$journal_payload"
+        write_status=$?
+        ;;
+    both)
+        local file_status=1
+        local journal_status=1
+        audit_write_line "$log_entry"
+        file_status=$?
+        audit_write_journal_entry "$journal_payload"
+        journal_status=$?
+        if [[ $file_status -eq 0 || $journal_status -eq 0 ]]; then
+            write_status=0
+        fi
+        ;;
     esac
 
     if [[ $write_status -ne 0 ]]; then
@@ -391,7 +400,7 @@ audit_log() {
 
     # 更新索引（异步，不阻塞主流程）
     (audit_update_index "$timestamp" "$op_type" "$target" "$result" "$user" &) 2>/dev/null
-    
+
     return 0
 }
 
@@ -400,7 +409,10 @@ audit_success() {
     local op_type="${1:-}"
     local target="${2:-}"
     local details="${3:-}"
-    [[ -z "$op_type" ]] && { msg_err_ctx "audit_success" "操作类型不能为空"; return 1; }
+    [[ -z "$op_type" ]] && {
+        msg_err_ctx "audit_success" "操作类型不能为空"
+        return 1
+    }
     audit_log "$op_type" "$target" "$AUDIT_RESULT_SUCCESS" "$details"
 }
 
@@ -409,7 +421,10 @@ audit_failure() {
     local op_type="${1:-}"
     local target="${2:-}"
     local details="${3:-}"
-    [[ -z "$op_type" ]] && { msg_err_ctx "audit_failure" "操作类型不能为空"; return 1; }
+    [[ -z "$op_type" ]] && {
+        msg_err_ctx "audit_failure" "操作类型不能为空"
+        return 1
+    }
     audit_log "$op_type" "$target" "$AUDIT_RESULT_FAILURE" "$details"
 }
 
@@ -418,7 +433,10 @@ audit_denied() {
     local op_type="${1:-}"
     local target="${2:-}"
     local details="${3:-}"
-    [[ -z "$op_type" ]] && { msg_err_ctx "audit_denied" "操作类型不能为空"; return 1; }
+    [[ -z "$op_type" ]] && {
+        msg_err_ctx "audit_denied" "操作类型不能为空"
+        return 1
+    }
     audit_log "$op_type" "$target" "$AUDIT_RESULT_DENIED" "$details"
 }
 
@@ -427,7 +445,10 @@ audit_error() {
     local op_type="${1:-}"
     local target="${2:-}"
     local details="${3:-}"
-    [[ -z "$op_type" ]] && { msg_err_ctx "audit_error" "操作类型不能为空"; return 1; }
+    [[ -z "$op_type" ]] && {
+        msg_err_ctx "audit_error" "操作类型不能为空"
+        return 1
+    }
     audit_log "$op_type" "$target" "$AUDIT_RESULT_ERROR" "$details"
 }
 
@@ -477,14 +498,14 @@ audit_rotate_check() {
     if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
         return 0
     fi
-    
+
     local size
     size=$(stat -f%z "$AUDIT_LOG_FILE" 2>/dev/null || stat -c%s "$AUDIT_LOG_FILE" 2>/dev/null || echo 0)
-    
+
     if [[ $size -gt $AUDIT_MAX_SIZE ]]; then
         audit_rotate
     fi
-    
+
     return 0
 }
 
@@ -493,22 +514,22 @@ audit_rotate() {
     local timestamp
     timestamp=$(date +%Y%m%d%H%M%S)
     local backup_file="${AUDIT_LOG_FILE}.${timestamp}"
-    
+
     # 移动当前日志到备份
     mv "$AUDIT_LOG_FILE" "$backup_file" 2>/dev/null || {
         # 如果移动失败，尝试复制后清空
-        cp "$AUDIT_LOG_FILE" "$backup_file" 2>/dev/null && 
-        : > "$AUDIT_LOG_FILE" 2>/dev/null
+        cp "$AUDIT_LOG_FILE" "$backup_file" 2>/dev/null &&
+            : >"$AUDIT_LOG_FILE" 2>/dev/null
     }
-    
+
     # 压缩备份文件
     if command -v gzip &>/dev/null; then
         gzip "$backup_file" 2>/dev/null || true
     fi
-    
+
     # 清理旧日志文件
     audit_cleanup_old_logs
-    
+
     return 0
 }
 
@@ -516,21 +537,21 @@ audit_rotate() {
 audit_cleanup_old_logs() {
     local log_dir
     log_dir=$(dirname "$AUDIT_LOG_FILE")
-    
+
     # 查找并删除最旧的日志文件，只保留最近的几份
     local log_files
     log_files=$(find "$log_dir" -name "$(basename "$AUDIT_LOG_FILE").*.gz" -type f 2>/dev/null | sort)
-    
+
     local count
     count=$(echo "$log_files" | wc -l)
-    
+
     if [[ $count -gt $AUDIT_MAX_FILES ]]; then
         local to_delete=$((count - AUDIT_MAX_FILES))
         echo "$log_files" | head -n "$to_delete" | while read -r file; do
             rm -f "$file" 2>/dev/null || true
         done
     fi
-    
+
     return 0
 }
 
@@ -544,13 +565,13 @@ audit_query() {
     local op_type="${1:-}"
     local user="${2:-}"
     local date_range="${3:-}"
-    
+
     # 检查日志文件是否存在
     if [[ ! -f "$AUDIT_LOG_FILE" ]]; then
         echo "审计日志文件不存在"
         return 1
     fi
-    
+
     # 解析日期范围
     local date_start="" date_end=""
     if [[ -n "$date_range" ]]; then
@@ -563,23 +584,26 @@ audit_query() {
             date_end="$date_range"
         fi
     fi
-    
+
     # 构建查询条件
     local conditions=()
-    
+
     if [[ -n "$op_type" ]]; then
         conditions+=("$op_type")
     fi
-    
+
     if [[ -n "$user" ]]; then
         conditions+=("$user")
     fi
-    
+
     # 第一步：按操作类型和用户过滤
     {
         if [[ ${#conditions[@]} -gt 0 ]]; then
             local pattern
-            pattern=$(IFS='|'; echo "${conditions[*]}")
+            pattern=$(
+                IFS='|'
+                echo "${conditions[*]}"
+            )
             grep -E "$pattern" "$AUDIT_LOG_FILE"
         else
             cat "$AUDIT_LOG_FILE"
@@ -597,7 +621,7 @@ audit_query() {
             cat
         fi
     } | tail -n 100
-    
+
     return 0
 }
 
@@ -607,20 +631,20 @@ audit_stats() {
         echo "审计日志文件不存在"
         return 1
     fi
-    
+
     local total_lines
-    total_lines=$(wc -l < "$AUDIT_LOG_FILE")
-    
+    total_lines=$(wc -l <"$AUDIT_LOG_FILE")
+
     local today
     today=$(date +%Y-%m-%d)
     local today_count
     today_count=$(grep -c "^$today" "$AUDIT_LOG_FILE" 2>/dev/null || echo 0)
-    
+
     echo "审计日志统计："
     echo "  总记录数：$total_lines"
     echo "  今日记录：$today_count"
     echo "  日志文件：$AUDIT_LOG_FILE"
-    
+
     return 0
 }
 
@@ -635,7 +659,7 @@ init_audit_module() {
         msg_warn "审计系统初始化失败"
         return 1
     }
-    
+
     return 0
 }
 

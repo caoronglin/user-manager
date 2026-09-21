@@ -16,9 +16,9 @@ change_user_password() {
     mode=${mode:-1}
 
     case "$mode" in
-        1) _change_single_user_password ;;
-        2) _change_all_users_password ;;
-        *) msg_err "无效的选项" ;;
+    1) _change_single_user_password ;;
+    2) _change_all_users_password ;;
+    *) msg_err "无效的选项" ;;
     esac
 
     release_lock
@@ -45,26 +45,30 @@ _change_single_user_password() {
 
     local newpass=""
     case $pass_option in
-        1)
-            newpass=$(get_random_password)
-            if [[ -z "$newpass" ]]; then
-                msg_err "无法从密码池获取密码"; return 1
-            fi
-            msg_ok "已从密码池随机选择密码"
-            ;;
-        2)
-            read -rsp "  新密码 (≥8位): " newpass; echo
-            if ! _validate_password_strength "$newpass"; then
-                return 1
-            fi
-            ;;
-        *)
-            msg_err "无效的选项"; return 1
-            ;;
+    1)
+        newpass=$(get_random_password)
+        if [[ -z "$newpass" ]]; then
+            msg_err "无法从密码池获取密码"
+            return 1
+        fi
+        msg_ok "已从密码池随机选择密码"
+        ;;
+    2)
+        read -rsp "  新密码 (≥8位): " newpass
+        echo
+        if ! _validate_password_strength "$newpass"; then
+            return 1
+        fi
+        ;;
+    *)
+        msg_err "无效的选项"
+        return 1
+        ;;
     esac
 
     if ! echo "$username:$newpass" | priv_chpasswd; then
-        msg_err "密码更新失败"; return 1
+        msg_err "密码更新失败"
+        return 1
     fi
 
     # SMB 密码同步（失败则整体失败，跳过通知）
@@ -99,7 +103,7 @@ _change_all_users_password() {
     local managed_users=()
     mapfile -t managed_users < <(get_managed_usernames)
 
-    if (( ${#managed_users[@]} == 0 )); then
+    if ((${#managed_users[@]} == 0)); then
         msg_warn "没有托管用户"
         return 0
     fi
@@ -112,7 +116,8 @@ _change_all_users_password() {
 
     msg_warn "此操作将为所有用户随机分配新密码！"
     if ! confirm_action "确认继续？"; then
-        msg_info "已取消"; return 0
+        msg_info "已取消"
+        return 0
     fi
 
     local success=0 failed=0
@@ -123,14 +128,14 @@ _change_all_users_password() {
         newpass=$(get_random_password)
         if [[ -z "$newpass" ]]; then
             msg_err "用户 $username: 无法获取密码"
-            ((failed+=1))
+            ((failed += 1))
             continue
         fi
 
         if echo "$username:$newpass" | priv_chpasswd 2>/dev/null; then
             msg_ok "  $username: 密码已更新"
             results+=("$username:$newpass")
-            ((success+=1))
+            ((success += 1))
 
             # SMB 密码同步（失败时递增计数器，继续下一个用户）
             if ! _smb_sync_password "$username" "$newpass"; then
@@ -148,7 +153,7 @@ _change_all_users_password() {
             record_user_event "$username" "password_change" "批量修改密码"
         else
             msg_err "  $username: 密码更新失败"
-            ((failed+=1))
+            ((failed += 1))
         fi
     done
 
@@ -160,7 +165,7 @@ _change_all_users_password() {
     fi
 
     # 显示密码清单
-    if (( ${#results[@]} > 0 )); then
+    if ((${#results[@]} > 0)); then
         echo ""
         if show_passwords_enabled; then
             msg_info "新密码清单（请妥善保管）:"
@@ -182,7 +187,7 @@ _change_all_users_password() {
 _validate_password_strength() {
     local password="$1"
 
-    if (( ${#password} < 8 )); then
+    if ((${#password} < 8)); then
         msg_err "密码长度至少需要 8 个字符"
         return 1
     fi

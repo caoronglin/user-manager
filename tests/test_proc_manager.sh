@@ -71,7 +71,7 @@ assert_dir_exists "$PROC_PID_DIR" "应在测试临时目录下创建 PID 目录"
 test_start "proc_update_status: 保留包含空格和冒号的字段"
 proc_id="proc_parse_case"
 pid_file="$PROC_PID_DIR/${proc_id}.json"
-cat > "$pid_file" <<'EOF'
+cat >"$pid_file" <<'EOF'
 {
   "id": "proc_parse_case",
   "name": "nightly backup",
@@ -102,7 +102,7 @@ test_start "proc_update_status: 不执行 JSON 字段中的命令替换"
 proc_id="proc_injection_case"
 pid_file="$PROC_PID_DIR/${proc_id}.json"
 marker_file="$TEST_TMPDIR/eval_marker"
-cat > "$pid_file" <<EOF
+cat >"$pid_file" <<EOF
 {
   "id": "proc_injection_case",
   "name": "\$(touch $marker_file)",
@@ -128,7 +128,7 @@ fi
 test_start "proc_update_status: 无 jq/python3 时仍可使用 shell fallback"
 proc_id="proc_fallback_case"
 pid_file="$PROC_PID_DIR/${proc_id}.json"
-cat > "$pid_file" <<'EOF'
+cat >"$pid_file" <<'EOF'
 {
   "id": "proc_fallback_case",
   "name": "fallback worker",
@@ -167,7 +167,7 @@ test_start "proc_start: 可执行当前 shell 中定义的函数"
 helper_marker="$TEST_TMPDIR/proc_helper_marker"
 # shellcheck disable=SC2317
 proc_test_helper() {
-    printf 'ok' > "$helper_marker"
+    printf 'ok' >"$helper_marker"
 }
 
 proc_id="$(proc_start "proc_helper" "proc_test_helper" 5 2>/dev/null || true)"

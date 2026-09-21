@@ -15,7 +15,7 @@ get_user_mountpoint() {
         idx=$(printf "%02d" "$disk_num")
         mp_candidate="${DATA_BASE}/data${idx}"
         if [[ "$home" == "${mp_candidate}"/* || "$home" == "$mp_candidate" ]]; then
-            if (( ${#mp_candidate} > ${#matched_mp} )); then
+            if ((${#mp_candidate} > ${#matched_mp})); then
                 matched_mp="$mp_candidate"
             fi
         fi
@@ -35,11 +35,12 @@ collect_quota_users() {
     local mp="$1"
     [[ -z "$mp" ]] && return 1
 
+    # 在 pipefail 下，repquota 不存在/失败不应让只读列表命令报错。
     priv_repquota -u "$mp" 2>/dev/null | awk '
         NR > 6 && $1 ~ /^[a-zA-Z_][a-zA-Z0-9_.-]*$/ {
             print $1
         }
-    '
+    ' || true
 }
 
 # ---------------------------------------------------------------------------
@@ -51,8 +52,8 @@ get_managed_usernames() {
     current_time=$(date +%s)
 
     # 检查缓存是否有效
-    if [[ -n "$USERNAMES_CACHE" ]] && \
-       [[ $((current_time - USERNAMES_CACHE_TIME)) -lt $USERNAMES_CACHE_TTL ]]; then
+    if [[ -n "$USERNAMES_CACHE" ]] &&
+        [[ $((current_time - USERNAMES_CACHE_TIME)) -lt $USERNAMES_CACHE_TTL ]]; then
         echo "$USERNAMES_CACHE"
         return 0
     fi
@@ -85,7 +86,7 @@ get_managed_usernames() {
     done
 
     local sorted_result=""
-    if (( ${#result_list[@]} > 0 )); then
+    if ((${#result_list[@]} > 0)); then
         sorted_result=$(printf '%s\n' "${result_list[@]}" | sort)
     fi
 
@@ -105,7 +106,10 @@ get_managed_usernames() {
 get_user_quota_info() {
     local username="$1"
     local mp="$2"
-    [[ -z "$username" || -z "$mp" ]] && { echo "0:0"; return 1; }
+    [[ -z "$username" || -z "$mp" ]] && {
+        echo "0:0"
+        return 1
+    }
 
     local used_kb="" limit_kb=""
 
@@ -114,8 +118,8 @@ get_user_quota_info() {
         local device quota_output
         device=$(df "$mp" 2>/dev/null | awk 'NR==2 {print $1}')
         if [[ -n "$device" ]]; then
-            quota_output=$(priv_quota -u "$username" 2>/dev/null \
-                | grep -E "^[[:space:]]*(${device}|${mp})" || true)
+            quota_output=$(priv_quota -u "$username" 2>/dev/null |
+                grep -E "^[[:space:]]*(${device}|${mp})" || true)
             if [[ -n "$quota_output" ]]; then
                 used_kb=$(echo "$quota_output" | awk '{print $2}')
                 limit_kb=$(echo "$quota_output" | awk '{print $4}')
@@ -147,7 +151,7 @@ get_user_quota_info() {
 
     # ── 转换 KB → 字节 ──
     local used_bytes=0 limit_bytes=0
-    [[ "$used_kb"  =~ ^[0-9]+$ ]] && used_bytes=$((used_kb  * 1024))
+    [[ "$used_kb" =~ ^[0-9]+$ ]] && used_bytes=$((used_kb * 1024))
     [[ "$limit_kb" =~ ^[0-9]+$ ]] && limit_bytes=$((limit_kb * 1024))
 
     echo "${used_bytes}:${limit_bytes}"
@@ -164,19 +168,24 @@ set_user_quota() {
 
     # 参数验证
     if [[ -z "$username" ]]; then
-        msg_err "用户名不能为空"; return 1
+        msg_err "用户名不能为空"
+        return 1
     fi
-    if [[ -z "$quota_bytes" ]] || ! [[ "$quota_bytes" =~ ^[0-9]+$ ]] || (( quota_bytes <= 0 )); then
-        msg_err "配额值无效: ${quota_bytes:-<空>}"; return 1
+    if [[ -z "$quota_bytes" ]] || ! [[ "$quota_bytes" =~ ^[0-9]+$ ]] || ((quota_bytes <= 0)); then
+        msg_err "配额值无效: ${quota_bytes:-<空>}"
+        return 1
     fi
     if [[ -z "$mp" ]]; then
-        msg_err "挂载点不能为空"; return 1
+        msg_err "挂载点不能为空"
+        return 1
     fi
     if ! mountpoint -q "$mp" 2>/dev/null; then
-        msg_err "挂载点 ${C_BOLD}${mp}${C_RESET} 未挂载"; return 1
+        msg_err "挂载点 ${C_BOLD}${mp}${C_RESET} 未挂载"
+        return 1
     fi
     if ! id "$username" &>/dev/null; then
-        msg_err "用户 ${C_BOLD}${username}${C_RESET} 不存在"; return 1
+        msg_err "用户 ${C_BOLD}${username}${C_RESET} 不存在"
+        return 1
     fi
 
     local quota_kb=$(((quota_bytes + 1023) / 1024))
@@ -192,7 +201,7 @@ set_user_quota() {
             local email
             email=$(get_user_email "$username" 2>/dev/null || true)
             if [[ -n "$email" ]]; then
-                send_quota_hard_limit_email "$username" "$email" "$human_size" "system" >/dev/null 2>&1 || \
+                send_quota_hard_limit_email "$username" "$email" "$human_size" "system" >/dev/null 2>&1 ||
                     msg_warn "配额已生效，但硬配额通知发送失败"
             fi
         fi
@@ -239,7 +248,7 @@ show_disk_usage_warnings() {
         usage_pct=$(df "$mp" | awk 'NR==2 {gsub(/%/,""); print $5}')
         [[ "$usage_pct" =~ ^[0-9]+$ ]] || continue
 
-        if (( usage_pct > DISK_WARNING_THRESHOLD )); then
+        if ((usage_pct > DISK_WARNING_THRESHOLD)); then
             if ! $warning_found; then
                 echo ""
                 if $interactive; then
@@ -275,7 +284,7 @@ show_disk_overview() {
 
     # 表头
     printf "  ${C_BOLD}${C_WHITE}%-8s  %-12s  %-12s  %-12s  %-24s  %s${C_RESET}\n" \
-           "磁盘" "总容量" "已用" "可用" "使用率" "状态"
+        "磁盘" "总容量" "已用" "可用" "使用率" "状态"
     draw_line 50
 
     local disk_num idx mp
@@ -288,7 +297,7 @@ show_disk_overview() {
 
         if ! mountpoint -q "$mp" 2>/dev/null; then
             printf "  ${C_DIM}data%-4s  %-12s  %-12s  %-12s  %-24s  ${C_RED}● 未挂载${C_RESET}\n" \
-                   "$idx" "—" "—" "—" "—"
+                "$idx" "—" "—" "—" "—"
             continue
         fi
 
@@ -297,7 +306,7 @@ show_disk_overview() {
         [[ -z "$df_line" ]] && continue
 
         local total_bytes used_bytes avail_bytes pct_str
-        read -r total_bytes used_bytes avail_bytes pct_str <<< "$df_line"
+        read -r total_bytes used_bytes avail_bytes pct_str <<<"$df_line"
         local pct=${pct_str//%/}
         [[ "$pct" =~ ^[0-9]+$ ]] || pct=0
 
@@ -313,11 +322,11 @@ show_disk_overview() {
 
         # 状态徽章
         local badge
-        if (( pct >= 95 )); then
+        if ((pct >= 95)); then
             badge="${C_BG_RED}${C_WHITE} 危险 ${C_RESET}"
-        elif (( pct >= DISK_WARNING_THRESHOLD )); then
+        elif ((pct >= DISK_WARNING_THRESHOLD)); then
             badge="${C_BG_YELLOW}${C_BOLD} 警告 ${C_RESET}"
-        elif (( pct >= 70 )); then
+        elif ((pct >= 70)); then
             badge="${C_RESET}正常${C_RESET}"
         else
             badge="${C_BGREEN}良好${C_RESET}"
@@ -326,7 +335,7 @@ show_disk_overview() {
         local color
         color=$(get_usage_color "$pct")
         printf "  ${C_BOLD}data%-4s${C_RESET}  %-12s  ${color}%-12s${C_RESET}  ${C_BGREEN}%-12s${C_RESET}  " \
-               "$idx" "$total_h" "$used_h" "$avail_h"
+            "$idx" "$total_h" "$used_h" "$avail_h"
         draw_usage_bar "$pct" 16
         printf "  %b\n" "$badge"
     done
@@ -334,24 +343,24 @@ show_disk_overview() {
     draw_line 50
 
     # 汇总行
-    if (( disk_count > 0 )); then
+    if ((disk_count > 0)); then
         local total_h_sum used_h_sum avail_h_sum overall_pct=0
         total_h_sum=$(bytes_to_human "$total_size_sum")
         used_h_sum=$(bytes_to_human "$used_sum")
         avail_h_sum=$(bytes_to_human "$avail_sum")
-        (( total_size_sum > 0 )) && overall_pct=$((used_sum * 100 / total_size_sum))
+        ((total_size_sum > 0)) && overall_pct=$((used_sum * 100 / total_size_sum))
 
         local sum_color badge
         sum_color=$(get_usage_color "$overall_pct")
         printf "  ${C_BOLD}${C_WHITE}合计%-4s${C_RESET}  %-12s  ${sum_color}%-12s${C_RESET}  ${C_BGREEN}%-12s${C_RESET}  " \
-               "" "$total_h_sum" "$used_h_sum" "$avail_h_sum"
+            "" "$total_h_sum" "$used_h_sum" "$avail_h_sum"
         draw_usage_bar "$overall_pct" 16
         # 重新计算汇总行的状态徽章
-        if (( overall_pct >= 95 )); then
+        if ((overall_pct >= 95)); then
             badge="${C_BG_RED}${C_WHITE} 危险 ${C_RESET}"
-        elif (( overall_pct >= DISK_WARNING_THRESHOLD )); then
+        elif ((overall_pct >= DISK_WARNING_THRESHOLD)); then
             badge="${C_BG_YELLOW}${C_BOLD} 警告 ${C_RESET}"
-        elif (( overall_pct >= 70 )); then
+        elif ((overall_pct >= 70)); then
             badge="${C_RESET}正常${C_RESET}"
         else
             badge="${C_BGREEN}良好${C_RESET}"

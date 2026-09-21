@@ -11,12 +11,12 @@ env_has_command() {
 
 env_has_systemd() {
     case "${ENV_FORCE_SYSTEMD:-}" in
-        1|true|yes)
-            return 0
-            ;;
-        0|false|no)
-            return 1
-            ;;
+    1 | true | yes)
+        return 0
+        ;;
+    0 | false | no)
+        return 1
+        ;;
     esac
 
     env_has_command systemctl || return 1
@@ -28,43 +28,43 @@ env_capability_status() {
     local name
 
     case "$capability" in
-        systemd)
-            if env_has_systemd; then
-                printf '__ENV_CAPABILITY__ capability=systemd status=ok\n'
-                return 0
-            fi
-            printf '__ENV_CAPABILITY__ capability=systemd status=missing reason=no-systemd-runtime\n'
-            return 1
-            ;;
-        command:*)
-            name="${capability#command:}"
-            if env_has_command "$name"; then
-                printf '__ENV_CAPABILITY__ capability=%s status=ok\n' "$capability"
-                return 0
-            fi
-            printf '__ENV_CAPABILITY__ capability=%s status=missing reason=command-not-found\n' "$capability"
-            return 1
-            ;;
-        journalctl|systemctl|jq|ufw|rsnapshot|nvidia-smi|virsh)
-            env_capability_status "command:$capability"
-            return $?
-            ;;
-        root)
-            if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-                printf '__ENV_CAPABILITY__ capability=root status=ok\n'
-                return 0
-            fi
-            printf '__ENV_CAPABILITY__ capability=root status=missing reason=not-root\n'
-            return 1
-            ;;
-        "")
-            printf '__ENV_CAPABILITY__ capability=unknown status=missing reason=empty-capability\n'
-            return 1
-            ;;
-        *)
-            printf '__ENV_CAPABILITY__ capability=%s status=unknown reason=not-registered\n' "$capability"
-            return 1
-            ;;
+    systemd)
+        if env_has_systemd; then
+            printf '__ENV_CAPABILITY__ capability=systemd status=ok\n'
+            return 0
+        fi
+        printf '__ENV_CAPABILITY__ capability=systemd status=missing reason=no-systemd-runtime\n'
+        return 1
+        ;;
+    command:*)
+        name="${capability#command:}"
+        if env_has_command "$name"; then
+            printf '__ENV_CAPABILITY__ capability=%s status=ok\n' "$capability"
+            return 0
+        fi
+        printf '__ENV_CAPABILITY__ capability=%s status=missing reason=command-not-found\n' "$capability"
+        return 1
+        ;;
+    journalctl | systemctl | jq | ufw | rsnapshot | nvidia-smi | virsh)
+        env_capability_status "command:$capability"
+        return $?
+        ;;
+    root)
+        if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+            printf '__ENV_CAPABILITY__ capability=root status=ok\n'
+            return 0
+        fi
+        printf '__ENV_CAPABILITY__ capability=root status=missing reason=not-root\n'
+        return 1
+        ;;
+    "")
+        printf '__ENV_CAPABILITY__ capability=unknown status=missing reason=empty-capability\n'
+        return 1
+        ;;
+    *)
+        printf '__ENV_CAPABILITY__ capability=%s status=unknown reason=not-registered\n' "$capability"
+        return 1
+        ;;
     esac
 }
 

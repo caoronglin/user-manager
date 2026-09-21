@@ -66,19 +66,19 @@ set_virtual_machine_autostart() {
     vm_require_name "$vm_name" || return 1
 
     case "$enabled" in
-        on|enable|enabled|true|1)
-            priv_virsh autostart "$vm_name"
-            ;;
-        off|disable|disabled|false|0)
-            priv_virsh autostart --disable "$vm_name"
-            ;;
-        *)
-            if declare -F msg_err >/dev/null 2>&1; then
-                msg_err "autostart 参数必须是 on/off"
-            else
-                echo "autostart 参数必须是 on/off" >&2
-            fi
-            return 1
-            ;;
+    on | enable | enabled | true | 1)
+        priv_virsh autostart "$vm_name"
+        ;;
+    off | disable | disabled | false | 0)
+        priv_virsh autostart --disable "$vm_name"
+        ;;
+    *)
+        if declare -F msg_err >/dev/null 2>&1; then
+            msg_err "autostart 参数必须是 on/off"
+        else
+            echo "autostart 参数必须是 on/off" >&2
+        fi
+        return 1
+        ;;
     esac
 }

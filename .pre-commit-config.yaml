@@ -1,0 +1,38 @@
+# pre-commit 钩子配置（Lane H4, 2026-07-21，加固与工程链优化）
+#
+# 安装与使用：
+#   pip install pre-commit
+#   pre-commit install            # 安装到 .git/hooks，之后每次 git commit 自动运行
+#   pre-commit run --all-files    # 手动对全部文件运行一次
+#   pre-commit run shellcheck     # 只运行指定 hook
+#
+# 注意：仓库已按 shfmt v3.12.0 默认格式完成全量格式化，CI format job 为阻断模式。
+#
+# 参考来源：
+#   - koalaman/shellcheck-precommit：ShellCheck 官方 pre-commit hook
+#     （language: docker_image，运行依赖本地 Docker 守护进程）
+#   - scop/pre-commit-shfmt：shfmt（上游 mvdan/sh）的 pre-commit hook 封装，
+#     对应 shfmt v3.12.0（rev v3.12.0-1）
+
+repos:
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.7.2
+    hooks:
+      - id: shellcheck
+        name: shellcheck
+        # 与 CI shellcheck job 保持一致：仅报告 error 及以上级别
+        args: ["--severity=error"]
+        # 与 CI shellcheck job 的 ignore_paths 对齐（data/ logs/ templates/）
+        exclude: ^(data|logs|templates)/
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    # 对应 shfmt v3.12.0（与 CI/本地格式化版本对齐）
+    rev: v3.12.0-1
+    hooks:
+      - id: shfmt
+        name: shfmt
+        # -d：整体替换 manifest 默认的 [-w, -s]，仅输出 diff、不修改文件，
+        # 同时移除 -s（simplify）。CI 同用裸 `shfmt -d`，两端判定一致。
+        args: ["-d"]
+        # 与 CI 语法/格式检查一致：跳过 Miniforge.sh（第三方脚本，不纳入自有代码规范）
+        exclude: ^Miniforge\.sh$

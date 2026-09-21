@@ -40,24 +40,24 @@ test_suite_end() {
     echo -e "  Tests Run:    $TESTS_RUN"
     echo -e "  ${C_GREEN}Passed:${C_RESET}       $TESTS_PASSED"
     echo -e "  ${C_RED}Failed:${C_RESET}       $TESTS_FAILED"
-    
+
     local pass_rate=0
-    if (( TESTS_RUN > 0 )); then
-        pass_rate=$(( TESTS_PASSED * 100 / TESTS_RUN ))
+    if ((TESTS_RUN > 0)); then
+        pass_rate=$((TESTS_PASSED * 100 / TESTS_RUN))
     fi
-    
+
     echo ""
-    if (( pass_rate == 100 )); then
+    if ((pass_rate == 100)); then
         echo -e "  ${C_GREEN}✓ All tests passed!${C_RESET}"
-    elif (( pass_rate >= 80 )); then
+    elif ((pass_rate >= 80)); then
         echo -e "  ${C_YELLOW}⚠ Pass rate: ${pass_rate}%${C_RESET}"
     else
         echo -e "  ${C_RED}✗ Pass rate: ${pass_rate}%${C_RESET}"
     fi
-    
+
     echo "========================================="
     echo ""
-    
+
     # 返回失败数
     return $TESTS_FAILED
 }
@@ -92,7 +92,7 @@ assert_equals() {
     local expected="$1"
     local actual="$2"
     local message="${3:-}"
-    
+
     if [[ "$expected" == "$actual" ]]; then
         test_pass
         return 0
@@ -107,7 +107,7 @@ assert_not_equals() {
     local expected="$1"
     local actual="$2"
     local message="${3:-}"
-    
+
     if [[ "$expected" != "$actual" ]]; then
         test_pass
         return 0
@@ -121,7 +121,7 @@ assert_not_equals() {
 assert_true() {
     local value="$1"
     local message="${2:-}"
-    
+
     if [[ "$value" == "true" || "$value" == "0" ]]; then
         test_pass
         return 0
@@ -135,7 +135,7 @@ assert_true() {
 assert_false() {
     local value="$1"
     local message="${2:-}"
-    
+
     if [[ "$value" == "false" || "$value" == "1" ]]; then
         test_pass
         return 0
@@ -150,7 +150,7 @@ assert_contains() {
     local haystack="$1"
     local needle="$2"
     local message="${3:-}"
-    
+
     if [[ "$haystack" == *"$needle"* ]]; then
         test_pass
         return 0
@@ -164,7 +164,7 @@ assert_contains() {
 assert_file_exists() {
     local file="$1"
     local message="${2:-}"
-    
+
     if [[ -f "$file" ]]; then
         test_pass
         return 0
@@ -178,7 +178,7 @@ assert_file_exists() {
 assert_file_not_exists() {
     local file="$1"
     local message="${2:-}"
-    
+
     if [[ ! -f "$file" ]]; then
         test_pass
         return 0
@@ -192,7 +192,7 @@ assert_file_not_exists() {
 assert_dir_exists() {
     local dir="$1"
     local message="${2:-}"
-    
+
     if [[ -d "$dir" ]]; then
         test_pass
         return 0
@@ -206,7 +206,7 @@ assert_dir_exists() {
 assert_success() {
     local command="$1"
     local message="${2:-}"
-    
+
     # 使用 bash -c 替代 eval，更安全
     if bash -c "$command" &>/dev/null; then
         test_pass
@@ -221,7 +221,7 @@ assert_success() {
 assert_failure() {
     local command="$1"
     local message="${2:-}"
-    
+
     # 使用 bash -c 替代 eval，更安全
     if ! bash -c "$command" &>/dev/null; then
         test_pass
@@ -236,7 +236,7 @@ assert_failure() {
 assert_return_0() {
     local func="$1"
     local message="${2:-}"
-    
+
     if $func &>/dev/null; then
         test_pass
         return 0
@@ -250,7 +250,7 @@ assert_return_0() {
 assert_return_nonzero() {
     local func="$1"
     local message="${2:-}"
-    
+
     if ! $func &>/dev/null; then
         test_pass
         return 0
@@ -266,10 +266,10 @@ assert_array_length() {
     shift
     local array=("$@")
     local message="${*:$(($# + 1)):1}"
-    
+
     local actual_length=${#array[@]}
-    
-    if (( actual_length == expected_length )); then
+
+    if ((actual_length == expected_length)); then
         test_pass
         return 0
     else
@@ -283,8 +283,8 @@ assert_numeric_equals() {
     local expected="$1"
     local actual="$2"
     local message="${3:-}"
-    
-    if (( expected == actual )); then
+
+    if ((expected == actual)); then
         test_pass
         return 0
     else
@@ -298,8 +298,8 @@ assert_greater_than() {
     local threshold="$1"
     local value="$2"
     local message="${3:-}"
-    
-    if (( value > threshold )); then
+
+    if ((value > threshold)); then
         test_pass
         return 0
     else
@@ -313,8 +313,8 @@ assert_less_than() {
     local threshold="$1"
     local value="$2"
     local message="${3:-}"
-    
-    if (( value < threshold )); then
+
+    if ((value < threshold)); then
         test_pass
         return 0
     else
@@ -329,8 +329,13 @@ assert_less_than() {
 
 # 设置测试环境
 setup_test_env() {
-    export TEST_TMPDIR=$(mktemp -d)
-    trap "rm -rf '$TEST_TMPDIR'" EXIT
+    local rl_test_tmpdir
+    rl_test_tmpdir=$(mktemp -d) || {
+        echo "Failed to create test environment" >&2
+        return 1
+    }
+    export TEST_TMPDIR="$rl_test_tmpdir"
+    trap 'cleanup_test_env' EXIT
     echo "Test environment: $TEST_TMPDIR"
 }
 

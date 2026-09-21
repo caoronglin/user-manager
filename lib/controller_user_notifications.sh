@@ -24,7 +24,8 @@ _send_password_notification() {
     else
         msg_warn "用户 $username 未设置邮箱"
         if confirm_action "是否现在设置邮箱并发送密码？"; then
-            read_input "请输入用户邮箱地址"; user_email="$REPLY_INPUT"
+            read_input "请输入用户邮箱地址"
+            user_email="$REPLY_INPUT"
             if [[ -n "$user_email" ]]; then
                 if [[ "$user_email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
                     update_user_config "$username" "$user_email"

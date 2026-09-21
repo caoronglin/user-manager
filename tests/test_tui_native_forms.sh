@@ -18,7 +18,7 @@ else
 fi
 
 test_start "用户菜单创建入口切到原生表单流程"
-entry_output="$(env TUI_MANAGER_NO_MAIN=1 bash -c 'set -uo pipefail; source "$1/tui_manager.sh"; tui_menu_handle_key(){ echo 0; }; tui_run_create_or_assign_user_native(){ echo native-provision; }; tui_run_workflow_action(){ echo legacy:$1; }; handle_tui_user_menu_key ENTER' _ "$PROJECT_ROOT" 2>/dev/null || true)"
+entry_output="$(env TUI_MANAGER_NO_MAIN=1 bash -c 'set -uo pipefail; source "$1/tui_manager.sh"; tui_menu_handle_key(){ if [[ "${2:-}" == "state" ]]; then TUI_MENU_RESULT=0; else echo 0; fi; }; tui_run_create_or_assign_user_native(){ echo native-provision; }; tui_run_workflow_action(){ echo legacy:$1; }; handle_tui_user_menu_key ENTER' _ "$PROJECT_ROOT" 2>/dev/null || true)"
 if [[ "$entry_output" == *"native-provision"* ]] && [[ "$entry_output" != *"legacy:create_or_assign_user"* ]]; then
     test_pass
 else
@@ -34,7 +34,7 @@ else
 fi
 
 test_start "磁盘菜单配额入口切到原生表单流程"
-quota_entry_output="$(env TUI_MANAGER_NO_MAIN=1 bash -c 'set -uo pipefail; source "$1/tui_manager.sh"; tui_menu_handle_key(){ echo 1; }; tui_run_modify_user_quota_native(){ echo native-quota; }; tui_run_workflow_action(){ echo legacy:$1; }; handle_tui_disk_quota_menu_key ENTER' _ "$PROJECT_ROOT" 2>/dev/null || true)"
+quota_entry_output="$(env TUI_MANAGER_NO_MAIN=1 bash -c 'set -uo pipefail; source "$1/tui_manager.sh"; tui_menu_handle_key(){ if [[ "${2:-}" == "state" ]]; then TUI_MENU_RESULT=1; else echo 1; fi; }; tui_run_modify_user_quota_native(){ echo native-quota; }; tui_run_workflow_action(){ echo legacy:$1; }; handle_tui_disk_quota_menu_key ENTER' _ "$PROJECT_ROOT" 2>/dev/null || true)"
 if [[ "$quota_entry_output" == *"native-quota"* ]] && [[ "$quota_entry_output" != *"legacy:modify_user_quota"* ]]; then
     test_pass
 else

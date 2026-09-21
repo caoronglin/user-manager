@@ -41,8 +41,10 @@ rl_mail_template_render() {
 
 rl_mail_template_fallback() {
     local rl_username="$1" rl_password="$2" rl_action="$3" rl_timestamp="$4" rl_eu rl_ep rl_ea rl_et
-    rl_eu=$(rl_mail_html_escape "$rl_username"); rl_ep=$(rl_mail_html_escape "$rl_password")
-    rl_ea=$(rl_mail_html_escape "$rl_action"); rl_et=$(rl_mail_html_escape "$rl_timestamp")
+    rl_eu=$(rl_mail_html_escape "$rl_username")
+    rl_ep=$(rl_mail_html_escape "$rl_password")
+    rl_ea=$(rl_mail_html_escape "$rl_action")
+    rl_et=$(rl_mail_html_escape "$rl_timestamp")
     cat <<HTMLEOF
 <!DOCTYPE html>
 <html lang="zh-CN">

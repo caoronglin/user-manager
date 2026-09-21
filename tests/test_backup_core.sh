@@ -101,7 +101,7 @@ test_start "update_backup_index: 创建有效 JSON 索引"
 backup_dir="$BACKUP_ROOT/alice/full_20260502_120000"
 mkdir -p "$backup_dir"
 if command -v jq >/dev/null 2>&1; then
-    if update_backup_index "alice" "full" "$backup_dir" >/dev/null 2>&1         && [[ -f "$BACKUP_ROOT/alice/.backup_index.json" ]]         && [[ "$(jq -r '.username' "$BACKUP_ROOT/alice/.backup_index.json" 2>/dev/null)" == "alice" ]]; then
+    if update_backup_index "alice" "full" "$backup_dir" >/dev/null 2>&1 && [[ -f "$BACKUP_ROOT/alice/.backup_index.json" ]] && [[ "$(jq -r '.username' "$BACKUP_ROOT/alice/.backup_index.json" 2>/dev/null)" == "alice" ]]; then
         test_pass
     else
         test_fail "备份索引未正确生成"

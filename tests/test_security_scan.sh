@@ -26,7 +26,7 @@ stage_file() {
     local content="$3"
 
     mkdir -p "$(dirname "$repo_dir/$file_path")"
-    printf '%s' "$content" > "$repo_dir/$file_path"
+    printf '%s' "$content" >"$repo_dir/$file_path"
     git -C "$repo_dir" add "$file_path"
 }
 

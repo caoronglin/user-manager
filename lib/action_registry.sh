@@ -88,15 +88,15 @@ action_mode_supported() {
     modes="${_ACTION_MODES[$id]:-}"
 
     case "$modes" in
-        both|"$mode")
-            return 0
-            ;;
+    both | "$mode")
+        return 0
+        ;;
     esac
 
     case ",$modes," in
-        *,"$mode",*)
-            return 0
-            ;;
+    *,"$mode",*)
+        return 0
+        ;;
     esac
 
     return 1
@@ -158,7 +158,7 @@ rl_action_run() {
 }
 
 rl_action_users_create_cli() {
-    if (( $# < 3 )); then
+    if (($# < 3)); then
         printf '用法: rl-user-create.sh <用户名> <密码> <主目录> [--miniforge]\n' >&2
         return "$RL_ERR_PARAM"
     fi
@@ -171,49 +171,172 @@ rl_action_users_create_cli() {
 
 rl_action_users_quota_cli() {
     local rl_mode="${1:-}" rl_username="${2:-}" rl_value="${3:-}" rl_mp="${4:-}"
-    [[ -n "$rl_username" ]] || { printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2; return "$RL_ERR_PARAM"; }
+    [[ -n "$rl_username" ]] || {
+        printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2
+        return "$RL_ERR_PARAM"
+    }
     [[ -n "$rl_mp" ]] || rl_mp="$(get_user_mountpoint "$(get_user_home "$rl_username")")"
 
     case "$rl_mode" in
-        --get) get_user_quota_info "$rl_username" "$rl_mp" ;;
-        --set)
-            local rl_bytes
-            rl_bytes="$(parse_quota_input "$rl_value")"
-            [[ -n "$rl_bytes" ]] || { printf '错误: 无效的配额格式\n' >&2; return "$RL_ERR_PARAM"; }
-            set_user_quota "$rl_username" "$rl_bytes" "$rl_mp"
-            ;;
-        *) printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2; return "$RL_ERR_PARAM" ;;
+    --get) get_user_quota_info "$rl_username" "$rl_mp" ;;
+    --set)
+        local rl_bytes
+        rl_bytes="$(parse_quota_input "$rl_value")"
+        [[ -n "$rl_bytes" ]] || {
+            printf '错误: 无效的配额格式\n' >&2
+            return "$RL_ERR_PARAM"
+        }
+        set_user_quota "$rl_username" "$rl_bytes" "$rl_mp"
+        ;;
+    *)
+        printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2
+        return "$RL_ERR_PARAM"
+        ;;
     esac
 }
 
 rl_action_users_resource_cli() {
     local rl_mode="${1:-}" rl_username="${2:-}"
-    [[ -n "$rl_username" ]] || { printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2; return "$RL_ERR_PARAM"; }
+    [[ -n "$rl_username" ]] || {
+        printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2
+        return "$RL_ERR_PARAM"
+    }
 
     case "$rl_mode" in
-        --get) get_current_resource_limits "$rl_username" ;;
-        --set) configure_resource_limits "$rl_username" "${3:-}" "${4:-}" ;;
-        --runtime-set) rl_resource_apply_runtime_limits "$(id -u "$rl_username")" "${3:-}" "${4:-}" ;;
-        --runtime-reset) rl_resource_reset_runtime_limits "$(id -u "$rl_username")" ;;
-        --remove) remove_resource_limits "$(id -u "$rl_username")" ;;
-        *) printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2; return "$RL_ERR_PARAM" ;;
+    --get) get_current_resource_limits "$rl_username" ;;
+    --set) configure_resource_limits "$rl_username" "${3:-}" "${4:-}" ;;
+    --runtime-set) rl_resource_apply_runtime_limits "$(id -u "$rl_username")" "${3:-}" "${4:-}" ;;
+    --runtime-reset) rl_resource_reset_runtime_limits "$(id -u "$rl_username")" ;;
+    --remove) remove_resource_limits "$(id -u "$rl_username")" ;;
+    *)
+        printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2
+        return "$RL_ERR_PARAM"
+        ;;
     esac
 }
 
 rl_action_mail_test_cli() {
     local rl_email="${1:-}"
-    [[ -n "$rl_email" ]] || { printf '用法: rl-mail-test.sh <收件邮箱>\n' >&2; return "$RL_ERR_PARAM"; }
+    [[ -n "$rl_email" ]] || {
+        printf '用法: rl-mail-test.sh <收件邮箱>\n' >&2
+        return "$RL_ERR_PARAM"
+    }
     send_password_email "test" "TEST-PASSWORD" "$rl_email" "SMTP 测试" 1
 }
 
 rl_action_backup_run_cli() {
     local rl_username="${1:-}"
-    [[ -n "$rl_username" ]] || { printf '用法: rl-backup-run.sh <用户名>\n' >&2; return "$RL_ERR_PARAM"; }
+    [[ -n "$rl_username" ]] || {
+        printf '用法: rl-backup-run.sh <用户名>\n' >&2
+        return "$RL_ERR_PARAM"
+    }
     manual_backup_user "$rl_username"
 }
 
 rl_action_audit_query_cli() {
     audit_query "${1:-}" "${2:-}" "${3:-}"
+}
+
+# --- SMB 管理 CLI actions ---
+rl_action_smb_list_cli() {
+    smb_list_users
+}
+
+rl_action_smb_status_cli() {
+    smb_show_status
+}
+
+rl_action_smb_show_cli() {
+    local username="${1:-}"
+    [[ -n "$username" ]] || {
+        printf '用法: smb.show <用户名>\n' >&2
+        return "$RL_ERR_PARAM"
+    }
+    smb_show_user_status "$username"
+}
+
+rl_action_smb_password_cli() {
+    local username="${1:-}" password="${2:-}"
+    [[ -n "$username" ]] || {
+        printf '用法: smb.password <用户名> [密码]\n' >&2
+        return "$RL_ERR_PARAM"
+    }
+    if [[ -z "$password" ]]; then
+        IFS= read -r password || {
+            printf '错误: 未提供密码\n' >&2
+            return "$RL_ERR_PARAM"
+        }
+    fi
+    smb_set_password "$username" "$password"
+}
+
+rl_action_smb_disable_cli() {
+    local username="${1:-}"
+    [[ -n "$username" ]] || {
+        printf '用法: smb.disable <用户名>\n' >&2
+        return "$RL_ERR_PARAM"
+    }
+    smb_disable_user "$username"
+}
+
+rl_action_smb_enable_cli() {
+    local username="${1:-}"
+    [[ -n "$username" ]] || {
+        printf '用法: smb.enable <用户名>\n' >&2
+        return "$RL_ERR_PARAM"
+    }
+    smb_enable_existing_user "$username"
+}
+
+rl_action_smb_remove_cli() {
+    local username="${1:-}"
+    [[ -n "$username" ]] || {
+        printf '用法: smb.remove <用户名>\n' >&2
+        return "$RL_ERR_PARAM"
+    }
+    smb_delete_user "$username"
+}
+
+rl_action_smb_share_list_cli() {
+    smb_share_list
+}
+
+rl_action_smb_share_add_cli() {
+    local name="${1:-}" path="${2:-}" readonly="${3:-no}"
+    [[ -n "$name" && -n "$path" ]] || {
+        printf '用法: smb.share.add <共享名> <路径> [yes|no]\n' >&2
+        return "$RL_ERR_PARAM"
+    }
+    smb_share_add "$name" "$path" "$readonly"
+}
+
+rl_action_smb_share_remove_cli() {
+    local name="${1:-}"
+    [[ -n "$name" ]] || {
+        printf '用法: smb.share.remove <共享名>\n' >&2
+        return "$RL_ERR_PARAM"
+    }
+    smb_share_remove "$name"
+}
+
+rl_action_smb_include_cli() {
+    local sub="${1:-}"
+    case "$sub" in
+    status)
+        if smb_include_status; then
+            printf '主配置已 include 托管配置: %s\n' "${SMB_SHARES_CONF:-/etc/samba/user-manager-shares.conf}"
+        else
+            printf '主配置尚未 include 托管配置: %s\n' "${SMB_SHARES_CONF:-/etc/samba/user-manager-shares.conf}"
+        fi
+        ;;
+    ensure)
+        smb_ensure_include
+        ;;
+    *)
+        printf '用法: smb.include <status|ensure>\n' >&2
+        return "$RL_ERR_PARAM"
+        ;;
+    esac
 }
 
 action_list_by_group() {
@@ -247,6 +370,8 @@ action_register_defaults() {
     action_register "logs.auth_failures" "查看认证失败" "logs" logs_action_auth_failures_cli "none" "both" "safe"
     action_register "system.timers.list" "列出 systemd timers" "system" systemd_timer_list_timers "systemctl" "both" "safe"
     action_register "system.timers.logs" "查看 timer 日志" "system" systemd_timer_show_logs "journalctl" "both" "safe"
+    action_register "host.probe" "查看主机能力" "hosts" host_probe_snapshot_kv "none" "cli" "safe"
+    action_register "gpu.summary" "查看 GPU 只读摘要" "hosts" gpu_snapshot_kv "none" "cli" "safe"
     action_register "users.list" "查看托管用户" "users" list_managed_users "none" "both" "safe"
     action_register "users.create" "创建用户" "users" rl_action_users_create_cli "none" "cli" "dangerous"
     action_register "users.quota" "用户配额操作" "users" rl_action_users_quota_cli "none" "cli" "dangerous"
@@ -255,6 +380,17 @@ action_register_defaults() {
     action_register "backup.run" "执行用户备份" "backup" rl_action_backup_run_cli "none" "cli" "dangerous"
     action_register "audit.query" "查询审计日志" "audit" rl_action_audit_query_cli "none" "cli" "safe"
     action_register "audit.view" "查看审计日志" "audit" view_audit_log "none" "both" "safe"
+    action_register "smb.status" "SMB 服务状态" "smb" rl_action_smb_status_cli "none" "both" "safe"
+    action_register "smb.list" "列出 SMB 用户" "smb" rl_action_smb_list_cli "none" "both" "safe"
+    action_register "smb.show" "查看用户 SMB 状态" "smb" rl_action_smb_show_cli "none" "both" "safe"
+    action_register "smb.password" "设置 SMB 密码" "smb" rl_action_smb_password_cli "none" "cli" "dangerous"
+    action_register "smb.disable" "禁用 SMB 用户" "smb" rl_action_smb_disable_cli "none" "cli" "dangerous"
+    action_register "smb.enable" "启用 SMB 用户" "smb" rl_action_smb_enable_cli "none" "cli" "dangerous"
+    action_register "smb.remove" "移除 SMB 用户" "smb" rl_action_smb_remove_cli "none" "cli" "dangerous"
+    action_register "smb.shares" "列出 SMB 共享" "smb" rl_action_smb_share_list_cli "none" "both" "safe"
+    action_register "smb.share.add" "新增 SMB 共享" "smb" rl_action_smb_share_add_cli "none" "cli" "dangerous"
+    action_register "smb.share.remove" "移除 SMB 共享" "smb" rl_action_smb_share_remove_cli "none" "cli" "dangerous"
+    action_register "smb.include" "主配置 include 托管配置 (status|ensure)" "smb" rl_action_smb_include_cli "none" "cli" "dangerous"
 }
 
 action_register_defaults_once() {

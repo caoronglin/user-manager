@@ -8,7 +8,7 @@ list_managed_users() {
     local all_managed_users=()
     mapfile -t all_managed_users < <(get_managed_usernames)
 
-    if (( ${#all_managed_users[@]} == 0 )); then
+    if ((${#all_managed_users[@]} == 0)); then
         msg_warn "当前无任何托管用户"
         return 0
     fi
@@ -33,7 +33,7 @@ list_managed_users() {
             local used_bytes="${quota_info%:*}"
             local limit_bytes="${quota_info#*:}"
 
-            if [[ "$limit_bytes" =~ ^[0-9]+$ ]] && (( limit_bytes > 0 )); then
+            if [[ "$limit_bytes" =~ ^[0-9]+$ ]] && ((limit_bytes > 0)); then
                 quota_gb=$(bytes_to_gb "$limit_bytes")
                 if [[ "$used_bytes" =~ ^[0-9]+$ ]]; then
                     local pct

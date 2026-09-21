@@ -35,6 +35,11 @@ readonly ASYNC_STATUS_COMPLETED="completed"
 readonly ASYNC_STATUS_FAILED="failed"
 readonly ASYNC_STATUS_TIMEOUT="timeout"
 
+# 输入校验辅助函数（防止 SQL 注入与非法参数进入公共 API）
+_async_is_safe_identifier() { [[ "$1" =~ ^[A-Za-z0-9_.-]+$ ]]; }
+_async_is_positive_int() { [[ "$1" =~ ^[1-9][0-9]*$ ]]; }
+_async_is_priority() { [[ "$1" =~ ^[1-9]$|^10$ ]]; }
+
 # ============================================================
 # 初始化函数
 # ============================================================
@@ -43,7 +48,7 @@ readonly ASYNC_STATUS_TIMEOUT="timeout"
 async_init() {
     # 创建数据目录
     mkdir -p "$(dirname "$ASYNC_DB")" 2>/dev/null || true
-    
+
     # 创建运行目录
     if declare -F run_privileged &>/dev/null; then
         priv_mkdir -p "$ASYNC_RUN_DIR" "$ASYNC_SOCKET_DIR" "$ASYNC_PID_DIR" 2>/dev/null || true
@@ -51,7 +56,7 @@ async_init() {
     else
         mkdir -p "$ASYNC_RUN_DIR" "$ASYNC_SOCKET_DIR" "$ASYNC_PID_DIR" 2>/dev/null || true
     fi
-    
+
     # 初始化SQLite数据库
     if ! command -v sqlite3 &>/dev/null; then
         if declare -F msg_err &>/dev/null; then
@@ -61,7 +66,7 @@ async_init() {
         fi
         return 1
     fi
-    
+
     # 创建表结构
     sqlite3 "$ASYNC_DB" <<'EOF'
 -- 任务队列表
@@ -100,7 +105,7 @@ EOF
 
     # 设置数据库权限
     chmod 600 "$ASYNC_DB" 2>/dev/null || true
-    
+
     return 0
 }
 
@@ -110,7 +115,7 @@ EOF
 
 # 生成任务ID
 async_generate_id() {
-    echo "task_$(date +%Y%m%d%H%M%S)_$(( RANDOM % 10000 ))"
+    echo "task_$(date +%Y%m%d%H%M%S)_$((RANDOM % 10000))"
 }
 
 # 提交异步任务
@@ -120,44 +125,49 @@ async_submit() {
     local task_type="$1"
     local task_data="${2:-}"
     local priority="${3:-5}"
-    
+
     # 参数验证
-    if [[ -z "$task_type" ]]; then
+    if ! _async_is_safe_identifier "$task_type"; then
         if declare -F msg_err &>/dev/null; then
-            msg_err "async_submit: 任务类型不能为空"
+            msg_err "async_submit: 任务类型只能是字母/数字/._-"
         fi
         return 1
     fi
-    
+    if ! _async_is_priority "$priority"; then
+        if declare -F msg_err &>/dev/null; then
+            msg_err "async_submit: 优先级必须是 1-10"
+        fi
+        return 1
+    fi
+
     # 确保数据库已初始化
     if [[ ! -f "$ASYNC_DB" ]]; then
         async_init || return 1
     fi
-    
+
     # 生成任务ID
     local task_id
     task_id=$(async_generate_id)
-    
+
     # 当前时间戳
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
+
     # 转义JSON数据
     local escaped_data="${task_data//\'/\'\'}"
-    
+
     # 插入任务
-    if sqlite3 "$ASYNC_DB" <<EOF
+    if sqlite3 "$ASYNC_DB" <<EOF; then
 INSERT INTO tasks (id, type, data, status, priority, created_at, max_retries)
 VALUES ('$task_id', '$task_type', '$escaped_data', '$ASYNC_STATUS_PENDING', $priority, '$timestamp', $ASYNC_RETRY_MAX);
 EOF
-    then
         # 记录日志
         async_log "$task_id" "INFO" "任务已提交: type=$task_type"
-        
+
         # 通知worker（通过文件存在信号）
         local notify_file="$ASYNC_RUN_DIR/.new_task"
         touch "$notify_file" 2>/dev/null || true
-        
+
         echo "$task_id"
         return 0
     else
@@ -170,19 +180,21 @@ EOF
 async_submit_batch() {
     local task_type="$1"
     local tasks_data="$2"
-    
+
+    _async_is_safe_identifier "$task_type" || return 1
+
     local -a task_ids=()
     local count=0
-    
+
     while IFS= read -r task_data; do
         [[ -z "$task_data" ]] && continue
         local tid
         tid=$(async_submit "$task_type" "$task_data") && {
             task_ids+=("$tid")
-            ((count+=1))
+            ((count += 1))
         }
-    done <<< "$tasks_data"
-    
+    done <<<"$tasks_data"
+
     echo "${task_ids[*]}"
     return 0
 }
@@ -196,12 +208,17 @@ async_submit_batch() {
 # 输出: JSON格式的任务信息
 async_status() {
     local task_id="$1"
-    
+
+    _async_is_safe_identifier "$task_id" || {
+        echo '{"error": "invalid task id"}'
+        return 1
+    }
+
     if [[ ! -f "$ASYNC_DB" ]]; then
         echo '{"error": "database not found"}'
         return 1
     fi
-    
+
     sqlite3 "$ASYNC_DB" <<EOF
 SELECT json_object(
     'id', id,
@@ -224,7 +241,12 @@ EOF
 # 输出: 状态字符串
 async_get_status() {
     local task_id="$1"
-    
+
+    _async_is_safe_identifier "$task_id" || {
+        echo "unknown"
+        return 1
+    }
+
     sqlite3 "$ASYNC_DB" "SELECT status FROM tasks WHERE id = '$task_id';" 2>/dev/null || echo "unknown"
 }
 
@@ -236,29 +258,32 @@ async_wait() {
     local timeout="${2:-60}"
     local interval=2
     local elapsed=0
-    
-    while (( elapsed < timeout )); do
+
+    _async_is_safe_identifier "$task_id" || return 1
+    _async_is_positive_int "$timeout" || return 1
+
+    while ((elapsed < timeout)); do
         local status
         status=$(async_get_status "$task_id")
-        
+
         case "$status" in
-            "$ASYNC_STATUS_COMPLETED")
-                return 0
-                ;;
-            "$ASYNC_STATUS_FAILED" | "$ASYNC_STATUS_TIMEOUT")
-                return 1
-                ;;
-            "$ASYNC_STATUS_PENDING" | "$ASYNC_STATUS_RUNNING")
-                sleep "$interval"
-                ((elapsed += interval))
-                ;;
-            *)
-                return 1
-                ;;
+        "$ASYNC_STATUS_COMPLETED")
+            return 0
+            ;;
+        "$ASYNC_STATUS_FAILED" | "$ASYNC_STATUS_TIMEOUT")
+            return 1
+            ;;
+        "$ASYNC_STATUS_PENDING" | "$ASYNC_STATUS_RUNNING")
+            sleep "$interval"
+            ((elapsed += interval))
+            ;;
+        *)
+            return 1
+            ;;
         esac
     done
-    
-    return 1  # 超时
+
+    return 1 # 超时
 }
 
 # 获取任务结果
@@ -266,7 +291,9 @@ async_wait() {
 # 输出: 任务结果数据
 async_result() {
     local task_id="$1"
-    
+
+    _async_is_safe_identifier "$task_id" || return 1
+
     sqlite3 "$ASYNC_DB" "SELECT result FROM tasks WHERE id = '$task_id';" 2>/dev/null
 }
 
@@ -275,10 +302,13 @@ async_result() {
 async_list() {
     local status_filter="${1:-}"
     local limit="${2:-50}"
-    
+
+    [[ -z "$status_filter" ]] || _async_is_safe_identifier "$status_filter" || return 1
+    _async_is_positive_int "$limit" || return 1
+
     local where_clause=""
     [[ -n "$status_filter" ]] && where_clause="WHERE status = '$status_filter'"
-    
+
     sqlite3 "$ASYNC_DB" <<EOF
 SELECT id, type, status, created_at, completed_at 
 FROM tasks $where_clause 
@@ -307,12 +337,14 @@ async_log() {
     local task_id="$1"
     local level="$2"
     local message="$3"
-    
+
+    _async_is_safe_identifier "$task_id" || return 1
+
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
+
     local escaped_message="${message//\'/\'\'}"
-    
+
     sqlite3 "$ASYNC_DB" <<EOF
 INSERT INTO task_logs (task_id, timestamp, level, message)
 VALUES ('$task_id', '$timestamp', '$level', '$escaped_message');
@@ -323,10 +355,13 @@ EOF
 async_start_task() {
     local task_id="$1"
     local worker_pid="$2"
-    
+
+    _async_is_safe_identifier "$task_id" || return 1
+    _async_is_positive_int "$worker_pid" || return 1
+
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
+
     sqlite3 "$ASYNC_DB" <<EOF
 UPDATE tasks 
 SET status = '$ASYNC_STATUS_RUNNING', 
@@ -341,12 +376,15 @@ async_complete_task() {
     local task_id="$1"
     local result="${2:-}"
     local status="${3:-$ASYNC_STATUS_COMPLETED}"
-    
+
+    _async_is_safe_identifier "$task_id" || return 1
+    _async_is_safe_identifier "$status" || return 1
+
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
+
     local escaped_result="${result//\'/\'\'}"
-    
+
     sqlite3 "$ASYNC_DB" <<EOF
 UPDATE tasks 
 SET status = '$status',
@@ -360,21 +398,23 @@ EOF
 async_fail_task() {
     local task_id="$1"
     local error="${2:-}"
-    
+
+    _async_is_safe_identifier "$task_id" || return 1
+
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
+
     local escaped_error="${error//\'/\'\'}"
-    
+
     # 获取当前重试次数
     local retry_count
     retry_count=$(sqlite3 "$ASYNC_DB" "SELECT retry_count FROM tasks WHERE id = '$task_id';")
     local max_retries
     max_retries=$(sqlite3 "$ASYNC_DB" "SELECT max_retries FROM tasks WHERE id = '$task_id';")
-    
-    if (( retry_count < max_retries )); then
+
+    if ((retry_count < max_retries)); then
         # 可以重试
-        ((retry_count+=1))
+        ((retry_count += 1))
         sqlite3 "$ASYNC_DB" <<EOF
 UPDATE tasks 
 SET status = '$ASYNC_STATUS_PENDING',
@@ -402,72 +442,73 @@ EOF
 async_worker_loop() {
     local worker_id="${1:-1}"
     local worker_pid=$$
-    
+
     # 写入PID文件
-    echo "$worker_pid" > "$ASYNC_PID_DIR/worker_$worker_id.pid" 2>/dev/null || true
-    
+    echo "$worker_pid" >"$ASYNC_PID_DIR/worker_$worker_id.pid" 2>/dev/null || true
+
     if declare -F msg_info &>/dev/null; then
         msg_info "Async worker #$worker_id started (PID: $worker_pid)"
     fi
-    
+
     while true; do
         # 获取下一个待处理任务（按优先级）
         local task_info
-        task_info=$(sqlite3 "$ASYNC_DB" <<EOF
+        task_info=$(
+            sqlite3 "$ASYNC_DB" <<EOF
 SELECT id, type, data FROM tasks 
 WHERE status = '$ASYNC_STATUS_PENDING'
 ORDER BY priority ASC, created_at ASC
 LIMIT 1;
 EOF
         )
-        
+
         if [[ -z "$task_info" ]]; then
             sleep 2
             continue
         fi
-        
+
         # 解析任务信息
         local task_id task_type task_data
-        IFS='|' read -r task_id task_type task_data <<< "$task_info"
-        
+        IFS='|' read -r task_id task_type task_data <<<"$task_info"
+
         async_log "$task_id" "INFO" "Worker #$worker_id 开始处理任务"
         async_start_task "$task_id" "$worker_pid"
-        
+
         # 执行任务（调用对应的处理函数）
         local result=""
         local exit_code=0
-        
+
         case "$task_type" in
-            email)
-                # 邮件发送任务
-                if declare -F async_handle_email &>/dev/null; then
-                    result=$(async_handle_email "$task_data" 2>&1) || exit_code=$?
-                else
-                    result="No email handler registered"
-                    exit_code=1
-                fi
-                ;;
-            backup)
-                # 备份任务
-                if declare -F async_handle_backup &>/dev/null; then
-                    result=$(async_handle_backup "$task_data" 2>&1) || exit_code=$?
-                else
-                    result="No backup handler registered"
-                    exit_code=1
-                fi
-                ;;
-            *)
-                # 自定义任务类型
-                local handler_func="async_handle_$task_type"
-                if declare -F "$handler_func" &>/dev/null; then
-                    result=$("$handler_func" "$task_data" 2>&1) || exit_code=$?
-                else
-                    result="Unknown task type: $task_type"
-                    exit_code=1
-                fi
-                ;;
+        email)
+            # 邮件发送任务
+            if declare -F async_handle_email &>/dev/null; then
+                result=$(async_handle_email "$task_data" 2>&1) || exit_code=$?
+            else
+                result="No email handler registered"
+                exit_code=1
+            fi
+            ;;
+        backup)
+            # 备份任务
+            if declare -F async_handle_backup &>/dev/null; then
+                result=$(async_handle_backup "$task_data" 2>&1) || exit_code=$?
+            else
+                result="No backup handler registered"
+                exit_code=1
+            fi
+            ;;
+        *)
+            # 自定义任务类型
+            local handler_func="async_handle_$task_type"
+            if declare -F "$handler_func" &>/dev/null; then
+                result=$("$handler_func" "$task_data" 2>&1) || exit_code=$?
+            else
+                result="Unknown task type: $task_type"
+                exit_code=1
+            fi
+            ;;
         esac
-        
+
         # 更新任务状态
         if [[ $exit_code -eq 0 ]]; then
             async_complete_task "$task_id" "$result"
@@ -475,7 +516,7 @@ EOF
         else
             async_fail_task "$task_id" "$result"
         fi
-        
+
         sleep 1
     done
 }
@@ -484,9 +525,11 @@ EOF
 # 参数: $1=worker数量(可选, 默认1)
 async_start_workers() {
     local num_workers="${1:-1}"
-    
+
+    _async_is_positive_int "$num_workers" || return 1
+
     mkdir -p "$ASYNC_PID_DIR" 2>/dev/null || true
-    
+
     local i
     for ((i = 1; i <= num_workers; i++)); do
         # 检查是否已有worker在运行
@@ -501,14 +544,14 @@ async_start_workers() {
                 continue
             fi
         fi
-        
+
         # 启动后台worker
         (
             # shellcheck disable=SC1090  # dynamic source for worker self-spawn
             source "${BASH_SOURCE[0]}"
             async_worker_loop "$i"
         ) &
-        
+
         if declare -F msg_ok &>/dev/null; then
             msg_ok "Started async worker #$i"
         fi
@@ -520,7 +563,7 @@ async_stop_workers() {
     if [[ ! -d "$ASYNC_PID_DIR" ]]; then
         return 0
     fi
-    
+
     local pid_file
     for pid_file in "$ASYNC_PID_DIR"/*.pid; do
         [[ -f "$pid_file" ]] || continue
@@ -544,28 +587,30 @@ async_stop_workers() {
 # 取消任务
 async_cancel() {
     local task_id="$1"
-    
+
+    _async_is_safe_identifier "$task_id" || return 1
+
     local status
     status=$(async_get_status "$task_id")
-    
+
     case "$status" in
-        "$ASYNC_STATUS_PENDING")
-            sqlite3 "$ASYNC_DB" "UPDATE tasks SET status = 'cancelled' WHERE id = '$task_id';"
-            return 0
-            ;;
-        "$ASYNC_STATUS_RUNNING")
-            # 需要终止worker
-            local worker_pid
-            worker_pid=$(sqlite3 "$ASYNC_DB" "SELECT worker_pid FROM tasks WHERE id = '$task_id';")
-            if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
-                kill "$worker_pid" 2>/dev/null || true
-            fi
-            sqlite3 "$ASYNC_DB" "UPDATE tasks SET status = 'cancelled' WHERE id = '$task_id';"
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
+    "$ASYNC_STATUS_PENDING")
+        sqlite3 "$ASYNC_DB" "UPDATE tasks SET status = 'cancelled' WHERE id = '$task_id';"
+        return 0
+        ;;
+    "$ASYNC_STATUS_RUNNING")
+        # 需要终止worker
+        local worker_pid
+        worker_pid=$(sqlite3 "$ASYNC_DB" "SELECT worker_pid FROM tasks WHERE id = '$task_id';")
+        if [[ -n "$worker_pid" ]] && kill -0 "$worker_pid" 2>/dev/null; then
+            kill "$worker_pid" 2>/dev/null || true
+        fi
+        sqlite3 "$ASYNC_DB" "UPDATE tasks SET status = 'cancelled' WHERE id = '$task_id';"
+        return 0
+        ;;
+    *)
+        return 1
+        ;;
     esac
 }
 
@@ -573,7 +618,9 @@ async_cancel() {
 # 参数: $1=保留天数(可选, 默认7)
 async_cleanup() {
     local keep_days="${1:-7}"
-    
+
+    _async_is_positive_int "$keep_days" || return 1
+
     sqlite3 "$ASYNC_DB" <<EOF
 DELETE FROM task_logs 
 WHERE task_id IN (

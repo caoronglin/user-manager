@@ -54,7 +54,7 @@ rl_wecom_payload_from_text() {
 }
 
 rl_wecom_bot_send_text() {
-    local rl_event_type="$1" rl_payload_json="${2:-{}}"
+    local rl_event_type="$1" rl_payload_json="${2:-{\}}"
 
     if ! rl_wecom_is_enabled; then
         rl_wecom_msg msg_info "企业微信 Bot 未启用，跳过通知"
@@ -86,7 +86,10 @@ rl_wecom_bot_send_text() {
         return 0
     fi
 
-    command -v curl >/dev/null 2>&1 || { rl_wecom_msg msg_err "curl 不可用，无法发送企业微信通知"; return 1; }
+    command -v curl >/dev/null 2>&1 || {
+        rl_wecom_msg msg_err "curl 不可用，无法发送企业微信通知"
+        return 1
+    }
     curl --silent --show-error --fail --max-time 5 \
         -H 'Content-Type: application/json' \
         -d "$rl_body" \
@@ -94,9 +97,9 @@ rl_wecom_bot_send_text() {
 }
 
 rl_notify_send() {
-    local rl_channel="$1" rl_event_type="$2" rl_payload_json="${3:-{}}"
+    local rl_channel="$1" rl_event_type="$2" rl_payload_json="${3:-{\}}"
     case "$rl_channel" in
-        wecom|wecom_bot) rl_wecom_bot_send_text "$rl_event_type" "$rl_payload_json" ;;
-        *) return 1 ;;
+    wecom | wecom_bot) rl_wecom_bot_send_text "$rl_event_type" "$rl_payload_json" ;;
+    *) return 1 ;;
     esac
 }

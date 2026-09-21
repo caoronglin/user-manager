@@ -21,7 +21,7 @@ set -uo pipefail
 # 涵盖：缓存、临时文件、版本控制无关文件等通用排除项
 # ============================================================
 get_base_exclude_patterns() {
-    cat << 'EOF'
+    cat <<'EOF'
 .cache
 .local/share/Trash
 *.tmp
@@ -38,8 +38,11 @@ EOF
 # 涵盖：BAM/CRAM/FASTQ/VCF/BED/GFF/索引/中间产物等大文件
 # ============================================================
 get_bio_exclude_patterns() {
-    command -v cat &>/dev/null || { msg_err "cat 命令不可用"; return 1; }
-    cat << 'EOF'
+    command -v cat &>/dev/null || {
+        msg_err "cat 命令不可用"
+        return 1
+    }
+    cat <<'EOF'
 *.bam
 *.bam.bai
 *.cram
@@ -141,18 +144,18 @@ get_exclude_pattern_count() {
 #       rsync "${my_args[@]}" src/ dst/
 # ============================================================
 build_rsync_exclude_args() {
-    local -n _excl_arr=$1    # nameref: 结果追加到此数组
+    local -n _excl_arr=$1 # nameref: 结果追加到此数组
     local pattern
 
     # 只使用基础排除构建 --exclude 参数（生物信息排除通过 --exclude-from 处理更高效）
     while IFS= read -r pattern; do
         [[ -z "$pattern" ]] && continue
-        _excl_arr+=( --exclude="$pattern" )
+        _excl_arr+=(--exclude="$pattern")
     done < <(get_base_exclude_patterns)
 
     while IFS= read -r pattern; do
         [[ -z "$pattern" ]] && continue
-        _excl_arr+=( --exclude="$pattern" )
+        _excl_arr+=(--exclude="$pattern")
     done < <(get_bio_exclude_patterns)
 }
 
@@ -168,7 +171,10 @@ generate_exclude_file() {
     local created_temp=false
 
     if [[ -z "$output_file" ]]; then
-        output_file=$(mktemp) || { msg_err "无法创建排除临时文件"; return 1; }
+        output_file=$(mktemp) || {
+            msg_err "无法创建排除临时文件"
+            return 1
+        }
         created_temp=true
     fi
 
@@ -183,7 +189,7 @@ generate_exclude_file() {
         echo ""
         echo "# === Bioinformatics Excludes ==="
         get_bio_exclude_patterns
-    } > "$output_file"
+    } >"$output_file"
 
     if [[ ! -s "$output_file" ]]; then
         msg_err "排除文件生成失败或为空: $output_file"

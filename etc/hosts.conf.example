@@ -1,0 +1,22 @@
+# User Manager 只读主机清单示例
+#
+# 复制到 data/hosts.conf 后按实际环境修改：
+#   install -d -m 700 data
+#   install -m 600 etc/hosts.conf.example data/hosts.conf
+#
+# 该文件不是 Shell 脚本。不要 source 它，不要在其中填写密码、私钥路径、SSH 选项或命令。
+# 运行时拒绝符号链接、非普通文件、组/其他用户可写文件及不安全父目录。
+# 字段中不能出现 |；host_id、groups、tags 仅允许 ASCII 字母、数字、.、_、- 和逗号。
+#
+# host_id|display_name|provider|address|port|user|groups|tags|enabled
+host_id|display_name|provider|address|port|user|groups|tags|enabled
+
+# 本机目标必须使用固定 host_id=local，且 address/port/user 三列为空。
+local|当前主机|local||||local|builtin|yes
+
+# SSH 示例：首次使用前，必须在 data/ssh_known_hosts 中带外登记与 host_id 相同的已验证主机公钥。
+# compute-01|GPU 计算节点 01|ssh|gpu-01.example.net|22|ops|gpu,prod|rack-a|yes
+# compute-02|GPU 计算节点 02|ssh|2001:db8::12|2222|ops|gpu,prod|rack-b|yes
+
+# 设为 no 后，该主机不会被 all 或 group:... 选择，也不能被显式执行。
+# maintenance-01|维护中节点|ssh|192.0.2.50|22|ops|gpu|maintenance|no

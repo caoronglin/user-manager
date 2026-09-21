@@ -36,12 +36,12 @@ prompt_revoke_admin_permission() {
 _handle_permission_menu() {
     local opt="$1"
     case "$opt" in
-        1) safe_run prompt_show_user_permissions ;;
-        2) safe_run prompt_set_user_home_mode ;;
-        3) safe_run prompt_set_user_home_group ;;
-        4) safe_run prompt_grant_admin_permission ;;
-        5) safe_run prompt_revoke_admin_permission ;;
-        *) msg_err "无效的选项" ;;
+    1) safe_run prompt_show_user_permissions ;;
+    2) safe_run prompt_set_user_home_mode ;;
+    3) safe_run prompt_set_user_home_group ;;
+    4) safe_run prompt_grant_admin_permission ;;
+    5) safe_run prompt_revoke_admin_permission ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 

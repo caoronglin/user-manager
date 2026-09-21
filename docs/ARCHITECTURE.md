@@ -77,7 +77,7 @@ CLI、TUI 和独立脚本入口尽量复用同一套 Core 业务模块，避免�
 
 | 入口类型 | 文件 | 说明 |
 |---|---|---|
-| 统一入口 | `run.sh` | 默认启动经典 CLI；传入 `--tui` 启动 TUI |
+| 统一入口 | `run.sh` | 默认启动经典 CLI；`--tui` 仅在支持全屏 ANSI 的交互终端启动 TUI，否则回退 CLI |
 | 经典 CLI 菜单 | `user_manager.sh` | noTUI/CLI 主菜单入口 |
 | 原生 Bash TUI | `tui_manager.sh` | 终端图形化菜单入口 |
 | 独立命令脚本 | `scripts/rl-*.sh` | 面向自动化、脚本化调用 |
@@ -179,7 +179,7 @@ lib/action_registry.sh
 controller / core modules
 ```
 
-TUI 路径负责终端可视化菜单、表格、输入框、状态栏、日志视图等。
+TUI 路径负责终端可视化菜单、表格、输入框、状态栏、日志视图等。它先验证 stdin/stdout、`TERM` 和 `tput cup`；`TERM=dumb`、管道或不支持光标寻址时，`run.sh --tui` 会回退经典 CLI。
 
 ### 5.3 独立 CLI 脚本路径
 
@@ -207,6 +207,24 @@ scripts/rl-backup-run.sh
 scripts/rl-audit-query.sh
 ```
 
+### 5.4 SSH 只读主机路径
+
+```text
+scripts/rl-hosts.sh
+  ↓
+lib/bootstrap.sh (remote profile)
+  ↓
+host_inventory.sh → execution_plan.sh
+  ↓                     ↓
+LocalProvider       SSHProvider
+  ↓                     ↓
+host_probe_core.sh / gpu_core.sh   固定远端白名单入口
+  ↓                     ↓
+统一 result.* / summary.* 输出与本地审计摘要
+```
+
+该路径仅支持 `host.probe` 和 `gpu.summary`。Inventory 是非执行文本，Planner 先生成确定计划；`--dry-run` 不进行网络或能力探测。SSH Provider 使用专用 known_hosts、严格主机密钥校验、无用户 SSH config、连接/存活/动作三层超时和两个常量远端命令。详见 [`docs/REMOTE_HOSTS.md`](REMOTE_HOSTS.md)。
+
 ---
 
 ## 6. 核心模块
@@ -215,13 +233,13 @@ scripts/rl-audit-query.sh
 
 | 模块 | 职责 |
 |---|---|
-| `lib/bootstrap.sh` | 统一模块加载入口，提供 `um_load_profile full\|tui` |
+| `lib/bootstrap.sh` | 统一模块加载入口，提供 `full`、`minimal`、`tui`、`remote` profile |
 | `lib/common.sh` | 公共输出、输入验证、安全执行、菜单循环、缓存等能力 |
 | `lib/config.sh` | 配置加载与默认配置 |
 | `lib/env_core.sh` | 环境探测与能力判断 |
 | `lib/privilege.sh` | root 权限与特权命令封装 |
 | `lib/access_control.sh` | 访问控制 |
-| `lib/privilege_cache.sh` | 权限相关缓存 |
+| `archive/lib/privilege_cache.sh` | 权限相关缓存（已归档，未接入运行时） |
 | `lib/async_core.sh` | 异步执行基础能力 |
 | `lib/proc_manager.sh` | 进程管理 |
 
@@ -233,7 +251,7 @@ scripts/rl-audit-query.sh
 | `lib/tui_menus.sh` | TUI 菜单数据定义与渲染引擎 |
 | `lib/tui_views_logs.sh` | TUI 日志视图 |
 | `lib/ui_modern.sh` | 现代 CLI 颜色、样式、组件 |
-| `lib/ui_menu_modern.sh` | 现代菜单 UI 组件 |
+| `archive/lib/ui_menu_modern.sh` | 现代菜单 UI 组件（已归档，未接入运行时） |
 | `lib/controller_main_menu.sh` | 经典 CLI 主菜单控制器 |
 | `lib/controller_submenus.sh` | 经典 CLI 子菜单控制器 |
 | `lib/action_registry.sh` | CLI/TUI 共用动作注册与分发 |
@@ -295,6 +313,10 @@ scripts/rl-audit-query.sh
 | `lib/security_baseline_core.sh` | SSH 安全基线、认证失败、fail2ban 管理 |
 | `lib/network_stack_core.sh` | 网络栈诊断 |
 | `lib/symlink_core.sh` | 用户符号链接、共享链接、断链清理 |
+| `lib/smb_core.sh` | SMB 账户同步、共享管理、主配置 include 自动化 |
+| `lib/host_inventory.sh` | 非执行式主机清单校验、加载和稳定目标展开 |
+| `lib/host_provider.sh` | Local/SSH 只读 Provider、严格 SSH 参数、输出协议校验 |
+| `lib/execution_plan.sh` | dry-run、顺序执行、逐主机结果与 best-effort 汇总 |
 
 ### 6.8 日志、审计与报告模块
 
@@ -315,7 +337,8 @@ scripts/rl-audit-query.sh
 | `lib/ubuntu_maintenance_core.sh` | APT 更新、重启需求、软件源、包状态摘要 |
 | `lib/systemd_timer_core.sh` | systemd timer 安装、查看、删除、日志 |
 | `lib/vm_core.sh` | 虚拟机状态与列表 |
-| `lib/gpu_core.sh` | GPU 状态、设备、进程 |
+| `lib/gpu_core.sh` | GPU 状态、设备、进程与结构化只读摘要（nvidia-smi → lspci 降级） |
+| `lib/host_probe_core.sh` | 系统、架构、Bash、systemd/cgroup 能力的版本化只读快照 |
 | `lib/shell_config.sh` | Shell 配置 |
 | `lib/miniforge_core.sh` | Miniforge 安装与配置 |
 | `lib/lock_core.sh` | 锁机制 |
@@ -437,6 +460,7 @@ scripts/rl-user-resource.sh
 - 备份完成通知
 - 邮件发送重试
 - 邮件队列
+- 密码 secret 加密落盘（AES-256-CBC + HMAC，密钥文件 0600、明文迁移与篡改检测）
 - 邮件审计
 - 企业微信机器人通知
 - 测试邮件发送
@@ -511,6 +535,9 @@ scripts/rl-backup-run.sh
 - 列出 fail2ban jails
 - 网络栈诊断
 - 符号链接与共享链接管理
+- SMB 账户同步（创建/设密/禁用/启用/移除/查看）
+- SMB 共享管理（列表/新增/移除共享，写入托管 drop-in 配置）
+- SMB 主配置 include 自动化（幂等 ensure include）
 
 关键文件：
 
@@ -520,6 +547,8 @@ lib/dns_core.sh
 lib/security_baseline_core.sh
 lib/network_stack_core.sh
 lib/symlink_core.sh
+lib/smb_core.sh
+scripts/rl-smb-manage.sh
 ```
 
 ### 7.8 日志、审计与报告
@@ -607,7 +636,12 @@ scripts/rl-system-overview.sh
 | `scripts/rl-mail-test.sh` | 发送 SMTP 测试邮件 |
 | `scripts/rl-backup-run.sh` | 触发指定用户备份 |
 | `scripts/rl-audit-query.sh` | 查询审计日志 |
+| `scripts/rl-smb-manage.sh` | SMB 账户与共享管理（list/status/password/disable/enable/remove/shares/share-add/share-remove） |
+| `scripts/rl-action-list.sh` | 输出 Action 表（--plain/--markdown）并校验 handler（--check） |
+| `scripts/rl-chpasswd.sh` | 修改用户密码 |
 | `scripts/rl-system-overview.sh` | glances 系统概览包装 |
+| `scripts/rl-hosts.sh` | Inventory 校验、本机/SSH 主机能力和 GPU 只读探测 |
+| `scripts/rl-remote-entry.sh` | 远端固定路径的 `host.probe` / `gpu.summary` 白名单入口 |
 | `scripts/verify_email_config.sh` | 验证邮箱配置 |
 | `scripts/check_sensitive_files.sh` | 敏感文件/密钥扫描 |
 | `scripts/normalize_echo_output.sh` | 输出规范化辅助脚本 |
@@ -760,6 +794,8 @@ bootstrap.sh / common.sh / config.sh / privilege.sh / env_core.sh
 - 项目主体是 Bash/Shell，适合贴近系统命令的本地运维场景。
 - 业务能力依赖宿主机系统环境，例如 Linux 发行版、systemd、UFW、fail2ban、quota 等。
 - TUI 与 CLI 共享部分业务能力，但仍需要保持入口层和业务层边界清晰，避免 UI 层直接承载核心逻辑。
+- 全屏 TUI 依赖交互终端与光标寻址；不可用时应使用经典 CLI，而不是强制进入 raw mode。
+- SSH 基础层仅覆盖受管理员预部署的只读探测；不包含远程写操作、密钥分发、远端自动部署、GPU 调度、并发批处理或跨主机回滚。
 
 ---
 

@@ -17,11 +17,11 @@ source "$PROJECT_ROOT/lib/quota_core.sh"
 rl_setquota_log="$TEST_TMPDIR/setquota.log"
 
 rl_priv_setquota() {
-    printf '%s\n' "$*" >> "$rl_setquota_log"
+    printf '%s\n' "$*" >>"$rl_setquota_log"
 }
 
 priv_setquota() {
-    printf '%s\n' "$*" >> "$rl_setquota_log"
+    printf '%s\n' "$*" >>"$rl_setquota_log"
 }
 
 rl_priv_repquota() {
@@ -46,23 +46,23 @@ mountpoint() { return 0; }
 id() { [[ "${1:-}" == "alice" ]]; }
 get_user_email() { [[ "${1:-}" == "alice" ]] && printf 'alice@example.com\n'; }
 send_quota_hard_limit_email() {
-    printf 'quota-mail %s|%s|%s|%s\n' "$1" "$2" "$3" "${4:-}" >> "$rl_setquota_log"
+    printf 'quota-mail %s|%s|%s|%s\n' "$1" "$2" "$3" "${4:-}" >>"$rl_setquota_log"
     [[ "${RL_QUOTA_MAIL_FAIL:-0}" != "1" ]]
 }
 
 test_suite_start "Quota Core group mode"
 
 test_start "set_user_quota: 用户配额使用向上取整 KB 且 soft=hard"
-: > "$rl_setquota_log"
-if set_user_quota alice 1073741825 /home >/dev/null 2>&1 && \
-   grep -q '^-u alice 1048577 1048577 0 0 /home$' "$rl_setquota_log"; then
+: >"$rl_setquota_log"
+if set_user_quota alice 1073741825 /home >/dev/null 2>&1 &&
+    grep -q '^-u alice 1048577 1048577 0 0 /home$' "$rl_setquota_log"; then
     test_pass
 else
     test_fail "用户配额未按字节向上取整为 KB 或 soft/hard 不一致"
 fi
 
 test_start "set_user_quota: 0 字节配额无效"
-: > "$rl_setquota_log"
+: >"$rl_setquota_log"
 if ! set_user_quota alice 0 /home >/dev/null 2>&1 && [[ ! -s "$rl_setquota_log" ]]; then
     test_pass
 else
@@ -70,9 +70,9 @@ else
 fi
 
 test_start "set_user_quota: 设置成功后发送硬配额通知且通知失败不阻断"
-: > "$rl_setquota_log"
-if set_user_quota alice 1073741824 /home >/dev/null 2>&1 && \
-   grep -q '^quota-mail alice|alice@example.com|1.0 GB|' "$rl_setquota_log"; then
+: >"$rl_setquota_log"
+if set_user_quota alice 1073741824 /home >/dev/null 2>&1 &&
+    grep -q '^quota-mail alice|alice@example.com|1.0 GB|' "$rl_setquota_log"; then
     RL_QUOTA_MAIL_FAIL=1
     set_user_quota alice 1073741824 /home >/dev/null 2>&1
     mail_fail_rc=$?
@@ -87,9 +87,9 @@ else
 fi
 
 test_start "rl_quota_set_group: 输入字节时按 KB 设置软/硬配额"
-: > "$rl_setquota_log"
-if rl_quota_set_group testgroup 1073741824 /home >/dev/null 2>&1 && \
-   [[ "$(cat "$rl_setquota_log" 2>/dev/null)" == "-g testgroup 1048576 1048576 0 0 /home" ]]; then
+: >"$rl_setquota_log"
+if rl_quota_set_group testgroup 1073741824 /home >/dev/null 2>&1 &&
+    [[ "$(cat "$rl_setquota_log" 2>/dev/null)" == "-g testgroup 1048576 1048576 0 0 /home" ]]; then
     test_pass
 else
     test_fail "未将字节正确转换为 KB 或未正确设置软/硬配额"
@@ -124,7 +124,6 @@ else
     test_fail "缺少组名时应失败"
 fi
 
-
 test_start "show_disk_usage_warnings: 非 TTY 输出纯文本且不重复百分比"
 old_all_disks=("${ALL_DISKS[@]}")
 old_data_base="$DATA_BASE"
@@ -133,16 +132,19 @@ ALL_DISKS=(5)
 DATA_BASE="$TEST_TMPDIR/mnt"
 DISK_WARNING_THRESHOLD=90
 mkdir -p "$DATA_BASE/data05"
-mountpoint() { local p="${2:-$1}"; [[ "$p" == "$DATA_BASE/data05" ]]; }
+mountpoint() {
+    local p="${2:-$1}"
+    [[ "$p" == "$DATA_BASE/data05" ]]
+}
 df() {
     printf 'Filesystem 1K-blocks Used Available Use%% Mounted on\n'
     printf '/dev/mock 1000 960 40 96%% %s\n' "$DATA_BASE/data05"
 }
 warning_output="$(show_disk_usage_warnings 2>&1)"
 warning_pct_count=$(printf '%s\n' "$warning_output" | grep -o '96%' | wc -l | tr -d ' ')
-if [[ "$warning_output" == *"WARNING data05 96% > 90%"* ]] && \
-   [[ "$warning_output" != *$'\033'* ]] && \
-   [[ "$warning_pct_count" == "1" ]]; then
+if [[ "$warning_output" == *"WARNING data05 96% > 90%"* ]] &&
+    [[ "$warning_output" != *$'\033'* ]] &&
+    [[ "$warning_pct_count" == "1" ]]; then
     test_pass
 else
     test_fail "非 TTY 告警应为纯文本且只出现一次 96%，输出: $warning_output"

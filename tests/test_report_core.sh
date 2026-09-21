@@ -15,7 +15,7 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 PATH="$TMP_ROOT/bin:$PATH"
 mkdir -p "$TMP_ROOT/bin"
-cat > "$TMP_ROOT/bin/last" <<'FAKELAST'
+cat >"$TMP_ROOT/bin/last" <<'FAKELAST'
 #!/bin/sh
 [ -n "$LAST_CALL_LOG" ] && printf 'last\n' >> "$LAST_CALL_LOG"
 cat <<'EOF'
@@ -51,7 +51,13 @@ get_user_quota_info() { printf '1024:2048\n'; }
 get_current_resource_limits() { printf '50%%:2G\n'; }
 get_weekly_job_stats() { printf 'records=2 avg=1.5 max=3 min=1\n'; }
 get_monthly_job_stats() { printf 'records=8 avg=2.5 max=6 min=1\n'; }
-id() { [[ "$1" == "-u" ]] && { printf '1001\n'; return 0; }; [[ "$1" == "alice" ]]; }
+id() {
+    [[ "$1" == "-u" ]] && {
+        printf '1001\n'
+        return 0
+    }
+    [[ "$1" == "alice" ]]
+}
 who() { printf 'alice pts/0 2026-05-20 10:00 (10.0.0.1)\n'; }
 
 # shellcheck disable=SC1091
@@ -67,13 +73,13 @@ else
 fi
 
 test_start "report_get_login_stats 同一用户复用缓存"
-: > "$LAST_CALL_LOG"
+: >"$LAST_CALL_LOG"
 REPORT_LOGIN_STATS_CACHE=()
 report_set_login_stats alice
 first_stats="${REPORT_LOGIN_COUNT}|${REPORT_LOGIN_SOURCES}"
 report_set_login_stats alice
 second_stats="${REPORT_LOGIN_COUNT}|${REPORT_LOGIN_SOURCES}"
-last_calls="$(wc -l < "$LAST_CALL_LOG" | tr -d ' ')"
+last_calls="$(wc -l <"$LAST_CALL_LOG" | tr -d ' ')"
 if [[ "$first_stats" == "$second_stats" && "$last_calls" == "1" ]]; then
     test_pass
 else
@@ -83,11 +89,11 @@ fi
 test_start "个人 HTML 报告包含登录次数和登录 IP"
 REPORT_LOGIN_STATS_CACHE=()
 personal_report="$TMP_ROOT/alice_report.html"
-if generate_user_personal_report alice "$personal_report" >/dev/null && \
-   grep -q "近期登录次数" "$personal_report" && \
-   grep -q "登录 IP/来源" "$personal_report" && \
-   grep -q "10.0.0.1" "$personal_report" && \
-   grep -q "metric-grid" "$personal_report"; then
+if generate_user_personal_report alice "$personal_report" >/dev/null &&
+    grep -q "近期登录次数" "$personal_report" &&
+    grep -q "登录 IP/来源" "$personal_report" &&
+    grep -q "10.0.0.1" "$personal_report" &&
+    grep -q "metric-grid" "$personal_report"; then
     test_pass
 else
     test_fail "个人报告缺少登录统计或层级样式"
@@ -102,7 +108,7 @@ else
 fi
 
 test_start "send_user_report_email 复用统一邮件后端且不调用 sendmail"
-cat > "$TMP_ROOT/bin/sendmail" <<'FAKESENDMAIL'
+cat >"$TMP_ROOT/bin/sendmail" <<'FAKESENDMAIL'
 #!/bin/sh
 printf 'sendmail-called\n' >> "$SENDMAIL_CALL_LOG"
 exit 11
@@ -114,22 +120,22 @@ export SENDMAIL_CALL_LOG REPORT_MAIL_LOG
 get_user_email() { [[ "${1:-}" == "alice" ]] && printf 'alice@example.com\n'; }
 get_email_config() {
     case "${1:-}" in
-        from_name) printf '用户管理系统\n' ;;
-        from_address) printf 'noreply@example.com\n' ;;
-        *) printf '\n' ;;
+    from_name) printf '用户管理系统\n' ;;
+    from_address) printf 'noreply@example.com\n' ;;
+    *) printf '\n' ;;
     esac
 }
 validate_email_config() { return 0; }
 sanitize_mail_header_value() { printf '%s' "${1//$'\n'/ }"; }
 rl_mail_send() {
-    printf 'to=%s\nsubject=%s\nbody=%s\nretries=%s\n' "$1" "$2" "$3" "${4:-}" >> "$REPORT_MAIL_LOG"
+    printf 'to=%s\nsubject=%s\nbody=%s\nretries=%s\n' "$1" "$2" "$3" "${4:-}" >>"$REPORT_MAIL_LOG"
     return 0
 }
-if send_user_report_email alice "$personal_report" >/dev/null 2>&1 && \
-   grep -q 'to=alice@example.com' "$REPORT_MAIL_LOG" && \
-   grep -q '个人使用报告' "$REPORT_MAIL_LOG" && \
-   grep -q '近期登录次数' "$REPORT_MAIL_LOG" && \
-   [[ ! -f "$SENDMAIL_CALL_LOG" ]]; then
+if send_user_report_email alice "$personal_report" >/dev/null 2>&1 &&
+    grep -q 'to=alice@example.com' "$REPORT_MAIL_LOG" &&
+    grep -q '个人使用报告' "$REPORT_MAIL_LOG" &&
+    grep -q '近期登录次数' "$REPORT_MAIL_LOG" &&
+    [[ ! -f "$SENDMAIL_CALL_LOG" ]]; then
     test_pass
 else
     test_fail "报告邮件未走统一邮件后端，或仍调用 sendmail"

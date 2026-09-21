@@ -77,26 +77,26 @@ _logs_presenter_parse_raw() {
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         case "$line" in
-            '__LOGS_META__'|'__LOGS_META__ '*)
-                fields="${line#__LOGS_META__ }"
-                [[ "$fields" == "$line" ]] && fields="${line#__LOGS_META__}"
-                _logs_presenter_store_pairs "$meta_map_name" "$meta_order_name" "$fields"
-                ;;
-            '__LOGS_BODY__')
-                in_body=1
-                ;;
-            '__LOGS_ERROR__'|'__LOGS_ERROR__ '*)
-                fields="${line#__LOGS_ERROR__ }"
-                [[ "$fields" == "$line" ]] && fields="${line#__LOGS_ERROR__}"
-                _logs_presenter_store_pairs "$error_map_name" "$error_order_name" "$fields"
-                ;;
-            *)
-                if (( in_body )); then
-                    _logs_presenter_body_lines+=("$line")
-                fi
-                ;;
+        '__LOGS_META__' | '__LOGS_META__ '*)
+            fields="${line#__LOGS_META__ }"
+            [[ "$fields" == "$line" ]] && fields="${line#__LOGS_META__}"
+            _logs_presenter_store_pairs "$meta_map_name" "$meta_order_name" "$fields"
+            ;;
+        '__LOGS_BODY__')
+            in_body=1
+            ;;
+        '__LOGS_ERROR__' | '__LOGS_ERROR__ '*)
+            fields="${line#__LOGS_ERROR__ }"
+            [[ "$fields" == "$line" ]] && fields="${line#__LOGS_ERROR__}"
+            _logs_presenter_store_pairs "$error_map_name" "$error_order_name" "$fields"
+            ;;
+        *)
+            if ((in_body)); then
+                _logs_presenter_body_lines+=("$line")
+            fi
+            ;;
         esac
-    done <<< "$raw"
+    done <<<"$raw"
 }
 
 logs_format_empty_state() {
@@ -120,16 +120,16 @@ _logs_presenter_action_dispatch() {
     fi
 
     case "$mode" in
-        cli)
-            logs_present_cli "$action_id" "$@"
-            ;;
-        tui)
-            logs_present_tui "$action_id" "$@"
-            ;;
-        *)
-            printf '未知日志 mode: %s\n' "$mode" >&2
-            return 1
-            ;;
+    cli)
+        logs_present_cli "$action_id" "$@"
+        ;;
+    tui)
+        logs_present_tui "$action_id" "$@"
+        ;;
+    *)
+        printf '未知日志 mode: %s\n' "$mode" >&2
+        return 1
+        ;;
     esac
 }
 
@@ -138,31 +138,31 @@ _logs_presenter_call_core() {
 
     shift || true
     case "$action_id" in
-        logs.boot)
-            logs_get_boot_entries "$@"
-            ;;
-        logs.failed_services)
-            logs_get_failed_units "$@"
-            ;;
-        logs.service_recent)
-            logs_get_service_recent "$@"
-            ;;
-        logs.boot_error_diff)
-            logs_get_boot_error_diff "$@"
-            ;;
-        logs.system_file_tail)
-            logs_get_system_file_tail "$@"
-            ;;
-        logs.auth_failures)
-            logs_get_auth_failures "$@"
-            ;;
-        logs.capabilities|logs.status)
-            logs_get_capability_status "$@"
-            ;;
-        *)
-            printf '未知日志 action: %s\n' "$action_id" >&2
-            return 1
-            ;;
+    logs.boot)
+        logs_get_boot_entries "$@"
+        ;;
+    logs.failed_services)
+        logs_get_failed_units "$@"
+        ;;
+    logs.service_recent)
+        logs_get_service_recent "$@"
+        ;;
+    logs.boot_error_diff)
+        logs_get_boot_error_diff "$@"
+        ;;
+    logs.system_file_tail)
+        logs_get_system_file_tail "$@"
+        ;;
+    logs.auth_failures)
+        logs_get_auth_failures "$@"
+        ;;
+    logs.capabilities | logs.status)
+        logs_get_capability_status "$@"
+        ;;
+    *)
+        printf '未知日志 action: %s\n' "$action_id" >&2
+        return 1
+        ;;
     esac
 }
 
@@ -193,9 +193,9 @@ _logs_presenter_print() {
 
     for key in "${meta_order[@]}"; do
         case "$key" in
-            title|source|status)
-                continue
-                ;;
+        title | source | status)
+            continue
+            ;;
         esac
         printf '%s=%s\n' "$key" "${meta_map[$key]}"
     done
@@ -234,7 +234,7 @@ logs_present_cli() {
 
     if [[ -n "$raw" ]]; then
         _logs_presenter_print "$raw" cli || return 1
-    elif (( rc == 0 )); then
+    elif ((rc == 0)); then
         logs_format_empty_state "empty"
     fi
 
@@ -254,7 +254,7 @@ logs_present_tui() {
 
     if [[ -n "$raw" ]]; then
         _logs_presenter_print "$raw" tui || return 1
-    elif (( rc == 0 )); then
+    elif ((rc == 0)); then
         logs_format_empty_state "empty"
     fi
 

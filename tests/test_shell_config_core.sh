@@ -22,7 +22,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cat > "$MOCK_BIN/id" <<'EOF'
+cat >"$MOCK_BIN/id" <<'EOF'
 #!/bin/bash
 case "${1:-}" in
     fishuser|bashuser|emptyhome)
@@ -34,7 +34,7 @@ case "${1:-}" in
 esac
 EOF
 
-cat > "$MOCK_BIN/getent" <<EOF
+cat >"$MOCK_BIN/getent" <<EOF
 #!/bin/bash
 if [[ "\${1:-}" == "passwd" ]]; then
     case "\${2:-}" in

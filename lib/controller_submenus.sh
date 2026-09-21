@@ -6,44 +6,53 @@
 _handle_backup() {
     local opt="$1"
     case $opt in
-        1)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            [[ -z "$username" ]] && return
-            manual_backup_user "$username"
-            ;;
-        2)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            [[ -z "$username" ]] && return
-            read_input "备份点名称 (留空=最新)"; local backup_name="$REPLY_INPUT"
-            restore_user_backup "$username" "$backup_name"
-            ;;
-        3)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            [[ -z "$username" ]] && return
-            show_backup_status "$username"
-            ;;
-        4)  list_backup_users ;;
-        5)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            [[ -z "$username" ]] && return
-            read_input "备份时间（小时，0-23）"; local backup_hour="$REPLY_INPUT"
-            configure_backup_schedule "$username" "$backup_hour"
-            ;;
-        6)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            [[ -z "$username" ]] && return
-            remove_backup_schedule "$username"
-            ;;
-        7)  show_backup_schedules ;;
-        8)  backup_all_users ;;
-        9)  backup_all_users_parallel ;;
-        10) show_backup_batches ;;
-        11)
-            read_input "批次ID (如 20251029_174643)"; local batch_id="$REPLY_INPUT"
-            read_input "要恢复的用户名"; local username="$REPLY_INPUT"
-            restore_from_batch "$batch_id" "$username"
-            ;;
-        *)  msg_err "无效的选项" ;;
+    1)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        [[ -z "$username" ]] && return
+        manual_backup_user "$username"
+        ;;
+    2)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        [[ -z "$username" ]] && return
+        read_input "备份点名称 (留空=最新)"
+        local backup_name="$REPLY_INPUT"
+        restore_user_backup "$username" "$backup_name"
+        ;;
+    3)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        [[ -z "$username" ]] && return
+        show_backup_status "$username"
+        ;;
+    4) list_backup_users ;;
+    5)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        [[ -z "$username" ]] && return
+        read_input "备份时间（小时，0-23）"
+        local backup_hour="$REPLY_INPUT"
+        configure_backup_schedule "$username" "$backup_hour"
+        ;;
+    6)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        [[ -z "$username" ]] && return
+        remove_backup_schedule "$username"
+        ;;
+    7) show_backup_schedules ;;
+    8) backup_all_users ;;
+    9) backup_all_users_parallel ;;
+    10) show_backup_batches ;;
+    11)
+        read_input "批次ID (如 20251029_174643)"
+        local batch_id="$REPLY_INPUT"
+        read_input "要恢复的用户名"
+        local username="$REPLY_INPUT"
+        restore_from_batch "$batch_id" "$username"
+        ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -66,40 +75,54 @@ backup_menu() {
 _handle_firewall() {
     local opt="$1"
     case $opt in
-        1)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            read_input "端口号"; local port="$REPLY_INPUT"
-            read_input "协议 (tcp/udp)" "tcp"; local protocol="$REPLY_INPUT"
-            read_input "来源IP (可选)"; local from_ip="$REPLY_INPUT"
-            add_port_rule "$username" "$port" "$protocol" "$from_ip"
-            ;;
-        2)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            read_input "端口号"; local port="$REPLY_INPUT"
-            read_input "协议 (tcp/udp)" "tcp"; local protocol="$REPLY_INPUT"
-            delete_port_rule "$username" "$port" "$protocol"
-            ;;
-        3)  list_firewall_rules ;;
-        4)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            list_user_firewall_rules "$username"
-            ;;
-        5)  show_port_usage ;;
-        6)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            read_input "起始端口"; local start_port="$REPLY_INPUT"
-            read_input "结束端口"; local end_port="$REPLY_INPUT"
-            read_input "协议 (tcp/udp)" "tcp"; local protocol="$REPLY_INPUT"
-            add_port_range "$username" "$start_port" "$end_port" "$protocol"
-            ;;
-        7)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            msg_info "服务类型: ${C_RESET}web${C_RESET}, ${C_RESET}database${C_RESET}, ${C_RESET}ssh${C_RESET}, ${C_RESET}jupyter${C_RESET}"
-            read_input "选择服务"; local service="$REPLY_INPUT"
-            apply_service_template "$username" "$service"
-            ;;
-        8)  init_ufw ;;
-        *)  msg_err "无效的选项" ;;
+    1)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        read_input "端口号"
+        local port="$REPLY_INPUT"
+        read_input "协议 (tcp/udp)" "tcp"
+        local protocol="$REPLY_INPUT"
+        read_input "来源IP (可选)"
+        local from_ip="$REPLY_INPUT"
+        add_port_rule "$username" "$port" "$protocol" "$from_ip"
+        ;;
+    2)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        read_input "端口号"
+        local port="$REPLY_INPUT"
+        read_input "协议 (tcp/udp)" "tcp"
+        local protocol="$REPLY_INPUT"
+        delete_port_rule "$username" "$port" "$protocol"
+        ;;
+    3) list_firewall_rules ;;
+    4)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        list_user_firewall_rules "$username"
+        ;;
+    5) show_port_usage ;;
+    6)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        read_input "起始端口"
+        local start_port="$REPLY_INPUT"
+        read_input "结束端口"
+        local end_port="$REPLY_INPUT"
+        read_input "协议 (tcp/udp)" "tcp"
+        local protocol="$REPLY_INPUT"
+        add_port_range "$username" "$start_port" "$end_port" "$protocol"
+        ;;
+    7)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        msg_info "服务类型: ${C_RESET}web${C_RESET}, ${C_RESET}database${C_RESET}, ${C_RESET}ssh${C_RESET}, ${C_RESET}jupyter${C_RESET}"
+        read_input "选择服务"
+        local service="$REPLY_INPUT"
+        apply_service_template "$username" "$service"
+        ;;
+    8) init_ufw ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -119,30 +142,35 @@ firewall_menu() {
 _handle_dns() {
     local opt="$1"
     case $opt in
-        1)  show_dns_whitelist ;;
-        2)
-            read_input "请输入域名"; local domain="$REPLY_INPUT"
-            add_dns_entry "$domain"
-            ;;
-        3)
-            read_input "请输入域名"; local domain="$REPLY_INPUT"
-            remove_dns_entry "$domain"
-            ;;
-        4)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            apply_dns_restrictions "$username"
-            ;;
-        5)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            remove_dns_restrictions "$username"
-            ;;
-        6)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            show_dns_status "$username"
-            ;;
-        7)  apply_all_dns_restrictions ;;
-        8)  refresh_dns_rules ;;
-        *)  msg_err "无效的选项" ;;
+    1) show_dns_whitelist ;;
+    2)
+        read_input "请输入域名"
+        local domain="$REPLY_INPUT"
+        add_dns_entry "$domain"
+        ;;
+    3)
+        read_input "请输入域名"
+        local domain="$REPLY_INPUT"
+        remove_dns_entry "$domain"
+        ;;
+    4)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        apply_dns_restrictions "$username"
+        ;;
+    5)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        remove_dns_restrictions "$username"
+        ;;
+    6)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        show_dns_status "$username"
+        ;;
+    7) apply_all_dns_restrictions ;;
+    8) refresh_dns_rules ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -162,20 +190,23 @@ dns_menu() {
 _handle_job_stats() {
     local opt="$1"
     case $opt in
-        1)  collect_all_job_stats ;;
-        2)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            get_weekly_job_stats "$username"
-            ;;
-        3)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            get_monthly_job_stats "$username"
-            ;;
-        4)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            collect_user_jobs "$username"
-            ;;
-        *)  msg_err "无效的选项" ;;
+    1) collect_all_job_stats ;;
+    2)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        get_weekly_job_stats "$username"
+        ;;
+    3)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        get_monthly_job_stats "$username"
+        ;;
+    4)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        collect_user_jobs "$username"
+        ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -191,47 +222,62 @@ job_stats_menu() {
 _handle_symlink() {
     local opt="$1"
     case $opt in
-        1)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            read_input "链接名称"; local link_name="$REPLY_INPUT"
-            read_input "目标路径"; local target_path="$REPLY_INPUT"
-            create_user_symlink "$username" "$link_name" "$target_path"
-            ;;
-        2)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            read_input "目标盘号 (${ALL_DISKS[*]})"; local disk_num="$REPLY_INPUT"
-            read_input "子目录 (可选)"; local subdir="$REPLY_INPUT"
-            create_cross_disk_symlink "$username" "$disk_num" "$subdir"
-            ;;
-        3)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            list_user_symlinks "$username"
-            ;;
-        4)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            list_user_symlinks "$username"
-            read_input "要删除的链接名称"; local link_name="$REPLY_INPUT"
-            delete_user_symlink "$username" "$link_name"
-            ;;
-        5)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            cleanup_broken_symlinks "$username"
-            ;;
-        6)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            read_input "共享名称"; local shared_name="$REPLY_INPUT"
-            read_input "共享路径"; local shared_path="$REPLY_INPUT"
-            create_shared_symlink "$username" "$shared_name" "$shared_path"
-            ;;
-        7)
-            read_input "共享名称"; local shared_name="$REPLY_INPUT"
-            read_input "共享路径"; local shared_path="$REPLY_INPUT"
-            if confirm_action "为所有用户创建共享链接？"; then
-                create_shared_for_all "$shared_name" "$shared_path"
-            fi
-            ;;
-        8)  show_all_symlinks_overview ;;
-        *)  msg_err "无效的选项" ;;
+    1)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        read_input "链接名称"
+        local link_name="$REPLY_INPUT"
+        read_input "目标路径"
+        local target_path="$REPLY_INPUT"
+        create_user_symlink "$username" "$link_name" "$target_path"
+        ;;
+    2)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        read_input "目标盘号 (${ALL_DISKS[*]})"
+        local disk_num="$REPLY_INPUT"
+        read_input "子目录 (可选)"
+        local subdir="$REPLY_INPUT"
+        create_cross_disk_symlink "$username" "$disk_num" "$subdir"
+        ;;
+    3)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        list_user_symlinks "$username"
+        ;;
+    4)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        list_user_symlinks "$username"
+        read_input "要删除的链接名称"
+        local link_name="$REPLY_INPUT"
+        delete_user_symlink "$username" "$link_name"
+        ;;
+    5)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        cleanup_broken_symlinks "$username"
+        ;;
+    6)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        read_input "共享名称"
+        local shared_name="$REPLY_INPUT"
+        read_input "共享路径"
+        local shared_path="$REPLY_INPUT"
+        create_shared_symlink "$username" "$shared_name" "$shared_path"
+        ;;
+    7)
+        read_input "共享名称"
+        local shared_name="$REPLY_INPUT"
+        read_input "共享路径"
+        local shared_path="$REPLY_INPUT"
+        if confirm_action "为所有用户创建共享链接？"; then
+            create_shared_for_all "$shared_name" "$shared_path"
+        fi
+        ;;
+    8) show_all_symlinks_overview ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -251,15 +297,15 @@ symlink_menu() {
 _handle_password_rotation() {
     local opt="$1"
     case $opt in
-        1)  show_password_rotation_status ;;
-        2)
-            read_input "轮换间隔（天）" "${PASSWORD_ROTATE_INTERVAL_DAYS:-90}"
-            local interval="$REPLY_INPUT"
-            configure_password_rotation "$interval"
-            ;;
-        3)  remove_password_rotation ;;
-        4)  manual_password_rotation ;;
-        *)  msg_err "无效的选项" ;;
+    1) show_password_rotation_status ;;
+    2)
+        read_input "轮换间隔（天）" "${PASSWORD_ROTATE_INTERVAL_DAYS:-90}"
+        local interval="$REPLY_INPUT"
+        configure_password_rotation "$interval"
+        ;;
+    3) remove_password_rotation ;;
+    4) manual_password_rotation ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -311,7 +357,7 @@ show_audit_stats() {
     fi
 
     local total_ops success_count failure_count
-    total_ops=$(wc -l < "$AUDIT_LOG_FILE")
+    total_ops=$(wc -l <"$AUDIT_LOG_FILE")
     success_count=$(grep -c "SUCCESS" "$AUDIT_LOG_FILE" || echo 0)
     failure_count=$(grep -c -E "(FAILURE|ERROR|DENIED)" "$AUDIT_LOG_FILE" || echo 0)
 
@@ -323,7 +369,8 @@ show_audit_stats() {
 
 view_journald_audit_log() {
     draw_header "查看 Journald 审计日志"
-    read_input "最近日志行数" "50"; local lines="$REPLY_INPUT"
+    read_input "最近日志行数" "50"
+    local lines="$REPLY_INPUT"
     audit_view_journald_log "${lines:-50}"
     echo ""
 }
@@ -332,64 +379,72 @@ view_journald_audit_log() {
 _handle_report() {
     local opt="$1"
     case $opt in
-        1)
-            read_input "输出文件 (留空=自动生成)"; local output_file="$REPLY_INPUT"
-            if [[ -z "$output_file" ]]; then
-                generate_html_report
-            else
-                generate_html_report "$output_file"
+    1)
+        read_input "输出文件 (留空=自动生成)"
+        local output_file="$REPLY_INPUT"
+        if [[ -z "$output_file" ]]; then
+            generate_html_report
+        else
+            generate_html_report "$output_file"
+        fi
+        ;;
+    2) generate_user_statistics ;;
+    3) generate_quota_report ;;
+    4) generate_resource_report ;;
+    5) show_user_resource_usage ;;
+    6)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        show_single_user_resource "$username"
+        ;;
+    7) show_user_creation_log ;;
+    8)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        query_user_history "$username"
+        ;;
+    9)
+        read_input "开始日期 (YYYY-MM-DD)"
+        local start_date="$REPLY_INPUT"
+        read_input "结束日期 (YYYY-MM-DD)"
+        local end_date="$REPLY_INPUT"
+        query_by_date_range "$start_date" "$end_date"
+        ;;
+    10) analyze_operation_trends ;;
+    11) analyze_anomalies ;;
+    12) generate_log_summary ;;
+    13)
+        read_input "输出文件 (留空=自动)"
+        local output_file="$REPLY_INPUT"
+        export_full_report "$output_file"
+        ;;
+    14)
+        read_input "输出文件 (留空=自动)"
+        local output_file="$REPLY_INPUT"
+        export_users_csv "$output_file"
+        ;;
+    15)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        if [[ -n "$username" ]]; then
+            local report_file
+            report_file="$REPORT_DIR/user_${username}_$(date +%Y%m%d).html"
+            if generate_user_personal_report "$username" "$report_file"; then
+                send_user_report_email "$username" "$report_file"
             fi
-            ;;
-        2)  generate_user_statistics ;;
-        3)  generate_quota_report ;;
-        4)  generate_resource_report ;;
-        5)  show_user_resource_usage ;;
-        6)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            show_single_user_resource "$username"
-            ;;
-        7)  show_user_creation_log ;;
-        8)
-            read_input "用户名"; local username="$REPLY_INPUT"
-            query_user_history "$username"
-            ;;
-        9)
-            read_input "开始日期 (YYYY-MM-DD)"; local start_date="$REPLY_INPUT"
-            read_input "结束日期 (YYYY-MM-DD)"; local end_date="$REPLY_INPUT"
-            query_by_date_range "$start_date" "$end_date"
-            ;;
-        10) analyze_operation_trends ;;
-        11) analyze_anomalies ;;
-        12) generate_log_summary ;;
-        13)
-            read_input "输出文件 (留空=自动)"; local output_file="$REPLY_INPUT"
-            export_full_report "$output_file"
-            ;;
-        14)
-            read_input "输出文件 (留空=自动)"; local output_file="$REPLY_INPUT"
-            export_users_csv "$output_file"
-            ;;
-        15)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            if [[ -n "$username" ]]; then
-                local report_file
-                report_file="$REPORT_DIR/user_${username}_$(date +%Y%m%d).html"
-                if generate_user_personal_report "$username" "$report_file"; then
-                    send_user_report_email "$username" "$report_file"
-                fi
-            fi
-            ;;
-        16)
-            if confirm_action "确认为所有用户生成并发送报告？"; then
-                send_all_user_reports
-            fi
-            ;;
-        17) setup_weekly_report_cron ;;
-        18) remove_weekly_report_cron ;;
-        19) view_weekly_report_log ;;
-        20) view_audit_log ;;
-        21) show_audit_stats ;;
-        *)  msg_err "无效的选项" ;;
+        fi
+        ;;
+    16)
+        if confirm_action "确认为所有用户生成并发送报告？"; then
+            send_all_user_reports
+        fi
+        ;;
+    17) setup_weekly_report_cron ;;
+    18) remove_weekly_report_cron ;;
+    19) view_weekly_report_log ;;
+    20) view_audit_log ;;
+    21) show_audit_stats ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -424,39 +479,44 @@ report_menu() {
 _handle_system() {
     local opt="$1"
     case $opt in
-        1)  show_system_info ;;
-        2)  show_memory_info ;;
-        3)  launch_btop_monitor ;;
-        4)  launch_htop_monitor ;;
-        5)  check_hardware_health ;;
-        6)  analyze_system_logs ;;
-        7)  analyze_crash_causes ;;
-        8)  configure_oom_protection ;;
-        9)  show_network_info ;;
-        10) show_cpu_info ;;
-        11) show_memory_info_detailed ;;
-        12) show_disk_info ;;
-        13) show_network_hardware_info ;;
-        14) run_full_hardware_check ;;
-        15) show_ubuntu_maintenance_panel ;;
-        16)
-            read_input "boot 引用 (0=当前, -1=上次)" "0"; local boot_ref="$REPLY_INPUT"
-            read_input "最近日志行数" "100"; local lines="$REPLY_INPUT"
-            action_run logs.boot cli --boot "${boot_ref:-0}" --lines "${lines:-100}"
-            ;;
-        17) action_run logs.failed_services cli ;;
-        18)
-            read_input "服务名 (如 ssh / docker.service)"; local unit="$REPLY_INPUT"
-            read_input "最近日志行数" "80"; local lines="$REPLY_INPUT"
-            [[ -n "$unit" ]] && action_run logs.service_recent cli "$unit" --lines "${lines:-80}"
-            ;;
-        19)
-            read_input "对比最近 err..alert 日志条数" "100"; local lines="$REPLY_INPUT"
-            action_run logs.boot_error_diff cli --lines "${lines:-100}"
-            ;;
-        20) show_network_stack_panel ;;
-        21) systemd_timer_menu ;;
-        *)  msg_err "无效的选项" ;;
+    1) show_system_info ;;
+    2) show_memory_info ;;
+    3) launch_btop_monitor ;;
+    4) launch_htop_monitor ;;
+    5) check_hardware_health ;;
+    6) analyze_system_logs ;;
+    7) analyze_crash_causes ;;
+    8) configure_oom_protection ;;
+    9) show_network_info ;;
+    10) show_cpu_info ;;
+    11) show_memory_info_detailed ;;
+    12) show_disk_info ;;
+    13) show_network_hardware_info ;;
+    14) run_full_hardware_check ;;
+    15) show_ubuntu_maintenance_panel ;;
+    16)
+        read_input "boot 引用 (0=当前, -1=上次)" "0"
+        local boot_ref="$REPLY_INPUT"
+        read_input "最近日志行数" "100"
+        local lines="$REPLY_INPUT"
+        action_run logs.boot cli --boot "${boot_ref:-0}" --lines "${lines:-100}"
+        ;;
+    17) action_run logs.failed_services cli ;;
+    18)
+        read_input "服务名 (如 ssh / docker.service)"
+        local unit="$REPLY_INPUT"
+        read_input "最近日志行数" "80"
+        local lines="$REPLY_INPUT"
+        [[ -n "$unit" ]] && action_run logs.service_recent cli "$unit" --lines "${lines:-80}"
+        ;;
+    19)
+        read_input "对比最近 err..alert 日志条数" "100"
+        local lines="$REPLY_INPUT"
+        action_run logs.boot_error_diff cli --lines "${lines:-100}"
+        ;;
+    20) show_network_stack_panel ;;
+    21) systemd_timer_menu ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -494,17 +554,17 @@ system_menu() {
 _handle_user_management() {
     local opt="$1"
     case $opt in
-        1)  safe_run create_or_assign_user ;;
-        2)  safe_run change_user_password ;;
-        3)  safe_run delete_user_account ;;
-        4)  safe_run rename_user_account ;;
-        5)  safe_run suspend_or_enable_user ;;
-        6)  safe_run modify_user_quota ;;
-        7)  safe_run modify_user_resource_limits ;;
-        8)  safe_run list_managed_users ;;
-        9)  safe_run user_group_menu ;;
-        10) safe_run permission_management_menu ;;
-        *)  msg_err "无效的选项" ;;
+    1) safe_run create_or_assign_user ;;
+    2) safe_run change_user_password ;;
+    3) safe_run delete_user_account ;;
+    4) safe_run rename_user_account ;;
+    5) safe_run suspend_or_enable_user ;;
+    6) safe_run modify_user_quota ;;
+    7) safe_run modify_user_resource_limits ;;
+    8) safe_run list_managed_users ;;
+    9) safe_run user_group_menu ;;
+    10) safe_run permission_management_menu ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -529,18 +589,20 @@ user_management_menu() {
 _handle_disk_quota() {
     local opt="$1"
     case $opt in
-        1)  safe_run show_disk_overview ;;
-        2)  safe_run modify_user_quota ;;
-        3)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            [[ -n "$username" ]] && show_single_user_resource "$username"
-            ;;
-        4)  safe_run modify_user_resource_limits ;;
-        5)
-            read_input "请输入用户名"; local username="$REPLY_INPUT"
-            [[ -n "$username" ]] && show_single_user_resource "$username"
-            ;;
-        *)  msg_err "无效的选项" ;;
+    1) safe_run show_disk_overview ;;
+    2) safe_run modify_user_quota ;;
+    3)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        [[ -n "$username" ]] && show_single_user_resource "$username"
+        ;;
+    4) safe_run modify_user_resource_limits ;;
+    5)
+        read_input "请输入用户名"
+        local username="$REPLY_INPUT"
+        [[ -n "$username" ]] && show_single_user_resource "$username"
+        ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -559,12 +621,13 @@ disk_quota_menu() {
 _handle_network_security() {
     local opt="$1"
     case $opt in
-        1)  safe_run firewall_menu ;;
-        2)  safe_run dns_menu ;;
-        3)  safe_run symlink_menu ;;
-        4)  safe_run ssh_fail2ban_menu ;;
-        5)  safe_run show_network_stack_panel ;;
-        *)  msg_err "无效的选项" ;;
+    1) safe_run firewall_menu ;;
+    2) safe_run dns_menu ;;
+    3) safe_run symlink_menu ;;
+    4) safe_run ssh_fail2ban_menu ;;
+    5) safe_run show_network_stack_panel ;;
+    6) safe_run smb_menu ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -574,26 +637,31 @@ network_security_menu() {
         "2:DNS 访问控制 ›" \
         "3:符号链接与共享 ›" \
         "4:SSH 与 Fail2ban ›" \
-        "5:网络栈诊断"
+        "5:网络栈诊断" \
+        "6:SMB 管理 ›"
 }
 
 _handle_ssh_fail2ban() {
     local opt="$1"
     case $opt in
-        1) security_baseline_sshd_summary ;;
-        2)
-            read_input "最近认证失败日志行数" "20"; local lines="$REPLY_INPUT"
-            security_baseline_show_recent_auth_failures "${lines:-20}"
-            ;;
-        3) security_baseline_show_fail2ban_status ;;
-        4)
-            read_input "bantime 秒数" "600"; local bantime="$REPLY_INPUT"
-            read_input "findtime 秒数" "600"; local findtime="$REPLY_INPUT"
-            read_input "maxretry 次数" "5"; local maxretry="$REPLY_INPUT"
-            security_baseline_configure_fail2ban_sshd_jail "${bantime:-600}" "${findtime:-600}" "${maxretry:-5}"
-            ;;
-        5) security_baseline_fail2ban_list_jails ;;
-        *) msg_err "无效的选项" ;;
+    1) security_baseline_sshd_summary ;;
+    2)
+        read_input "最近认证失败日志行数" "20"
+        local lines="$REPLY_INPUT"
+        security_baseline_show_recent_auth_failures "${lines:-20}"
+        ;;
+    3) security_baseline_show_fail2ban_status ;;
+    4)
+        read_input "bantime 秒数" "600"
+        local bantime="$REPLY_INPUT"
+        read_input "findtime 秒数" "600"
+        local findtime="$REPLY_INPUT"
+        read_input "maxretry 次数" "5"
+        local maxretry="$REPLY_INPUT"
+        security_baseline_configure_fail2ban_sshd_jail "${bantime:-600}" "${findtime:-600}" "${maxretry:-5}"
+        ;;
+    5) security_baseline_fail2ban_list_jails ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -606,24 +674,103 @@ ssh_fail2ban_menu() {
         "5:列出全部 jails"
 }
 
+# --- SMB 管理子菜单 ---
+_handle_smb() {
+    local opt="$1"
+    case $opt in
+    1) smb_show_status ;;
+    2) smb_list_users ;;
+    3)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        [[ -n "$username" ]] && smb_show_user_status "$username"
+        ;;
+    4)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        read_input "新密码"
+        local password="$REPLY_INPUT"
+        [[ -n "$username" && -n "$password" ]] && smb_set_password "$username" "$password"
+        ;;
+    5)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        [[ -n "$username" ]] && smb_disable_user "$username"
+        ;;
+    6)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        [[ -n "$username" ]] && smb_enable_existing_user "$username"
+        ;;
+    7)
+        read_input "用户名"
+        local username="$REPLY_INPUT"
+        [[ -n "$username" ]] && smb_delete_user "$username"
+        ;;
+    8) smb_share_list ;;
+    9)
+        read_input "共享名"
+        local share_name="$REPLY_INPUT"
+        read_input "共享路径"
+        local share_path="$REPLY_INPUT"
+        read_input "只读 (yes/no)" "no"
+        local share_readonly="$REPLY_INPUT"
+        [[ -n "$share_name" && -n "$share_path" ]] && smb_share_add "$share_name" "$share_path" "${share_readonly:-no}"
+        ;;
+    10)
+        read_input "共享名"
+        local share_name="$REPLY_INPUT"
+        [[ -n "$share_name" ]] && smb_share_remove "$share_name"
+        ;;
+    11)
+        # 自动确保主配置 include 托管 drop-in 配置
+        if smb_include_status; then
+            msg_info "主配置已 include 托管配置"
+        else
+            smb_ensure_include && msg_info "已写入 include 托管配置" || msg_err "include 写入失败"
+        fi
+        ;;
+    *) msg_err "无效的选项" ;;
+    esac
+}
+
+smb_menu() {
+    run_submenu "SMB 管理" _handle_smb \
+        "1:SMB 服务状态" \
+        "2:列出 SMB 用户" \
+        "3:查看用户 SMB 状态" \
+        "4:设置 SMB 密码" \
+        "5:禁用 SMB 用户" \
+        "6:启用 SMB 用户" \
+        "7:移除 SMB 用户" \
+        "8:列出 SMB 共享" \
+        "9:新增 SMB 共享" \
+        "10:移除 SMB 共享" \
+        "11:主配置 include 托管配置"
+}
+
 _handle_systemd_timers() {
     local opt="$1"
     case $opt in
-        1) action_run system.timers.list cli ;;
-        2)
-            read_input "profile (weekly-report/account-health-check)" "weekly-report"; local profile="$REPLY_INPUT"
-            systemd_timer_install_profile "${profile:-weekly-report}"
-            ;;
-        3)
-            read_input "timer 名称" "weekly-report"; local timer_name="$REPLY_INPUT"
-            read_input "最近日志行数" "50"; local lines="$REPLY_INPUT"
-            action_run system.timers.logs cli "${timer_name:-weekly-report}" "${lines:-50}"
-            ;;
-        4)
-            read_input "要删除的 timer 名称" "weekly-report"; local timer_name="$REPLY_INPUT"
-            [[ -n "$timer_name" ]] && systemd_timer_remove "$timer_name"
-            ;;
-        *) msg_err "无效的选项" ;;
+    1) action_run system.timers.list cli ;;
+    2)
+        read_input "profile (weekly-report/account-health-check)" "weekly-report"
+        local profile="$REPLY_INPUT"
+        systemd_timer_install_profile "${profile:-weekly-report}"
+        ;;
+    3)
+        read_input "timer 名称" "weekly-report"
+        local timer_name="$REPLY_INPUT"
+        read_input "最近日志行数" "50"
+        local lines="$REPLY_INPUT"
+        action_run system.timers.logs cli "${timer_name:-weekly-report}" "${lines:-50}"
+        ;;
+    4)
+        read_input "要删除的 timer 名称" "weekly-report"
+        local timer_name="$REPLY_INPUT"
+        [[ -n "$timer_name" ]] && systemd_timer_remove "$timer_name"
+        ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -642,10 +789,10 @@ systemd_timer_menu() {
 _handle_report_stats() {
     local opt="$1"
     case $opt in
-        1)  safe_run report_menu ;;
-        2)  safe_run job_stats_menu ;;
-        3)  safe_run password_rotation_menu ;;
-        *)  msg_err "无效的选项" ;;
+    1) safe_run report_menu ;;
+    2) safe_run job_stats_menu ;;
+    3) safe_run password_rotation_menu ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 
@@ -663,17 +810,23 @@ report_stats_menu() {
 _handle_audit() {
     local opt="$1"
     case $opt in
-        1)  view_audit_log ;;
-        2)
-            read_input "操作类型 (留空=全部)"; local op_type="$REPLY_INPUT"
-            read_input "用户名 (留空=全部)"; local user="$REPLY_INPUT"
-            read_input "日期范围 (YYYY-MM-DD 或 YYYY-MM-DD:YYYY-MM-DD, 留空=全部)"; local date_range="$REPLY_INPUT"
-            audit_query "$op_type" "$user" "$date_range"
-            ;;
-        3)  show_audit_stats ;;
-        4)  audit_rotate; msg_ok "日志轮转完成" ;;
-        5)  view_journald_audit_log ;;
-        *)  msg_err "无效的选项" ;;
+    1) view_audit_log ;;
+    2)
+        read_input "操作类型 (留空=全部)"
+        local op_type="$REPLY_INPUT"
+        read_input "用户名 (留空=全部)"
+        local user="$REPLY_INPUT"
+        read_input "日期范围 (YYYY-MM-DD 或 YYYY-MM-DD:YYYY-MM-DD, 留空=全部)"
+        local date_range="$REPLY_INPUT"
+        audit_query "$op_type" "$user" "$date_range"
+        ;;
+    3) show_audit_stats ;;
+    4)
+        audit_rotate
+        msg_ok "日志轮转完成"
+        ;;
+    5) view_journald_audit_log ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 

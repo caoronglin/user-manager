@@ -71,7 +71,11 @@ jobs:
       - name: Check README sections
         run: |
           grep -Eq "Quick Start|快速开始" README.md || echo "Warning: README missing Quick Start section"
-          grep -Eq "Installation|安装" README.md || echo "Warning: README missing Installation section"
+          # 项目已明确移除“安装/Installation”口径，不再要求该章节；
+          # 若未来重新出现安装描述，则给出提示以便确认。
+          if grep -Eiq "Installation|安装" README.md; then
+            echo "Warning: README still mentions Installation; confirm it is intentional"
+          fi
           grep -Eq "Documentation|文档" README.md || echo "Warning: README missing Documentation section"
 
   security:
@@ -92,3 +96,41 @@ jobs:
               echo "Warning: $file is not executable"
             fi
           done
+
+  # NOTE: shfmt 格式检查已从提示模式收紧为阻断模式。
+  # 仓库已按 shfmt v3.12.0 默认格式完成全量格式化。
+  format:
+    name: Format Check (shfmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shfmt
+        run: |
+          # 固定 v3.12.0，与本地格式化及 pre-commit 配置版本对齐。
+          # ubuntu-latest runner 预装 Go，go install 为安装路径。
+          go install mvdan.cc/sh/v3/cmd/shfmt@v3.12.0
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+
+      - name: Check shell formatting (shfmt -d)
+        run: |
+          set -o pipefail
+          command -v shfmt >/dev/null || { echo "::error::shfmt not installed"; exit 2; }
+          shfmt --version
+          checked=0
+          unclean=0
+          # 与语法检查 job 一致的遍历方式：NUL 安全 + 跳过 Miniforge.sh
+          while IFS= read -r -d '' file; do
+            [[ "$file" == 'Miniforge.sh' ]] && continue
+            checked=$((checked + 1))
+            if ! shfmt -d "$file"; then
+              echo "::warning::shfmt: $file needs formatting"
+              unclean=$((unclean + 1))
+            fi
+          done < <(git ls-files -z -- '*.sh')
+          # 收紧路径：continue-on-error: false 时此处 exit 1 真正阻断 CI
+          if [ "$unclean" -gt 0 ]; then
+            echo "::error::shfmt: $unclean file(s) need formatting"
+            exit 1
+          fi
+          echo "== shfmt -d summary: checked=$checked, needs-format=$unclean =="

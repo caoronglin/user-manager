@@ -1,0 +1,24 @@
+# /etc/sudoers.d/user-manager（仓库模板，部署步骤见 docs/sudoers-deploy.md）
+#
+# 允许 useradm 组成员免密调用 rl-chpasswd 修改普通用户密码。
+# 密码仅经 stdin 传递（wrapper 不接收密码参数），不会出现在 ps/命令行/审计日志。
+# 用户名字符集由 wrapper 严格校验（^[a-z_][a-z0-9_-]*$ 且禁止 root）；
+# sudoers 仅做命令级授权与 root 反向防护（sudo-rs 不支持命令参数通配符，故不依赖参数白名单）。
+
+# 主规则：授权 rl-chpasswd（用户名合法性由 wrapper 校验）
+%useradm ALL=(root) NOPASSWD: /usr/local/sbin/rl-chpasswd
+
+# 反向规则（sudoers 最后匹配优先）：显式禁止以 root 为目标
+%useradm ALL=(root) NOPASSWD: !/usr/local/sbin/rl-chpasswd root
+
+# 部署步骤（在仓库根目录以 root 执行）：
+#   1. 安装 wrapper：
+#      install -m 0755 -o root -g root scripts/rl-chpasswd.sh /usr/local/sbin/rl-chpasswd
+#   2. 安装本文件：
+#      install -m 0440 -o root -g root etc/sudoers.d/user-manager.example /etc/sudoers.d/user-manager
+#   3. 语法校验（必须通过）：
+#      visudo -c -f /etc/sudoers.d/user-manager
+#   4. 测试（stdin 协议为"仅密码"，用户名为唯一位置参数；read -rsp 避免 shell 历史）：
+#      read -rsp '密码: ' password; printf '\n'
+#      printf '%s\n' "$password" | sudo /usr/local/sbin/rl-chpasswd alice
+#      unset password

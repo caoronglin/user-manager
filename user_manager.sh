@@ -3,7 +3,14 @@
 # 版本: v0.2.1
 # 要求: Ubuntu/Debian, 已配置 user quota + rsnapshot + UFW
 
-set -uo pipefail
+# 仅直接执行时启用严格模式；被 source（测试/复用）时不覆盖调用方的 shell 选项。
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    set -Eeuo pipefail
+    IFS=$'\n\t'
+
+    # ERR trap：严格模式错误报告（行号 + 失败命令 + 退出码）
+    trap 'echo "错误: 行 $LINENO: $BASH_COMMAND (exit $?)" >&2' ERR
+fi
 
 # === 获取脚本目录 ===
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,8 +47,8 @@ main() {
     fi
 
     local cli_status=0
-    user_manager_handle_cli "$@"
-    cli_status=$?
+    # set -e 下需在 || 保护中捕获返回码：2 = 无 CLI 参数，进入交互菜单
+    user_manager_handle_cli "$@" || cli_status=$?
     if [[ $cli_status -ne 2 ]]; then
         return "$cli_status"
     fi
@@ -58,22 +65,22 @@ user_manager_cli_init() {
 
 user_manager_handle_cli() {
     case "${1:-}" in
-        --weekly-report|--send-reports)
-            user_manager_cli_init || return $?
-            send_all_user_reports
-            return $?
-            ;;
-        --account-health-check)
-            user_manager_cli_init || return $?
-            check_expired_suspensions
-            return $?
-            ;;
-        "")
-            return 2
-            ;;
-        *)
-            return 2
-            ;;
+    --weekly-report | --send-reports)
+        user_manager_cli_init || return $?
+        send_all_user_reports || return $?
+        return 0
+        ;;
+    --account-health-check)
+        user_manager_cli_init || return $?
+        check_expired_suspensions || return $?
+        return 0
+        ;;
+    "")
+        return 2
+        ;;
+    *)
+        return 2
+        ;;
     esac
 }
 

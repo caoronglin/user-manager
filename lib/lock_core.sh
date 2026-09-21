@@ -12,10 +12,30 @@ LOCK_HELD=false
 acquire_lock() {
     mkdir -p "$(dirname "$LOCK_FILE")"
     if mkdir "$LOCK_FILE" 2>/dev/null; then
-        LOCK_HELD=true; return 0
-    else
-        msg_err "另一个实例正在运行，请稍后再试。"; return 1
+        LOCK_HELD=true
+        return 0
     fi
+
+    # 陈旧锁回收：锁目录含 timestamp/pid 且锁龄超 300 秒、持有进程已死则清理后重试一次
+    if [[ -f "$LOCK_FILE/timestamp" && -f "$LOCK_FILE/pid" ]]; then
+        local lock_time lock_age lock_pid
+        lock_time=$(cat "$LOCK_FILE/timestamp" 2>/dev/null || echo "0")
+        lock_age=$(($(date +%s) - lock_time))
+        if ((lock_age > 300)); then
+            lock_pid=$(cat "$LOCK_FILE/pid" 2>/dev/null || echo "unknown")
+            if ! kill -0 "$lock_pid" 2>/dev/null; then
+                msg_warn "清理过期锁 (PID: $lock_pid, 年龄: ${lock_age}s)"
+                rm -rf "$LOCK_FILE"
+                if mkdir "$LOCK_FILE" 2>/dev/null; then
+                    LOCK_HELD=true
+                    return 0
+                fi
+            fi
+        fi
+    fi
+
+    msg_err "另一个实例正在运行，请稍后再试。"
+    return 1
 }
 
 release_lock() {
@@ -33,25 +53,25 @@ acquire_lock_with_timeout() {
     local timeout="${1:-30}"
     local lock_file="/tmp/user_manager_${USER:-unknown}.lock"
     local waited=0
-    
-    while (( waited < timeout )); do
+
+    while ((waited < timeout)); do
         # 尝试创建锁目录（原子操作）
         if mkdir "$lock_file" 2>/dev/null; then
-            echo $$ > "$lock_file/pid"
-            date +%s > "$lock_file/timestamp"
+            echo $$ >"$lock_file/pid"
+            date +%s >"$lock_file/timestamp"
             return 0
         fi
-        
+
         # 检查锁是否过期（超过 5 分钟）
         if [[ -f "$lock_file/timestamp" ]]; then
             local lock_time lock_age
             lock_time=$(cat "$lock_file/timestamp" 2>/dev/null || echo "0")
-            lock_age=$(( $(date +%s) - lock_time ))
-            
-            if (( lock_age > 300 )); then
+            lock_age=$(($(date +%s) - lock_time))
+
+            if ((lock_age > 300)); then
                 local lock_pid
                 lock_pid=$(cat "$lock_file/pid" 2>/dev/null || echo "unknown")
-                
+
                 # 检查进程是否还在运行
                 if ! kill -0 "$lock_pid" 2>/dev/null; then
                     msg_warn "清理过期锁 (PID: $lock_pid, 年龄: ${lock_age}s)"
@@ -60,11 +80,11 @@ acquire_lock_with_timeout() {
                 fi
             fi
         fi
-        
+
         sleep 1
         ((waited++))
     done
-    
+
     msg_err "获取锁超时 (${timeout}s)"
     msg_info "可能有其他操作正在进行，请稍后重试"
     return 1
@@ -73,12 +93,12 @@ acquire_lock_with_timeout() {
 # 释放锁（增强版）
 release_lock_enhanced() {
     local lock_file="/tmp/user_manager_${USER:-unknown}.lock"
-    
+
     if [[ -d "$lock_file" ]]; then
         # 验证锁是否属于当前进程
         local lock_pid
         lock_pid=$(cat "$lock_file/pid" 2>/dev/null || echo "")
-        
+
         if [[ "$lock_pid" == "$$" ]]; then
             rm -rf "$lock_file"
             return 0
@@ -87,24 +107,24 @@ release_lock_enhanced() {
             return 1
         fi
     fi
-    
+
     return 0
 }
 
 # 检查锁状态
 check_lock_status() {
     local lock_file="/tmp/user_manager_${USER:-unknown}.lock"
-    
+
     if [[ ! -d "$lock_file" ]]; then
         echo "unlocked"
         return 0
     fi
-    
+
     local lock_pid lock_time lock_age
     lock_pid=$(cat "$lock_file/pid" 2>/dev/null || echo "unknown")
     lock_time=$(cat "$lock_file/timestamp" 2>/dev/null || echo "0")
-    lock_age=$(( $(date +%s) - lock_time ))
-    
+    lock_age=$(($(date +%s) - lock_time))
+
     echo "locked (PID: $lock_pid, Age: ${lock_age}s)"
     return 1
 }
@@ -153,26 +173,26 @@ _user_write_lock_file() {
 acquire_user_lock() {
     local username="$1"
     local timeout="${2:-30}"
-    
+
     _init_fine_lock_dir
     local lock_file
     lock_file=$(_user_lock_file "$username")
-    
+
     local waited=0
-    while (( waited < timeout )); do
+    while ((waited < timeout)); do
         if mkdir "$lock_file" 2>/dev/null; then
-            echo $$ > "$lock_file/pid"
-            date +%s > "$lock_file/timestamp"
+            echo $$ >"$lock_file/pid"
+            date +%s >"$lock_file/timestamp"
             return 0
         fi
-        
+
         # 检查锁是否过期（超过2分钟）
         if [[ -f "$lock_file/timestamp" ]]; then
             local lock_time lock_age
             lock_time=$(cat "$lock_file/timestamp" 2>/dev/null || echo "0")
-            lock_age=$(( $(date +%s) - lock_time ))
-            
-            if (( lock_age > 120 )); then
+            lock_age=$(($(date +%s) - lock_time))
+
+            if ((lock_age > 120)); then
                 local lock_pid
                 lock_pid=$(cat "$lock_file/pid" 2>/dev/null || echo "unknown")
                 if ! kill -0 "$lock_pid" 2>/dev/null; then
@@ -181,11 +201,11 @@ acquire_user_lock() {
                 fi
             fi
         fi
-        
+
         sleep 0.5
         ((waited++))
     done
-    
+
     msg_err "无法获取用户 '$username' 的锁 (${timeout}s超时)"
     return 1
 }
@@ -195,7 +215,7 @@ release_user_lock() {
     local username="$1"
     local lock_file
     lock_file=$(_user_lock_file "$username")
-    
+
     if [[ -d "$lock_file" ]]; then
         local lock_pid
         lock_pid=$(cat "$lock_file/pid" 2>/dev/null || echo "")
@@ -213,28 +233,28 @@ release_user_lock() {
 acquire_user_read_lock() {
     local username="$1"
     local timeout="${2:-10}"
-    
+
     _init_fine_lock_dir
     local read_lock write_lock
     read_lock=$(_user_read_lock_file "$username")
     write_lock=$(_user_write_lock_file "$username")
-    
+
     local waited=0
-    while (( waited < timeout )); do
+    while ((waited < timeout)); do
         # 如果有写锁，等待
         if [[ -d "$write_lock" ]]; then
             sleep 0.2
             ((waited++))
             continue
         fi
-        
+
         # 创建读锁
         mkdir -p "$read_lock" 2>/dev/null || true
         local reader_id="${read_lock}/reader_${$}"
-        echo $$ > "$reader_id"
+        echo $$ >"$reader_id"
         return 0
     done
-    
+
     return 1
 }
 
@@ -243,15 +263,15 @@ release_user_read_lock() {
     local username="$1"
     local read_lock
     read_lock=$(_user_read_lock_file "$username")
-    
+
     local reader_id="${read_lock}/reader_${$}"
     rm -f "$reader_id" 2>/dev/null
-    
+
     # 如果没有其他读取者，删除读锁目录
     if [[ -d "$read_lock" ]]; then
         local reader_count
         reader_count=$(find "$read_lock" -name 'reader_*' 2>/dev/null | wc -l)
-        (( reader_count == 0 )) && rmdir "$read_lock" 2>/dev/null || true
+        ((reader_count == 0)) && rmdir "$read_lock" 2>/dev/null || true
     fi
 }
 
@@ -259,42 +279,42 @@ release_user_read_lock() {
 acquire_user_write_lock() {
     local username="$1"
     local timeout="${2:-30}"
-    
+
     _init_fine_lock_dir
     local read_lock write_lock
     read_lock=$(_user_read_lock_file "$username")
     write_lock=$(_user_write_lock_file "$username")
-    
+
     local waited=0
-    while (( waited < timeout )); do
+    while ((waited < timeout)); do
         # 如果有其他写锁或读锁，等待
         if [[ -d "$write_lock" ]]; then
             sleep 0.2
             ((waited++))
             continue
         fi
-        
+
         if [[ -d "$read_lock" ]]; then
             local reader_count
             reader_count=$(find "$read_lock" -name 'reader_*' 2>/dev/null | wc -l)
-            (( reader_count > 0 )) && {
+            ((reader_count > 0)) && {
                 sleep 0.2
                 ((waited++))
                 continue
             }
         fi
-        
+
         # 创建写锁
         if mkdir "$write_lock" 2>/dev/null; then
-            echo $$ > "$write_lock/pid"
-            date +%s > "$write_lock/timestamp"
+            echo $$ >"$write_lock/pid"
+            date +%s >"$write_lock/timestamp"
             return 0
         fi
-        
+
         sleep 0.2
         ((waited++))
     done
-    
+
     msg_err "无法获取用户 '$username' 的写锁"
     return 1
 }
@@ -304,7 +324,7 @@ release_user_write_lock() {
     local username="$1"
     local write_lock
     write_lock=$(_user_write_lock_file "$username")
-    
+
     if [[ -d "$write_lock" ]]; then
         local lock_pid
         lock_pid=$(cat "$write_lock/pid" 2>/dev/null || echo "")
@@ -322,34 +342,34 @@ release_user_write_lock() {
 acquire_operation_lock() {
     local operation="$1"
     local timeout="${2:-60}"
-    
+
     _init_fine_lock_dir
     local lock_file
     lock_file=$(_operation_lock_file "$operation")
-    
+
     local waited=0
-    while (( waited < timeout )); do
+    while ((waited < timeout)); do
         if mkdir "$lock_file" 2>/dev/null; then
-            echo $$ > "$lock_file/pid"
-            date +%s > "$lock_file/timestamp"
+            echo $$ >"$lock_file/pid"
+            date +%s >"$lock_file/timestamp"
             return 0
         fi
-        
+
         # 检查过期（超过10分钟）
         if [[ -f "$lock_file/timestamp" ]]; then
             local lock_time lock_age
             lock_time=$(cat "$lock_file/timestamp" 2>/dev/null || echo "0")
-            lock_age=$(( $(date +%s) - lock_time ))
-            if (( lock_age > 600 )); then
+            lock_age=$(($(date +%s) - lock_time))
+            if ((lock_age > 600)); then
                 rm -rf "$lock_file"
                 continue
             fi
         fi
-        
+
         sleep 1
         ((waited++))
     done
-    
+
     msg_err "无法获取操作 '$operation' 的锁"
     return 1
 }
@@ -359,7 +379,7 @@ release_operation_lock() {
     local operation="$1"
     local lock_file
     lock_file=$(_operation_lock_file "$operation")
-    
+
     if [[ -d "$lock_file" ]]; then
         local lock_pid
         lock_pid=$(cat "$lock_file/pid" 2>/dev/null || echo "")
@@ -377,11 +397,11 @@ release_operation_lock() {
 suspend_lock_for_input() {
     local username="$1"
     local lock_var="_LOCK_SUSPENDED_$username"
-    
+
     # 保存当前锁状态
     local lock_file
     lock_file=$(_user_lock_file "$username")
-    
+
     if [[ -d "$lock_file" ]]; then
         local lock_pid
         lock_pid=$(cat "$lock_file/pid" 2>/dev/null || echo "")
@@ -393,7 +413,7 @@ suspend_lock_for_input() {
             return 0
         fi
     fi
-    
+
     return 1
 }
 
@@ -403,10 +423,10 @@ resume_lock_after_input() {
     local lock_var="_LOCK_SUSPENDED_$username"
     local lock_file
     lock_file=$(_user_lock_file "$username")
-    
+
     # 移除暂停标记
     rm -f "$lock_file/suspended" 2>/dev/null || true
-    
+
     # 清除暂停状态标记
     declare -g "$lock_var"=0
 }
@@ -416,6 +436,6 @@ is_lock_suspended() {
     local username="$1"
     local lock_file
     lock_file=$(_user_lock_file "$username")
-    
+
     [[ -f "$lock_file/suspended" ]]
 }

@@ -131,12 +131,12 @@ proc_json_write() {
                 parent_pid: $parent_pid
             }
             + (if $completed_at != "" then {completed_at: $completed_at} else {} end)
-            + (if $extra != "" then {extra: $extra} else {} end)' > "$tmp_file"; then
+            + (if $extra != "" then {extra: $extra} else {} end)' >"$tmp_file"; then
             mv "$tmp_file" "$json_file"
             return 0
         fi
     elif command -v python3 &>/dev/null; then
-        if python3 - "$tmp_file" "$proc_id" "$name" "$pid" "$description" "$status" "$started_at" "$timeout_at" "$parent_pid" "$completed_at" "$extra" <<'PY'
+        if python3 - "$tmp_file" "$proc_id" "$name" "$pid" "$description" "$status" "$started_at" "$timeout_at" "$parent_pid" "$completed_at" "$extra" <<'PY'; then
 import json
 import sys
 
@@ -160,7 +160,6 @@ with open(sys.argv[1], 'w', encoding='utf-8') as fh:
     json.dump(payload, fh, ensure_ascii=False, indent=4)
     fh.write('\n')
 PY
-        then
             mv "$tmp_file" "$json_file"
             return 0
         fi
@@ -180,15 +179,15 @@ PY
         {
             local i
             printf '{\n'
-            for (( i = 0; i < ${#lines[@]}; i++ )); do
-                if (( i + 1 < ${#lines[@]} )); then
+            for ((i = 0; i < ${#lines[@]}; i++)); do
+                if ((i + 1 < ${#lines[@]})); then
                     printf '%s,\n' "${lines[$i]}"
                 else
                     printf '%s\n' "${lines[$i]}"
                 fi
             done
             printf '}\n'
-        } > "$tmp_file" || {
+        } >"$tmp_file" || {
             rm -f "$tmp_file"
             return 1
         }
@@ -217,9 +216,9 @@ proc_spawn_command() {
 $command
 EOF
             command_status=$?
-            printf '%s\n' "$command_status" > "$exit_file"
+            printf '%s\n' "$command_status" >"$exit_file"
             exit "$command_status"
-        ) >> "$log_file" 2>&1 &
+        ) >>"$log_file" 2>&1 &
         return 0
     fi
 
@@ -231,7 +230,7 @@ EOF
 $command
 EOF
         command_status=$?
-        printf '%s\n' "$command_status" > "$exit_file"
+        printf '%s\n' "$command_status" >"$exit_file"
         exit "$command_status"
     ) &
 }
@@ -249,7 +248,7 @@ proc_init() {
     else
         mkdir -p "$PROC_PID_DIR" "$PROC_SOCKET_DIR" "$PROC_LOG_DIR" 2>/dev/null || true
     fi
-    
+
     return 0
 }
 
@@ -259,7 +258,7 @@ proc_init() {
 
 # 生成进程ID
 proc_generate_id() {
-    echo "proc_$(date +%Y%m%d%H%M%S)_$(( RANDOM % 10000 ))"
+    echo "proc_$(date +%Y%m%d%H%M%S)_$((RANDOM % 10000))"
 }
 
 # 注册后台进程
@@ -283,14 +282,14 @@ proc_register_with_id() {
     local timeout="${5:-$PROC_DEFAULT_TIMEOUT}"
 
     proc_init
-    
+
     # 创建进程信息文件
     local pid_file="$PROC_PID_DIR/${proc_id}.json"
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     local timeout_at
     timeout_at=$(date -d "+${timeout} seconds" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S')
-    
+
     proc_json_write \
         "$pid_file" \
         "$proc_id" \
@@ -301,7 +300,7 @@ proc_register_with_id() {
         "$timestamp" \
         "$timeout_at" \
         "$$" || return 1
-    
+
     echo "$proc_id"
     return 0
 }
@@ -311,16 +310,16 @@ proc_update_status() {
     local proc_id="$1"
     local status="$2"
     local extra="${3:-}"
-    
+
     local pid_file="$PROC_PID_DIR/${proc_id}.json"
-    
+
     if [[ ! -f "$pid_file" ]]; then
         return 1
     fi
-    
+
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
+
     # 读取现有信息
     local name pid description started_at timeout_at parent_pid
     name=$(proc_json_get "$pid_file" "name") || return 1
@@ -342,7 +341,7 @@ proc_update_status() {
         "$parent_pid" \
         "$timestamp" \
         "$extra" || return 1
-    
+
     return 0
 }
 
@@ -352,7 +351,7 @@ proc_unregister() {
     local pid_file="$PROC_PID_DIR/${proc_id}.json"
     local exit_file
     exit_file=$(proc_exit_file_path "$proc_id")
-    
+
     rm -f "$pid_file" 2>/dev/null || true
     rm -f "$exit_file" 2>/dev/null || true
 }
@@ -372,11 +371,11 @@ proc_start() {
 
     proc_id=$(proc_generate_id)
     proc_init
-    
+
     # 启动后台进程
     proc_spawn_command "$command" "$proc_id"
     local pid=$!
-    
+
     # 注册进程
     proc_register_with_id "$proc_id" "$name" "$pid" "$command" "$timeout" >/dev/null || return 1
 
@@ -394,16 +393,16 @@ proc_start_with_log() {
 
     proc_id=$(proc_generate_id)
     proc_init
-    
+
     mkdir -p "$(dirname "$log_file")" 2>/dev/null || true
-    
+
     # 启动进程并重定向输出
     proc_spawn_command "$command" "$proc_id" "$log_file"
     local pid=$!
-    
+
     # 注册进程
     proc_register_with_id "$proc_id" "$name" "$pid" "$command" "$PROC_DEFAULT_TIMEOUT" >/dev/null || return 1
-    
+
     echo "$proc_id|$log_file"
     return 0
 }
@@ -413,23 +412,23 @@ proc_start_with_log() {
 proc_stop() {
     local proc_id="$1"
     local signal="${2:-TERM}"
-    
+
     local pid_file="$PROC_PID_DIR/${proc_id}.json"
-    
+
     if [[ ! -f "$pid_file" ]]; then
         return 1
     fi
-    
+
     # 获取PID
     local pid
     pid=$(proc_json_get "$pid_file" "pid")
-    
+
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
         kill -"$signal" "$pid" 2>/dev/null
         proc_update_status "$proc_id" "$PROC_STATUS_STOPPED" "Signal: $signal"
         return 0
     fi
-    
+
     return 1
 }
 
@@ -447,17 +446,17 @@ proc_wait() {
     local timeout="${2:-60}"
     local interval=2
     local elapsed=0
-    
+
     local pid_file="$PROC_PID_DIR/${proc_id}.json"
-    
+
     if [[ ! -f "$pid_file" ]]; then
         return 1
     fi
-    
+
     local pid
     pid=$(proc_json_get "$pid_file" "pid")
-    
-    while (( elapsed < timeout )); do
+
+    while ((elapsed < timeout)); do
         if ! kill -0 "$pid" 2>/dev/null; then
             # 进程已结束
             local exit_status
@@ -469,7 +468,7 @@ proc_wait() {
             else
                 exit_status=1
             fi
-            
+
             if [[ $exit_status -eq 0 ]]; then
                 proc_update_status "$proc_id" "$PROC_STATUS_COMPLETED"
             else
@@ -482,11 +481,11 @@ proc_wait() {
 
             return 1
         fi
-        
+
         sleep "$interval"
         ((elapsed += interval))
     done
-    
+
     # 超时
     proc_update_status "$proc_id" "$PROC_STATUS_TIMEOUT"
     return 1
@@ -500,12 +499,12 @@ proc_wait() {
 proc_info() {
     local proc_id="$1"
     local pid_file="$PROC_PID_DIR/${proc_id}.json"
-    
+
     if [[ -f "$pid_file" ]]; then
         cat "$pid_file"
         return 0
     fi
-    
+
     return 1
 }
 
@@ -513,12 +512,12 @@ proc_info() {
 proc_get_status() {
     local proc_id="$1"
     local pid_file="$PROC_PID_DIR/${proc_id}.json"
-    
+
     if [[ ! -f "$pid_file" ]]; then
         echo "unknown"
         return 1
     fi
-    
+
     proc_json_get "$pid_file" "status"
 }
 
@@ -526,30 +525,30 @@ proc_get_status() {
 proc_is_alive() {
     local proc_id="$1"
     local pid_file="$PROC_PID_DIR/${proc_id}.json"
-    
+
     if [[ ! -f "$pid_file" ]]; then
         return 1
     fi
-    
+
     local pid
     pid=$(proc_json_get "$pid_file" "pid")
-    
+
     [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
 }
 
 # 列出所有进程
 proc_list() {
     local status_filter="${1:-}"
-    
+
     for pid_file in "$PROC_PID_DIR"/*.json; do
         [[ -f "$pid_file" ]] || continue
-        
+
         local proc_id name pid status
         proc_id=$(basename "$pid_file" .json)
         name=$(proc_json_get "$pid_file" "name")
         pid=$(proc_json_get "$pid_file" "pid")
         status=$(proc_json_get "$pid_file" "status")
-        
+
         if [[ -z "$status_filter" ]] || [[ "$status" == "$status_filter" ]]; then
             echo "$proc_id|$name|$pid|$status"
         fi
@@ -567,10 +566,10 @@ declare -i PROC_POOL_SIZE=0
 # 初始化进程池
 proc_pool_init() {
     local max_size="${1:-$PROC_MAX_CHILDREN}"
-    
+
     PROC_POOL=()
     PROC_POOL_SIZE=$max_size
-    
+
     proc_init
 }
 
@@ -581,7 +580,7 @@ proc_pool_submit() {
     local name="$1"
     local command="$2"
     local timeout="${3:-$PROC_DEFAULT_TIMEOUT}"
-    
+
     # 检查池容量
     local running=0
     for proc_id in "${!PROC_POOL[@]}"; do
@@ -592,17 +591,17 @@ proc_pool_submit() {
             unset "PROC_POOL[$proc_id]"
         fi
     done
-    
-    if (( running >= PROC_POOL_SIZE )); then
+
+    if ((running >= PROC_POOL_SIZE)); then
         return 1
     fi
-    
+
     # 启动进程
     local proc_id
     proc_id=$(proc_start "$name" "$command" "$timeout")
-    
+
     PROC_POOL["$proc_id"]="$name"
-    
+
     echo "$proc_id"
     return 0
 }
@@ -613,10 +612,10 @@ proc_pool_wait_all() {
     local timeout="${1:-300}"
     local elapsed=0
     local interval=2
-    
-    while (( elapsed < timeout )); do
+
+    while ((elapsed < timeout)); do
         local all_done=true
-        
+
         for proc_id in "${!PROC_POOL[@]}"; do
             if proc_is_alive "$proc_id"; then
                 all_done=false
@@ -625,15 +624,15 @@ proc_pool_wait_all() {
                 unset "PROC_POOL[$proc_id]"
             fi
         done
-        
+
         if $all_done; then
             return 0
         fi
-        
+
         sleep "$interval"
         ((elapsed += interval))
     done
-    
+
     return 1
 }
 
@@ -642,9 +641,9 @@ proc_pool_kill_all() {
     for proc_id in "${!PROC_POOL[@]}"; do
         proc_stop "$proc_id" "TERM" 2>/dev/null || true
     done
-    
+
     sleep 2
-    
+
     # 强制清理
     for proc_id in "${!PROC_POOL[@]}"; do
         proc_kill "$proc_id" 2>/dev/null || true
@@ -660,31 +659,31 @@ proc_pool_kill_all() {
 proc_check_timeouts() {
     local now
     now=$(date +%s)
-    
+
     for pid_file in "$PROC_PID_DIR"/*.json; do
         [[ -f "$pid_file" ]] || continue
-        
+
         local status timeout_at
         status=$(proc_json_get "$pid_file" "status")
-        
+
         [[ "$status" == "$PROC_STATUS_RUNNING" ]] || continue
-        
+
         timeout_at=$(proc_json_get "$pid_file" "timeout_at")
-        
+
         if [[ -n "$timeout_at" ]]; then
             local timeout_ts
             timeout_ts=$(date -d "$timeout_at" +%s 2>/dev/null || echo "0")
-            
-            if (( now > timeout_ts )); then
+
+            if ((now > timeout_ts)); then
                 local proc_id
                 proc_id=$(basename "$pid_file" .json)
                 local pid
                 pid=$(proc_json_get "$pid_file" "pid")
-                
+
                 if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
                     kill -TERM "$pid" 2>/dev/null
                     proc_update_status "$proc_id" "$PROC_STATUS_TIMEOUT"
-                    
+
                     if declare -F msg_warn &>/dev/null; then
                         msg_warn "进程 $proc_id 超时已终止"
                     fi
@@ -698,11 +697,11 @@ proc_check_timeouts() {
 proc_cleanup_zombies() {
     for pid_file in "$PROC_PID_DIR"/*.json; do
         [[ -f "$pid_file" ]] || continue
-        
+
         local pid status
         pid=$(proc_json_get "$pid_file" "pid")
         status=$(proc_json_get "$pid_file" "status")
-        
+
         if [[ "$status" == "$PROC_STATUS_RUNNING" ]]; then
             if ! kill -0 "$pid" 2>/dev/null; then
                 # 进程已不存在，标记为失败
@@ -723,7 +722,7 @@ proc_start_health_daemon() {
             sleep "$PROC_HEALTH_CHECK_INTERVAL"
         done
     ) &
-    
+
     echo $!
 }
 
@@ -734,7 +733,7 @@ proc_start_health_daemon() {
 # 设置信号处理器
 proc_setup_signal_handlers() {
     local cleanup_func="${1:-proc_default_cleanup}"
-    
+
     # shellcheck disable=SC2064
     trap "$cleanup_func" EXIT INT TERM HUP
 }
@@ -751,7 +750,7 @@ proc_default_cleanup() {
 # 清理单个进程
 proc_cleanup() {
     local proc_id="$1"
-    
+
     proc_stop "$proc_id" 2>/dev/null || true
     proc_unregister "$proc_id"
 }
@@ -760,7 +759,7 @@ proc_cleanup() {
 proc_cleanup_all() {
     for pid_file in "$PROC_PID_DIR"/*.json; do
         [[ -f "$pid_file" ]] || continue
-        
+
         local proc_id
         proc_id=$(basename "$pid_file" .json)
         proc_cleanup "$proc_id"

@@ -23,7 +23,7 @@ _display_available_data_disks() {
 
         local df_out total_b used_b avail_b pct_used
         df_out=$(df -B1 "$mp_iter" 2>/dev/null | awk 'NR==2 {print $2, $3, $4, $5}')
-        read -r total_b used_b avail_b pct_used <<< "$df_out"
+        read -r total_b used_b avail_b pct_used <<<"$df_out"
         pct_used=${pct_used%%%}
         [[ "$pct_used" =~ ^[0-9]+$ ]] || pct_used=0
 
@@ -36,13 +36,13 @@ _display_available_data_disks() {
         for mu in "${all_managed_users[@]}"; do
             local mh
             mh=$(get_user_home "$mu" 2>/dev/null)
-            [[ "$mh" == "${mp_iter}/"* ]] && ((user_count_on_disk+=1))
+            [[ "$mh" == "${mp_iter}/"* ]] && ((user_count_on_disk += 1))
         done
 
         local disk_color="$C_BGREEN"
-        if (( pct_used >= 90 )); then
+        if ((pct_used >= 90)); then
             disk_color="$C_BRED"
-        elif (( pct_used >= 70 )); then
+        elif ((pct_used >= 70)); then
             disk_color="$C_RESET"
         fi
 
@@ -85,7 +85,7 @@ _resolve_provision_quota() {
         local current_qi current_limit
         current_qi=$(get_user_quota_info "$username" "$mp" 2>/dev/null)
         current_limit="${current_qi#*:}"
-        if [[ "$current_limit" =~ ^[0-9]+$ ]] && (( current_limit > 0 )); then
+        if [[ "$current_limit" =~ ^[0-9]+$ ]] && ((current_limit > 0)); then
             quota_bytes="$current_limit"
         fi
     fi

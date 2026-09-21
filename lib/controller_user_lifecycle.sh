@@ -9,9 +9,11 @@ delete_user_account() {
     local username="$REPLY_INPUT"
 
     msg_warn "警告：此操作将永久删除用户 ${C_BOLD}$username${C_RESET} 及其主目录！"
-    read_input "确认删除？输入用户名以确认"; local confirm="$REPLY_INPUT"
+    read_input "确认删除？输入用户名以确认"
+    local confirm="$REPLY_INPUT"
     if [[ "$confirm" != "$username" ]]; then
-        msg_info "已取消"; return 0
+        msg_info "已取消"
+        return 0
     fi
 
     acquire_lock || return 1
@@ -34,7 +36,9 @@ delete_user_account() {
     remove_backup_schedule "$username" 2>/dev/null || true
 
     delete_user "$username" || {
-        msg_err "删除用户失败"; release_lock; return 1
+        msg_err "删除用户失败"
+        release_lock
+        return 1
     }
 
     record_user_event "$username" "delete" "删除用户"
@@ -52,7 +56,8 @@ rename_user_account() {
     read_username "请输入新用户名" || return 1
     local new_username="$REPLY_INPUT"
     if id "$new_username" &>/dev/null; then
-        msg_err "用户名 '$new_username' 已被使用"; return 1
+        msg_err "用户名 '$new_username' 已被使用"
+        return 1
     fi
 
     local old_home new_home
@@ -68,7 +73,8 @@ rename_user_account() {
     echo ""
 
     if ! confirm_action "确认重命名？"; then
-        msg_info "已取消"; return 0
+        msg_info "已取消"
+        return 0
     fi
 
     acquire_lock || return 1
@@ -103,8 +109,8 @@ rename_user_account() {
                 return 1
             }
             if jq --arg old "$old_username" --arg new "$new_username" \
-                 'if has($old) then .[$new] = .[$old] | del(.[$old]) else . end' \
-                 "$USER_CONFIG_FILE" > "$tmp_cfg" 2>/dev/null; then
+                'if has($old) then .[$new] = .[$old] | del(.[$old]) else . end' \
+                "$USER_CONFIG_FILE" >"$tmp_cfg" 2>/dev/null; then
                 if mv "$tmp_cfg" "$USER_CONFIG_FILE"; then
                     msg_ok "用户配置已迁移"
                 else
@@ -190,8 +196,10 @@ suspend_or_enable_user() {
     else
         msg_info "用户 ${C_BOLD}$username${C_RESET} 当前状态: ${C_BGREEN}正常${C_RESET}"
         if confirm_action "是否暂停该用户？"; then
-            read_input "暂停原因"; local reason="$REPLY_INPUT"
-            read_input "暂停天数 (留空=永久)"; local days="$REPLY_INPUT"
+            read_input "暂停原因"
+            local reason="$REPLY_INPUT"
+            read_input "暂停天数 (留空=永久)"
+            local days="$REPLY_INPUT"
 
             local expiry_date=""
             if [[ -n "$days" && "$days" =~ ^[0-9]+$ ]]; then

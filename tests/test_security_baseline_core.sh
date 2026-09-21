@@ -22,7 +22,7 @@ export SECURITY_BASELINE_FAIL2BAN_JAIL_DIR="$SECURITY_BASELINE_ETC_DIR/fail2ban/
 
 mkdir -p "$SECURITY_BASELINE_SSHD_DROPIN_DIR" "$SECURITY_BASELINE_FAIL2BAN_JAIL_DIR"
 
-cat > "$SECURITY_BASELINE_SSH_CONFIG" <<'EOF'
+cat >"$SECURITY_BASELINE_SSH_CONFIG" <<'EOF'
 # base
 PermitRootLogin yes
 PasswordAuthentication yes
@@ -30,16 +30,16 @@ PubkeyAuthentication no
 Include /ignored/by/test/*.conf
 EOF
 
-cat > "$SECURITY_BASELINE_SSHD_DROPIN_DIR/00-base.conf" <<'EOF'
+cat >"$SECURITY_BASELINE_SSHD_DROPIN_DIR/00-base.conf" <<'EOF'
 PasswordAuthentication no
 EOF
 
-cat > "$SECURITY_BASELINE_SSHD_DROPIN_DIR/99-hardening.conf" <<'EOF'
+cat >"$SECURITY_BASELINE_SSHD_DROPIN_DIR/99-hardening.conf" <<'EOF'
 PermitRootLogin prohibit-password
 PubkeyAuthentication yes
 EOF
 
-cat > "$TEST_BIN_DIR/fail2ban-client" <<'EOF'
+cat >"$TEST_BIN_DIR/fail2ban-client" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$*" >> "$TEST_TMPDIR/fail2ban-client.log"
 if [[ "$1" == "status" && $# -eq 1 ]]; then
@@ -64,7 +64,7 @@ fi
 EOF
 chmod +x "$TEST_BIN_DIR/fail2ban-client"
 
-cat > "$TEST_BIN_DIR/systemctl" <<'EOF'
+cat >"$TEST_BIN_DIR/systemctl" <<'EOF'
 #!/bin/bash
 if [[ "$1" == "is-enabled" ]]; then
     echo enabled
@@ -82,7 +82,7 @@ fi
 EOF
 chmod +x "$TEST_BIN_DIR/systemctl"
 
-cat > "$TEST_BIN_DIR/journalctl" <<'EOF'
+cat >"$TEST_BIN_DIR/journalctl" <<'EOF'
 #!/bin/bash
 cat <<'OUT'
 Apr 20 10:00:00 host sshd[111]: Failed password for invalid user admin from 203.0.113.10 port 55001 ssh2
@@ -96,10 +96,10 @@ source "$PROJECT_ROOT/lib/security_baseline_core.sh"
 test_suite_start "Security Baseline Core"
 
 test_start "模块可加载并导出核心函数"
-if declare -F security_baseline_get_sshd_effective_value >/dev/null && \
-   declare -F security_baseline_show_fail2ban_status >/dev/null && \
-   declare -F security_baseline_write_fail2ban_sshd_jail >/dev/null && \
-   declare -F security_baseline_fail2ban_list_jails >/dev/null; then
+if declare -F security_baseline_get_sshd_effective_value >/dev/null &&
+    declare -F security_baseline_show_fail2ban_status >/dev/null &&
+    declare -F security_baseline_write_fail2ban_sshd_jail >/dev/null &&
+    declare -F security_baseline_fail2ban_list_jails >/dev/null; then
     test_pass
 else
     test_fail "security_baseline_core.sh 未正确导出核心函数"

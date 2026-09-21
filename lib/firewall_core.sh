@@ -60,7 +60,7 @@ add_port_rule() {
     fi
 
     # 验证端口号范围 1-65535
-    if ! [[ "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || ((port < 1 || port > 65535)); then
         msg_err "无效的端口号: ${C_BOLD}$port${C_RESET} (有效范围: 1-65535)"
         return 1
     fi
@@ -104,7 +104,7 @@ add_port_rule() {
 
     # 记录到用户端口映射文件
     priv_mkdir -p "$(dirname "$USER_PORT_MAP_FILE")"
-    echo "$username:$port:$protocol:${from_ip:-any}:$(date +%Y-%m-%d)" >> "$USER_PORT_MAP_FILE"
+    echo "$username:$port:$protocol:${from_ip:-any}:$(date +%Y-%m-%d)" >>"$USER_PORT_MAP_FILE"
     return 0
 }
 
@@ -123,7 +123,7 @@ delete_port_rule() {
     fi
 
     # 验证端口号范围 1-65535
-    if ! [[ "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || ((port < 1 || port > 65535)); then
         msg_err "无效的端口号: ${C_BOLD}$port${C_RESET} (有效范围: 1-65535)"
         return 1
     fi
@@ -161,10 +161,10 @@ delete_port_rule() {
     for num in $rule_nums; do
         msg_info "  删除规则 ${C_DIM}#${num}${C_RESET}"
         echo "y" | priv_ufw delete "$num"
-        ((deleted+=1))
+        ((deleted += 1))
     done
 
-    if (( deleted > 0 )); then
+    if ((deleted > 0)); then
         msg_ok "成功删除 ${C_BGREEN}$deleted${C_RESET} 条规则"
         record_user_event "$username" "firewall_del" "删除端口规则: $port/$protocol"
 
@@ -204,9 +204,9 @@ delete_user_all_rules() {
         if [[ "$user" == "$username" ]]; then
             ports+=("$port:$protocol")
         fi
-    done < "$USER_PORT_MAP_FILE"
+    done <"$USER_PORT_MAP_FILE"
 
-    if (( ${#ports[@]} == 0 )); then
+    if ((${#ports[@]} == 0)); then
         msg_info "用户 ${C_BOLD}$username${C_RESET} 没有防火墙规则"
         return 0
     fi
@@ -215,7 +215,7 @@ delete_user_all_rules() {
     for entry in "${ports[@]}"; do
         local p="${entry%%:*}"
         local proto="${entry##*:}"
-        delete_port_rule "$username" "$p" "$proto" && ((deleted+=1))
+        delete_port_rule "$username" "$p" "$proto" && ((deleted += 1))
     done
 
     msg_ok "共删除 ${C_BGREEN}$deleted${C_RESET} 条规则"
@@ -297,11 +297,11 @@ list_user_firewall_rules() {
             [[ "$protocol" == "udp" ]] && proto_color="$C_RESET"
             printf "  ${C_BGREEN}%-12s${C_RESET} ${proto_color}%-10s${C_RESET} ${C_RESET}%-18s${C_RESET} ${C_DIM}%-14s${C_RESET}\n" \
                 "$port" "$protocol" "$source" "$date"
-            ((found+=1))
+            ((found += 1))
         fi
-    done < "$USER_PORT_MAP_FILE"
+    done <"$USER_PORT_MAP_FILE"
 
-    if (( found == 0 )); then
+    if ((found == 0)); then
         msg_info "该用户没有防火墙规则"
     else
         echo ""
@@ -332,8 +332,8 @@ show_port_usage() {
         [[ "$protocol" == "udp" ]] && proto_color="$C_RESET"
         printf "  ${C_BOLD}%-16s${C_RESET} ${C_BGREEN}%-12s${C_RESET} ${proto_color}%-10s${C_RESET} ${C_RESET}%-18s${C_RESET} ${C_DIM}%-14s${C_RESET}\n" \
             "$user" "$port" "$protocol" "$source" "$date"
-        ((total+=1))
-    done < "$USER_PORT_MAP_FILE"
+        ((total += 1))
+    done <"$USER_PORT_MAP_FILE"
 
     echo ""
     draw_line 60
@@ -365,15 +365,15 @@ add_port_range() {
     fi
 
     # 验证端口范围
-    if ! [[ "$start_port" =~ ^[0-9]+$ ]] || (( start_port < 1 || start_port > 65535 )); then
+    if ! [[ "$start_port" =~ ^[0-9]+$ ]] || ((start_port < 1 || start_port > 65535)); then
         msg_err "无效的起始端口: ${C_BOLD}$start_port${C_RESET}"
         return 1
     fi
-    if ! [[ "$end_port" =~ ^[0-9]+$ ]] || (( end_port < 1 || end_port > 65535 )); then
+    if ! [[ "$end_port" =~ ^[0-9]+$ ]] || ((end_port < 1 || end_port > 65535)); then
         msg_err "无效的结束端口: ${C_BOLD}$end_port${C_RESET}"
         return 1
     fi
-    if (( start_port > end_port )); then
+    if ((start_port > end_port)); then
         msg_err "起始端口 ${C_BOLD}$start_port${C_RESET} 不能大于结束端口 ${C_BOLD}$end_port${C_RESET}"
         return 1
     fi
@@ -395,7 +395,7 @@ add_port_range() {
 
         # 记录到映射文件
         priv_mkdir -p "$(dirname "$USER_PORT_MAP_FILE")"
-        echo "$username:$start_port-$end_port:$protocol:any:$(date +%Y-%m-%d)" >> "$USER_PORT_MAP_FILE"
+        echo "$username:$start_port-$end_port:$protocol:any:$(date +%Y-%m-%d)" >>"$USER_PORT_MAP_FILE"
         return 0
     else
         msg_err "端口范围规则添加失败"
@@ -433,64 +433,64 @@ apply_service_template() {
     fi
 
     case "$service" in
-        web)
-            draw_header "应用 Web 服务模板"
-            msg_step "添加 HTTP  (${C_BGREEN}80/tcp${C_RESET})"
-            add_port_rule "$username" 80 tcp
-            msg_step "添加 HTTPS (${C_BGREEN}443/tcp${C_RESET})"
-            add_port_rule "$username" 443 tcp
+    web)
+        draw_header "应用 Web 服务模板"
+        msg_step "添加 HTTP  (${C_BGREEN}80/tcp${C_RESET})"
+        add_port_rule "$username" 80 tcp
+        msg_step "添加 HTTPS (${C_BGREEN}443/tcp${C_RESET})"
+        add_port_rule "$username" 443 tcp
+        ;;
+    database)
+        draw_header "应用数据库服务模板"
+        echo ""
+        msg_info "选择数据库类型:"
+        echo -e "  ${C_DIM}[${C_RESET}${C_RESET} 1${C_RESET}${C_DIM}]${C_RESET}  MySQL      ${C_DIM}(3306/tcp)${C_RESET}"
+        echo -e "  ${C_DIM}[${C_RESET}${C_RESET} 2${C_RESET}${C_DIM}]${C_RESET}  PostgreSQL ${C_DIM}(5432/tcp)${C_RESET}"
+        echo -e "  ${C_DIM}[${C_RESET}${C_RESET} 3${C_RESET}${C_DIM}]${C_RESET}  MongoDB    ${C_DIM}(27017/tcp)${C_RESET}"
+        echo ""
+        echo -ne "  ${C_RESET}❯${C_RESET} "
+        read -r db_choice
+        case "$db_choice" in
+        1 | mysql)
+            msg_step "添加 MySQL (${C_BGREEN}3306/tcp${C_RESET})"
+            add_port_rule "$username" 3306 tcp
             ;;
-        database)
-            draw_header "应用数据库服务模板"
-            echo ""
-            msg_info "选择数据库类型:"
-            echo -e "  ${C_DIM}[${C_RESET}${C_RESET} 1${C_RESET}${C_DIM}]${C_RESET}  MySQL      ${C_DIM}(3306/tcp)${C_RESET}"
-            echo -e "  ${C_DIM}[${C_RESET}${C_RESET} 2${C_RESET}${C_DIM}]${C_RESET}  PostgreSQL ${C_DIM}(5432/tcp)${C_RESET}"
-            echo -e "  ${C_DIM}[${C_RESET}${C_RESET} 3${C_RESET}${C_DIM}]${C_RESET}  MongoDB    ${C_DIM}(27017/tcp)${C_RESET}"
-            echo ""
-            echo -ne "  ${C_RESET}❯${C_RESET} "
-            read -r db_choice
-            case "$db_choice" in
-                1|mysql)
-                    msg_step "添加 MySQL (${C_BGREEN}3306/tcp${C_RESET})"
-                    add_port_rule "$username" 3306 tcp
-                    ;;
-                2|postgresql|pg)
-                    msg_step "添加 PostgreSQL (${C_BGREEN}5432/tcp${C_RESET})"
-                    add_port_rule "$username" 5432 tcp
-                    ;;
-                3|mongodb|mongo)
-                    msg_step "添加 MongoDB (${C_BGREEN}27017/tcp${C_RESET})"
-                    add_port_rule "$username" 27017 tcp
-                    ;;
-                *)
-                    msg_err "不支持的数据库类型: ${C_BOLD}$db_choice${C_RESET}"
-                    return 1
-                    ;;
-            esac
+        2 | postgresql | pg)
+            msg_step "添加 PostgreSQL (${C_BGREEN}5432/tcp${C_RESET})"
+            add_port_rule "$username" 5432 tcp
             ;;
-        ssh)
-            draw_header "应用 SSH 服务模板"
-            echo -ne "  ${C_RESET}❯${C_RESET} 输入 SSH 端口 ${C_DIM}(默认 22)${C_RESET}: "
-            read -r ssh_port
-            ssh_port="${ssh_port:-22}"
-            if ! [[ "$ssh_port" =~ ^[0-9]+$ ]] || (( ssh_port < 1 || ssh_port > 65535 )); then
-                msg_err "无效的端口号: ${C_BOLD}$ssh_port${C_RESET}"
-                return 1
-            fi
-            msg_step "添加 SSH (${C_BGREEN}${ssh_port}/tcp${C_RESET})"
-            add_port_rule "$username" "$ssh_port" tcp
-            ;;
-        jupyter)
-            draw_header "应用 Jupyter Notebook 模板"
-            msg_step "添加 Jupyter (${C_BGREEN}8888/tcp${C_RESET})"
-            add_port_rule "$username" 8888 tcp
+        3 | mongodb | mongo)
+            msg_step "添加 MongoDB (${C_BGREEN}27017/tcp${C_RESET})"
+            add_port_rule "$username" 27017 tcp
             ;;
         *)
-            msg_err "未知的服务类型: ${C_BOLD}$service${C_RESET}"
-            msg_info "支持的类型: ${C_RESET}web${C_RESET} | ${C_RESET}database${C_RESET} | ${C_RESET}ssh${C_RESET} | ${C_RESET}jupyter${C_RESET}"
+            msg_err "不支持的数据库类型: ${C_BOLD}$db_choice${C_RESET}"
             return 1
             ;;
+        esac
+        ;;
+    ssh)
+        draw_header "应用 SSH 服务模板"
+        echo -ne "  ${C_RESET}❯${C_RESET} 输入 SSH 端口 ${C_DIM}(默认 22)${C_RESET}: "
+        read -r ssh_port
+        ssh_port="${ssh_port:-22}"
+        if ! [[ "$ssh_port" =~ ^[0-9]+$ ]] || ((ssh_port < 1 || ssh_port > 65535)); then
+            msg_err "无效的端口号: ${C_BOLD}$ssh_port${C_RESET}"
+            return 1
+        fi
+        msg_step "添加 SSH (${C_BGREEN}${ssh_port}/tcp${C_RESET})"
+        add_port_rule "$username" "$ssh_port" tcp
+        ;;
+    jupyter)
+        draw_header "应用 Jupyter Notebook 模板"
+        msg_step "添加 Jupyter (${C_BGREEN}8888/tcp${C_RESET})"
+        add_port_rule "$username" 8888 tcp
+        ;;
+    *)
+        msg_err "未知的服务类型: ${C_BOLD}$service${C_RESET}"
+        msg_info "支持的类型: ${C_RESET}web${C_RESET} | ${C_RESET}database${C_RESET} | ${C_RESET}ssh${C_RESET} | ${C_RESET}jupyter${C_RESET}"
+        return 1
+        ;;
     esac
 
     msg_ok "服务模板 ${C_BOLD}$service${C_RESET} 应用完成"
@@ -504,16 +504,16 @@ apply_service_template() {
 validate_ipv4() {
     local ip="$1"
     local regex='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
-    
+
     [[ ! "$ip" =~ $regex ]] && return 1
-    
+
     local IFS='.'
-    read -ra octets <<< "$ip"
-    
+    read -ra octets <<<"$ip"
+
     for octet in "${octets[@]}"; do
-        (( octet < 0 || octet > 255 )) && return 1
+        ((octet < 0 || octet > 255)) && return 1
     done
-    
+
     return 0
 }
 
@@ -521,16 +521,16 @@ validate_ipv4() {
 validate_cidr() {
     local cidr="$1"
     local regex='^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$'
-    
+
     [[ ! "$cidr" =~ $regex ]] && return 1
-    
+
     local ip prefix
     ip="${cidr%/*}"
     prefix="${cidr#*/}"
-    
+
     validate_ipv4 "$ip" || return 1
-    (( prefix < 0 || prefix > 32 )) && return 1
-    
+    ((prefix < 0 || prefix > 32)) && return 1
+
     return 0
 }
 
@@ -543,14 +543,14 @@ check_port_rule_exists() {
     local port="$1"
     local protocol="$2"
     local username="${3:-}"
-    
+
     local rules
     rules=$(priv_ufw status numbered 2>/dev/null | grep -E "^[[:space:]]*\[[0-9]+\].*${port}/${protocol}")
-    
+
     if [[ -n "$username" ]]; then
         rules=$(echo "$rules" | grep "user $username")
     fi
-    
+
     [[ -n "$rules" ]]
 }
 
@@ -559,14 +559,14 @@ detect_rule_conflicts() {
     local port="$1"
     local protocol="$2"
     local username="$3"
-    
+
     local conflicts=""
-    
+
     # 检查UFW规则
     if check_port_rule_exists "$port" "$protocol"; then
         conflicts+="UFW规则已存在: $port/$protocol\n"
     fi
-    
+
     # 检查端口映射文件
     if [[ -f "$USER_PORT_MAP_FILE" ]]; then
         local existing
@@ -579,13 +579,13 @@ detect_rule_conflicts() {
             fi
         fi
     fi
-    
+
     if [[ -n "$conflicts" ]]; then
         msg_warn "检测到规则冲突:"
         echo -e "$conflicts"
         return 1
     fi
-    
+
     return 0
 }
 
@@ -600,16 +600,16 @@ readonly PORT_MAP_LOCK="/tmp/user_manager_port_map.lock"
 acquire_port_map_lock() {
     local timeout="${1:-10}"
     local waited=0
-    
-    while (( waited < timeout )); do
+
+    while ((waited < timeout)); do
         if mkdir "$PORT_MAP_LOCK" 2>/dev/null; then
-            echo $$ > "$PORT_MAP_LOCK/pid"
+            echo $$ >"$PORT_MAP_LOCK/pid"
             return 0
         fi
         sleep 0.5
         ((waited++))
     done
-    
+
     msg_err "无法获取端口映射文件锁"
     return 1
 }
@@ -628,11 +628,11 @@ release_port_map_lock() {
 # 安全写入端口映射文件
 safe_write_port_map() {
     local entry="$1"
-    
+
     acquire_port_map_lock || return 1
-    
-    echo "$entry" >> "$USER_PORT_MAP_FILE"
-    
+
+    echo "$entry" >>"$USER_PORT_MAP_FILE"
+
     release_port_map_lock
 }
 
@@ -645,47 +645,47 @@ delete_port_rule_safe() {
     local username="$1"
     local port="$2"
     local protocol="${3:-tcp}"
-    
+
     if [[ -z "$username" || -z "$port" ]]; then
         msg_err "用户名和端口号不能为空"
         return 1
     fi
-    
+
     check_ufw_status || return 1
-    
+
     # 查找匹配的规则（同时匹配端口和用户名）
     local rule_nums
-    rule_nums=$(priv_ufw status numbered 2>/dev/null | \
-        grep -E "^[[:space:]]*\[[0-9]+\].*${port}/${protocol}" | \
-        grep "user $username" | \
-        grep -oE '^\[[[:space:]]*[0-9]+\]' | \
-        tr -d '[] ' | \
+    rule_nums=$(priv_ufw status numbered 2>/dev/null |
+        grep -E "^[[:space:]]*\[[0-9]+\].*${port}/${protocol}" |
+        grep "user $username" |
+        grep -oE '^\[[[:space:]]*[0-9]+\]' |
+        tr -d '[] ' |
         sort -rn)
-    
+
     if [[ -z "$rule_nums" ]]; then
         msg_warn "未找到用户 ${C_BOLD}$username${C_RESET} 的端口 ${C_BGREEN}$port${C_RESET}/${C_RESET}$protocol${C_RESET} 规则"
         return 0
     fi
-    
+
     # 删除规则（从大到小删除，避免编号变化）
     local deleted=0
     for num in $rule_nums; do
         msg_step "删除规则 [$num]..."
-        echo "y" | priv_ufw delete "$num" && ((deleted+=1))
+        echo "y" | priv_ufw delete "$num" && ((deleted += 1))
     done
-    
+
     # 从映射文件中删除
     if [[ -f "$USER_PORT_MAP_FILE" ]]; then
         acquire_port_map_lock || return 1
-        
+
         local temp_file
         temp_file=$(mktemp)
-        grep -v "^${username}:${port}:${protocol}:" "$USER_PORT_MAP_FILE" > "$temp_file" 2>/dev/null || true
+        grep -v "^${username}:${port}:${protocol}:" "$USER_PORT_MAP_FILE" >"$temp_file" 2>/dev/null || true
         mv "$temp_file" "$USER_PORT_MAP_FILE"
-        
+
         release_port_map_lock
     fi
-    
+
     msg_ok "已删除 $deleted 条规则"
     record_user_event "$username" "firewall_delete" "删除端口规则: $port/$protocol"
 }

@@ -55,13 +55,13 @@ prompt_delete_user_group() {
 _handle_user_group_menu() {
     local opt="$1"
     case "$opt" in
-        1) safe_run prompt_add_user_to_group ;;
-        2) safe_run prompt_remove_user_from_group ;;
-        3) safe_run prompt_show_user_groups ;;
-        4) safe_run prompt_show_group_members ;;
-        5) safe_run prompt_create_user_group ;;
-        6) safe_run prompt_delete_user_group ;;
-        *) msg_err "无效的选项" ;;
+    1) safe_run prompt_add_user_to_group ;;
+    2) safe_run prompt_remove_user_from_group ;;
+    3) safe_run prompt_show_user_groups ;;
+    4) safe_run prompt_show_group_members ;;
+    5) safe_run prompt_create_user_group ;;
+    6) safe_run prompt_delete_user_group ;;
+    *) msg_err "无效的选项" ;;
     esac
 }
 

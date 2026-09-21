@@ -36,13 +36,13 @@ _logs_encode_value() {
     for ((i = 0; i < ${#value}; i++)); do
         ch="${value:i:1}"
         case "$ch" in
-            [-A-Za-z0-9._~/])
-                encoded+="$ch"
-                ;;
-            *)
-                printf -v byte '%%%02X' "'$ch"
-                encoded+="$byte"
-                ;;
+        [-A-Za-z0-9._~/])
+            encoded+="$ch"
+            ;;
+        *)
+            printf -v byte '%%%02X' "'$ch"
+            encoded+="$byte"
+            ;;
         esac
     done
 

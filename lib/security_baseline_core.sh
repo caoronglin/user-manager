@@ -79,7 +79,7 @@ _security_baseline_write_fail2ban_jail_file() {
     if declare -F write_privileged_text_file >/dev/null 2>&1; then
         printf '%s\n' "$@" | write_privileged_text_file "$jail_file" "0644" "root:root" || return 1
     else
-        printf '%s\n' "$@" > "$jail_file" || return 1
+        printf '%s\n' "$@" >"$jail_file" || return 1
     fi
 }
 
@@ -238,7 +238,7 @@ security_baseline_fail2ban_list_jails() {
                 }
             }
         }
-    ' <<< "$status_output"
+    ' <<<"$status_output"
 }
 
 security_baseline_fail2ban_show_jail_status() {
@@ -316,16 +316,16 @@ security_baseline_configure_fail2ban_sshd_jail() {
 check_sensitive_file_permissions() {
     local files=("$@")
     local issues=()
-    
+
     for file in "${files[@]}"; do
         if [[ -f "$file" ]]; then
             local perms
             perms=$(stat -c %a "$file" 2>/dev/null || echo "unknown")
-            
+
             if [[ "$perms" != "600" && "$perms" != "400" && "$perms" != "700" ]]; then
                 issues+=("$file:$perms")
                 msg_warn "不安全的权限: $file (当前: $perms)"
-                
+
                 if chmod 600 "$file" 2>/dev/null; then
                     msg_ok "已修复权限为 600: $file"
                 else
@@ -334,12 +334,12 @@ check_sensitive_file_permissions() {
             fi
         fi
     done
-    
-    if (( ${#issues[@]} > 0 )); then
+
+    if ((${#issues[@]} > 0)); then
         msg_warn "发现 ${#issues[@]} 个文件权限问题"
         return 1
     fi
-    
+
     return 0
 }
 
@@ -347,24 +347,24 @@ check_sensitive_file_permissions() {
 validate_path_safety() {
     local path="$1"
     local allow_tmp="${2:-false}"
-    
+
     local real_path
     real_path=$(realpath -m "$path" 2>/dev/null || echo "")
-    
+
     if [[ -z "$real_path" ]]; then
         msg_err "无效路径: $path"
         return 1
     fi
-    
+
     if [[ "$path" =~ \.\. ]]; then
         msg_warn "路径包含相对路径符号: $path"
     fi
-    
+
     local allowed_dirs=("/home" "/mnt" "/opt" "/var/backups")
     if [[ "$allow_tmp" == "true" ]]; then
         allowed_dirs+=("/tmp")
     fi
-    
+
     local in_allowed=false
     for dir in "${allowed_dirs[@]}"; do
         if [[ "$real_path" == "$dir"* ]]; then
@@ -372,34 +372,34 @@ validate_path_safety() {
             break
         fi
     done
-    
+
     if ! $in_allowed; then
         msg_err "路径不在允许的目录中: $real_path"
         msg_info "允许的目录: ${allowed_dirs[*]}"
         return 1
     fi
-    
+
     return 0
 }
 
 # 验证端口号
 validate_port() {
     local port="$1"
-    
+
     if ! [[ "$port" =~ ^[0-9]+$ ]]; then
         msg_err "无效的端口号: $port"
         return 1
     fi
-    
-    if (( port < 1 || port > 65535 )); then
+
+    if ((port < 1 || port > 65535)); then
         msg_err "端口号超出范围 (1-65535): $port"
         return 1
     fi
-    
-    if (( port < 1024 )); then
+
+    if ((port < 1024)); then
         msg_warn "特权端口需要 root 权限: $port"
     fi
-    
+
     return 0
 }
 
@@ -407,21 +407,21 @@ validate_port() {
 validate_ip_address() {
     local ip="$1"
     local regex='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
-    
+
     if ! [[ "$ip" =~ $regex ]]; then
         msg_err "无效的 IP 地址格式: $ip"
         return 1
     fi
-    
+
     local IFS='.'
-    read -ra octets <<< "$ip"
+    read -ra octets <<<"$ip"
     for octet in "${octets[@]}"; do
-        if (( octet < 0 || octet > 255 )); then
+        if ((octet < 0 || octet > 255)); then
             msg_err "IP 地址八位组超出范围: $octet"
             return 1
         fi
     done
-    
+
     return 0
 }
 
@@ -429,12 +429,12 @@ validate_ip_address() {
 validate_email() {
     local email="$1"
     local regex='^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    
+
     if ! [[ "$email" =~ $regex ]]; then
         msg_err "无效的邮箱地址: $email"
         return 1
     fi
-    
+
     return 0
 }
 
@@ -442,12 +442,12 @@ validate_email() {
 validate_quota_format() {
     local quota="$1"
     local regex='^[0-9]+[KMGT]?$'
-    
+
     if ! [[ "$quota" =~ $regex ]]; then
         msg_err "无效的配额格式: $quota"
         msg_info "正确格式示例: 500G, 1T, 100M"
         return 1
     fi
-    
+
     return 0
 }

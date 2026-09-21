@@ -34,6 +34,30 @@
 - 已完成只读调用链和失败分支定位：用户看到的错误由 `safe_run` 统一包装，当前不足以判定根因。
 - 未修改创建流程；正在等待报错前后的非敏感运行时输出与调用上下文，再进行最小可复现和根因验证。
 
+### 功能与 TUI 渲染探索（进行中）
+
+- 只读运行证据检索完成：当前项目日志未记录 `create_or_assign_user` 失败分支，当前锁不存在；历史配额失败与本次报告没有可验证关联。
+- 已用无 locale 环境稳定复现 `tui_detect_terminal` 的 nounset 崩溃：`lib/tui_core.sh:28: LANG: unbound variable`。
+- 已确认当前数据驱动主菜单未接入已有分页逻辑，长菜单在常见终端高度存在静态溢出风险；TUI 相关定向基线仍通过：`test_user_core.sh` 36/36、`test_tui_native_forms.sh` 5/5、`test_tui_mainline.sh` 62/62。
+- 尚未改动功能或渲染代码；等待用户确认实际失败入口和本轮修复优先级后，按 brainstorming 设计门禁提出最小方案。
+
+### TUI 渲染韧性设计（已复核，准备实施）
+
+- 已将用户明确的 locale、分页、宽字符和状态栏范围细化为本地设计：`docs/superpowers/specs/2026-07-21-tui-rendering-resilience-design.md`，未提交。
+- 设计纳入两个分页必须先修复的已复现导航根因：同菜单 redraw 重置状态，以及 command substitution 令 22 个 handler 丢失导航状态。
+- 未修改任何 TUI 源码或测试；下一步是用户审阅设计说明，批准后才能写实施计划。
+
+### TUI 设计自审
+
+- 已自审 `2026-07-21-tui-rendering-resilience-design.md`：补足 `TERM` 未定义时的安全降级、菜单缓存的循环边界，以及 state 模式必须在父 shell 执行的兼容约束。
+- 文档无 TODO/占位符；源码和测试尚未修改，等待用户审阅该本地设计说明。
+
+### TUI 设计复核与实施计划
+
+- Oracle 设计复核提出 6 项必须关闭的风险：主循环仍经子 shell、`tui_init` 后同 ID 缓存空菜单、无 TERM 时颜色 token nounset、22 个 handler 与原生表单测试不闭合、UTF-8 能力判断不足、低于 7 行的布局冲突和无高亮。
+- 用户已授权在完成设计复核后实施；设计说明已补充这 6 项强制验收条件。
+- 本地计划已写入 `docs/superpowers/plans/2026-07-21-tui-rendering-resilience.md`，将按 core、menus、manager/tests 三条无重叠写入 lane 实施。尚未提交、推送、合并或回滚。
+
 ### 根因与范围
 
 - 已稳定复现：CI 解析 `Miniforge.sh` 失败、两份模块测试计数失真、动作注册表重复 source 只读警告、SMB 测试的 PATH/mkdir 噪声。
@@ -155,3 +179,131 @@
 - 静态门禁：修改文件 `bash -n` 通过；`shellcheck -S error` 通过。
 - LSP：全仓库 `.sh` 0 errors，仅保留既有 shellcheck warning/info。
 - 回归：`bash tests/run_regression.sh --level p0` 1/1 通过；`bash tests/run_regression.sh --level p1` 18/18 通过。
+
+## 2026-08-13 跨服务器/GPU 原型与设计
+
+- 生成可视化管理平台原型，覆盖功能扩展、五段式交互、多智能体分派、SSH Provider 和 GPU 预留。
+- Playwright 验证 1440px 与 390px 视口无横向溢出，页面无脚本错误，三套演进方案完整。
+- 浏览器最终选择 `SSH-FIRST`；用户批准架构、交互、首期范围和可靠性门禁。
+- 写入本地设计说明 `docs/superpowers/specs/2026-08-13-remote-gpu-management-foundation-design.md`，未提交。
+
+## 2026-08-16 执行优化与清理
+
+### P0 修复
+- `user_manager.sh`：严格模式改为“仅直接执行时启用”，避免被 source 时覆盖测试调用方；`send_all_user_reports`/`check_expired_suspensions` 显式 `|| return $?` 传播退出码。`test_tui_mainline.sh` 由 68/70 修复为 70/70。
+- 修复 4 个测试的 stdin 挂死：`priv_crontab`/`smbpasswd` 桩只在接收密码/安装 crontab 时消费 stdin；`test_password_change_smb`、`test_rl_privilege`、`test_user_core`、`test_smb_core` 不再阻塞。
+- `tests/run_regression.sh`：新增每套件超时保护（默认 180s，`UM_TEST_TIMEOUT` 可调），并为非交互套件统一 `</dev/null`。
+
+### 性能
+- 默认 P1 不再重复运行全量 ShellCheck warning 门禁；需要时用 `--include-lint` 或 `UM_INCLUDE_LINT=1`。P1 从约 71s 降到约 20s。
+- P1 回归 31/31 通过；`--level all` 32 通过、1 skip（P2 未启用）。
+
+### 清理
+- `Miniforge.sh`（100MB）已移动到 `/tmp/umg_cleanup_backup/Miniforge.sh`。
+- 删除空目录 `.agents`、`.codex`、`.worktrees`。
+- 删除 10 个已合入 main 的本地 feature 分支。
+- 清理本地 `data/` 与 `logs/` 下的运行数据/日志（备份在 `/tmp/umg_cleanup_backup/`）。
+- `lib/ui_menu_modern.sh`、`lib/privilege_cache.sh` 归档到 `archive/lib/`，并同步更新 ARCHITECTURE/DEEPWIKI/verify_fixes。
+- CI validate-docs 移除“必须包含 Installation”的过期检查。
+
+### 状态
+- 未提交、未推送；所有改动保留在工作区。
+
+## 2026-08-16 第二轮：并行/轻量 profile/输入校验
+
+### 并行回归
+- P1 默认并行执行（`UM_TEST_JOBS` 默认 4），每个测试使用独立临时 `USER_MANAGER_DATA_BASE`/`USER_MANAGER_BACKUP_ROOT`。
+- 新增 `--no-parallel` 关闭并行、`UM_TEST_JOBS` 调整并发数。
+- 实测 P1 31/31：约 20s（顺序）→ 约 8.5s（并行 4 任务）。
+
+### 轻量加载 profile
+- `lib/bootstrap.sh` 新增 `minimal` profile：common/config/env/action_registry/access_control/privilege/smb_core/quota_core/user_core/audit_core。
+- `scripts/rl-user-list.sh`、`scripts/rl-audit-query.sh` 改用 `minimal`。
+- 修复 7 个独立脚本 `VAR=... source` 变量不持久化问题，改为先赋值再 source。
+- 修复 `collect_quota_users` 在 pipefail + repquota 不可用时误报 ERR。
+
+### 安全输入校验
+- `rl_mail_queue.sh`：入队必填字段、优先级 1-10、队列 ID 正整数、保留天数/处理数量正整数校验。
+- `async_core.sh`：任务类型/ID 安全字符、优先级 1-10、数量/保留天数正整数、清理/列表/查询参数防 SQL 注入形态。
+- `test_security_hardening.sh` 新增 4 个输入校验回归测试，14/14 通过。
+
+### 验证
+- `bash -n`、`shellcheck -S error`：新增/修改脚本通过。
+- `run_regression.sh --level p1`：31/31 通过，约 8.5s。
+
+## 2026-08-16 第三轮：SMB 管理板块 + Action 工具链
+
+### SMB 管理
+- `lib/smb_core.sh` 扩展：
+  - `smb_show_status`：SMB 服务/命令可用性状态。
+  - `smb_list_users` / `smb_user_exists` / `smb_show_user_status`：只读查询。
+  - `smb_delete_user`：移除 SMB 用户。
+  - 所有用户名统一安全字符校验，拒绝注入形态用户名。
+- 新增 `scripts/rl-smb-manage.sh`：`list|status|show|password|disable|enable|remove`。
+- TUI 网络与安全菜单新增“SMB 管理”子菜单，包含状态/列表/查看/设密/禁用/启用/移除。
+- Action Registry 新增 7 个 `smb.*` actions，并注册 CLI handlers。
+- `tests/test_smb_core.sh` 扩展至 14 个用例。
+
+### Action 工具链
+- 新增 `scripts/rl-action-list.sh`：
+  - `--plain` / `--markdown` 输出 Action 表。
+  - `--check` 加载 full profile + controllers，校验全部 handler 存在。
+- README 补充 SMB 管理脚本与 `smb.*` action 表。
+- `tests/test_scripts.sh` 增加 `rl-smb-manage.sh`、`rl-action-list.sh` 存在性与 help 测试。
+
+### 验证
+- `bash -n`、`shellcheck -S error`：通过。
+- `test_smb_core.sh` 14/14、`test_action_registry.sh`、`test_scripts.sh`、`test_tui_mainline.sh` 70/70 通过。
+- `run_regression.sh --level p1`：31/31 通过，约 9.6s。
+
+## 2026-08-16 第四轮：shfmt 全量格式化 + SMB 共享 + 密码安全
+
+### shfmt
+- 仓库全部 `.sh` 已按 shfmt v3.12.0 默认格式全量格式化。
+- CI format job 从提示模式改为阻断模式，安装版本同步为 v3.12.0。
+- pre-commit shfmt rev 同步为 v3.12.0-1。
+
+### SMB 共享管理
+- `lib/smb_core.sh` 新增：
+  - `smb_share_list`：解析 `smb.conf` 共享。
+  - `smb_share_add`：写入 `/etc/samba/user-manager-shares.conf` drop-in。
+  - `smb_share_remove`：从 drop-in 配置删除共享段。
+- 新增 actions：`smb.shares`、`smb.share.add`、`smb.share.remove`。
+- `rl-smb-manage.sh` 增加 `shares`、`share-add`、`share-remove`。
+- TUI 与经典 CLI 的 SMB 菜单均加入共享管理项。
+- `test_smb_core.sh` 扩展到 17 个用例。
+
+### 密码安全
+- 密码池消费加 `flock` 目录锁，避免并发取到同一密码。
+- 邮件队列 `password_notify` 不再把明文密码写入 SQLite：密码写入 0600 secret 文件，DB 只保存 token。
+- secret 文件默认使用 AES-256-CBC + HMAC-SHA256（encrypt-then-MAC）加密落盘，密钥由 `data/secrets/.key`（0600）管理；支持 `EMAIL_QUEUE_MASTER_KEY` 注入父密钥以对接外部 KMS，密文格式 `v1:<iv>:<ct>:<mac>`，内含独立随机 IV 与 HMAC 认证（防篡改）；无 openssl 时退化为明文 + 0600；提供 `rl_mail_queue_migrate_secret` 迁移存量明文 secret；`data/secrets/` 已加入 `.gitignore`。
+- 修复 `${N:-{}}` 参数展开多出一个 `}` 的通用 bug（影响 `rl_mail_queue`、`rl_wecom_bot_sender`、`shell_config`）。
+- 修复 `rl_mail_queue_enqueue` 用独立进程取 `last_insert_rowid()` 恒为 0 的 bug，改为同一条 SQLite 调用返回 ID。
+- `test_security_hardening.sh` 扩展到 19 个用例（新增 secret 加密/解密往返/篡改检测/明文迁移 4 例）。
+
+### 验证
+- `bash -n`、`shellcheck -S error`、`shfmt -d`：全部通过。
+- `test_smb_core.sh` 17/17、`test_security_hardening.sh` 15/15、`test_tui_mainline.sh` 70/70。
+- `rl-action-list.sh --check`：26 个 action handler 全部存在。
+- `run_regression.sh --level all`：32 passed / 0 failed / 1 skipped。
+
+## 2026-08-16 第五轮：SMB 主配置 include 自动化管理（smb-engineer）
+
+### 完成内容
+- `lib/smb_core.sh` 新增：
+  - `_smb_parse_shares`：解析单个 Samba 配置的 `[share]` 段（输出 `name|path`）。
+  - `smb_share_list`：合并 `smb.conf` 与托管 drop-in `user-manager-shares.conf`，同名以 drop-in 覆盖。
+  - `smb_include_status`：只读检查主配置是否已 `include = <drop-in>`（容忍任意空白）。
+  - `smb_ensure_include`：幂等确保主配置 include 托管配置（优先 `priv_tee`，测试环境回退直写）。
+  - `smb_share_add` 新增共享后自动调用 `smb_ensure_include`（失败仅告警，不阻断共享段写入）。
+- 新增 action `smb.include`（status|ensure）与 CLI handler `rl_action_smb_include_cli`。
+- `scripts/rl-smb-manage.sh` 新增 `include status|ensure` 子命令。
+- 经典 CLI 子菜单（`lib/controller_submenus.sh`）与 TUI（`tui_manager.sh` + `lib/tui_menus.sh`）均新增「主配置 include 托管配置」入口。
+- `tests/test_smb_core.sh` 扩展至 20 个用例（新增幂等 include、drop-in 合并列表、share_add 自动 include 三项）。
+- README 补充 `smb.include` action 行；ARCHITECTURE 补充 `lib/smb_core.sh` 模块说明。
+
+### 验证
+- `bash -n`、`shellcheck -S error`、`git diff --check`：通过。
+- `test_smb_core.sh` 20/20、`test_action_registry.sh` 24/24、`test_scripts.sh` 16/16、`test_tui_mainline.sh` 70/70。
+- `rl-action-list.sh --check`：27 个 action handler 全部存在。
+- `run_regression.sh --level p1`：31/31；`--level all`：32 passed / 0 failed / 1 skipped。
