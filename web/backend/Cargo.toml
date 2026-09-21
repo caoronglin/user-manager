@@ -1,0 +1,66 @@
+[package]
+name = "umweb"
+version = "0.1.0"
+edition = "2021"
+description = "User Manager Web console — non-privileged observation & app-management control plane"
+license = "MIT"
+
+# ============================================================
+# 安全边界（详见 ../docs/WEB_SECURITY_BOUNDARY.md 与仓库 plan.md P0/P1）：
+#   - 本 crate 永不提权：禁止 sudo / su / setuid / capability / 特权 socket；
+#   - 不执行任何系统写操作；不调用 action_run / priv_exec / *core.sh 写路径；
+#   - 不 fork shell / bash / 任意命令 / 任意 SSH；
+#   - 仅通过只读 Snapshot 观测系统数据；Web 自身配置走 Web 数据库。
+# 破坏上述边界的依赖或代码一律不接受。
+# ============================================================
+
+[dependencies]
+# Web 框架 / 异步运行时
+axum = "=0.7.9"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["set-header", "trace", "limit", "timeout", "cors"] }
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 结构化日志 / 追踪
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# 密码哈希（Argon2id）与安全随机
+argon2 = "0.5"
+rand = "0.8"
+
+# 服务端会话 / TOTP / 令牌
+#  - session id 用 CSPRNG，不编码用户信息；
+#  - API token 仅保存 hash；
+#  - TOTP secret 用 Web 独立 master key 加密。
+subtle = "2"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+rand_core = { version = "0.6", features = ["std"] }
+
+# 存储：SQLite（bundled，免外部依赖）
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# 时间 / ID
+time = { version = "0.3", features = ["macros", "formatting", "parsing"] }
+uuid = { version = "1", features = ["v4"] }
+
+# URL 解析（WeCom webhook 白名单校验用；P4）
+url = "2"
+
+# WeCom HTTPS 客户端（P4；将固定 host/path、禁 redirect、设 timeout）
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+[[bin]]
+name = "umweb"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "s"
+lto = true

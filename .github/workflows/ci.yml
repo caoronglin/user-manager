@@ -87,6 +87,15 @@ jobs:
       - name: Check for sensitive files
         run: |
           bash scripts/check_sensitive_files.sh .
+
+      - name: Web backend security gate (no privilege / no system-write / no shell)
+        # plan.md 14.1-14.3：阻断式门禁。web/backend/src 里禁止出现提权/系统管理命令/任意进程派生。
+        run: |
+          # 无 web 源码时（目录缺失）视为跳过，退出码 2。
+          bash scripts/check_web_security.sh web/backend/src
+          rc=$?
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then exit "$rc"; fi
+          echo "web security gate rc=$rc"
       
       - name: Check file permissions
         run: |

@@ -1,0 +1,11 @@
+# Web (Rust) 构建与本地产物
+/backend/target/
+target/
+**/*.rs.bk
+
+# 本地运行生成的测试/开发数据库与快照
+/backend/*.db
+/backend/*.db-*
+*.db-shm
+*.db-wal
+/snap/
