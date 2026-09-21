@@ -38,6 +38,7 @@ P1_SCRIPTS=(
     test_security_baseline_core.sh
     test_security_hardening.sh
     test_security_scan.sh
+    test_web_deploy_boundary.sh
     test_web_security_gate.sh
     test_shell_config_core.sh
     test_smb_core.sh

@@ -1,0 +1,65 @@
+# umweb.service — User Manager Web 控制台（非特权观察面）
+#
+# 关键：umweb 永不提权。即使服务被完全攻破，攻击者最多获得 umweb 普通用户权限。
+# 与采集器 um-snapshot.service（root）严格分离：umweb 只读快照，只写自身 DB/secrets。
+# 安全边界详见 /opt/user-manager/docs/WEB_SECURITY_BOUNDARY.md。
+#
+# 安装（root）：
+#   install -m 0644 etc/systemd/system/umweb.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now umweb.service
+#   路径 /opt/user-manager 需替换为仓库实际部署路径。
+#
+# 注意：任何放宽下列 sandbox 的改动都必须说明原因，并经安全评审（plan.md 12）。
+
+[Unit]
+Description=User Manager Web console (umweb) - non-privileged observation plane
+Documentation=file:/opt/user-manager/docs/WEB_SECURITY_BOUNDARY.md
+After=network.target
+Wants=um-snapshot.timer
+
+[Service]
+Type=simple
+# 以普通系统用户运行，shell 为 nologin，绝不加入特权组。
+User=umweb
+Group=umweb
+
+Environment=RUST_LOG=info
+# umweb 二进制（由 Rust 构建产物）。部署路径需与实际一致。
+ExecStart=/opt/user-manager/web/backend/target/release/umweb
+Restart=on-failure
+RestartSec=2
+
+# 只写自身 DB/secrets；对只读快照目录只读。
+ReadWritePaths=/var/lib/user-manager-web
+ReadOnlyPaths=/var/lib/user-manager-web/snapshots
+
+# ============================================================
+# 硬安全边界：永不提权（plan.md 12.3）
+# ============================================================
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# 出站仅 IPv4/IPv6（企业微信/前端）；AF_UNIX 仅供 journald 日志。禁止访问
+# /var/run/docker.sock 等特权 socket（ProtectSystem=strict + 无 Docker 组已覆盖此点）。
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
