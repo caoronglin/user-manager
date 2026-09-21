@@ -29,7 +29,8 @@
 | `scripts/rl-mail-test.sh` | 测试邮件发送 |
 | `scripts/rl-backup-run.sh` | 触发用户备份 |
 | `scripts/rl-audit-query.sh` | 审计日志查询 |
-| `scripts/rl-smb-manage.sh` | SMB/Samba 账户管理 |
+| `scripts/rl-smb-manage.sh` | SMB/Samba 账户与共享管理 |
+| `scripts/rl-snapshot.sh` | Web 只读快照采集器（可信采集器，供 umweb 只读） |
 | `scripts/rl-action-list.sh` | 列出/导出 Action 注册表，校验 handler |
 | `scripts/rl-system-overview.sh` | 系统概览 (glances) |
 | `scripts/rl-hosts.sh` | 本机/SSH 主机能力与 GPU 只读探测 |
@@ -90,6 +91,22 @@ bash scripts/rl-hosts.sh probe group:gpu --dry-run
 ```bash
 bash run.sh
 ```
+
+## Web 只读快照层（P0）
+
+Web 控制台（规划中）不直接执行系统命令，而是由**可信采集器** `scripts/rl-snapshot.sh`
+生成脱敏、版本化、原子的只读 JSON 快照，供非特权 Web 服务 `umweb` 只读。Web 永不持有
+root/sudo/capability，也不执行任何系统写操作。
+
+```bash
+# 手动生成全部快照到默认目录（部署时由 root + systemd timer 运行）
+bash scripts/rl-snapshot.sh
+# 生成到自定义目录并查看（调试）
+bash scripts/rl-snapshot.sh --out /tmp/snap --dry-run users
+```
+
+安全边界、快照 schema、secret 脱敏与只读权限约定见：
+[`docs/WEB_SECURITY_BOUNDARY.md`](docs/WEB_SECURITY_BOUNDARY.md)。
 
 ## Testing
 

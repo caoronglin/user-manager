@@ -1,0 +1,44 @@
+# um-snapshot.service — User Manager 只读快照采集器（可信采集器）
+#
+# 这是「可信本地采集器」的 systemd 示例。它是只读批处理作业，不是网络服务：
+#   - 以 root 运行，以便读取 repquota / pdbedit 等跨挂载点与系统的只读信息；
+#   - 只调用只读 Core 查询，不执行任何系统写操作；
+#   - 只写 /var/lib/user-manager-web/snapshots（root:umweb 0640），供 umweb 只读；
+#   - 不开 socket、不修改系统配置、不持有 sudoers 授权。
+#
+# 与 Web 服务 umweb.service 完全分离：umweb 只读快照，绝不运行本采集器。
+# 安全边界详见 /opt/user-manager/docs/WEB_SECURITY_BOUNDARY.md。
+#
+# 安装（root）：
+#   install -m 0644 etc/systemd/system/um-snapshot.service /etc/systemd/system/
+#   install -m 0644 etc/systemd/system/um-snapshot.timer  /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now um-snapshot.timer
+#   /opt/user-manager 需替换为仓库实际部署路径。
+
+[Unit]
+Description=User Manager read-only snapshot collector (trusted collector)
+Documentation=file:/opt/user-manager/docs/WEB_SECURITY_BOUNDARY.md
+After=local-fs.target
+ConditionPathIsDirectory=/var/lib/user-manager-web
+
+[Service]
+Type=oneshot
+User=root
+# 采集器入口；部署路径需与实际一致。
+ExecStart=/opt/user-manager/scripts/rl-snapshot.sh
+# 只读批处理作业的基础加固：不加 capability、不加特权组、禁止提权。
+# 采集器本身即 root，无 NoNewPrivileges 提权诉求；此处仍显式禁止 setuid 提权链。
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+# 需要读取用户数据盘(/mnt/dataNN)、Samba 状态(/var/lib/samba)、/proc 等；
+# 唯一可写路径是快照目录。
+ProtectHome=no
+ReadWritePaths=/var/lib/user-manager-web/snapshots
+ProtectSystem=strict
+# 采集失败不应反复拉起；由 timer 负责节奏。
+Restart=no

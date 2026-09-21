@@ -1,0 +1,22 @@
+# um-snapshot.timer — 周期性触发只读快照采集
+#
+# 采集频率必须满足各快照的新鲜度阈值（见 lib/snapshot_core.sh 的 snapshot_kind_threshold）：
+#   audit-summary 30s / resources & system 60s / hosts & gpu 120s / users & quota & smb 300s
+#
+# 单一全量采集 cadence 取所有阈值的最小公倍数节奏即可整体保鲜；若要严格满足 audit 30s，
+# 可另设一个仅采集 audit-summary 的更频繁 timer，或按部署需要下调相应阈值。
+# 这里示例用 60s：能保证 resources/system 新鲜；audit 在最坏情况下 age≈60s，
+# 前端会按其 30s 阈值如实标记 stale（不伪装实时）。按需调整。
+
+[Unit]
+Description=Periodic read-only snapshot collection for User Manager Web
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Persistent=true
+Unit=um-snapshot.service
+
+[Install]
+WantedBy=timers.target

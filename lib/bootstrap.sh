@@ -112,6 +112,23 @@ if [[ -z "${USER_MANAGER_BOOTSTRAP_LOADED:-}" ]]; then
                 "execution_plan.sh"
             )
             ;;
+        snapshot)
+            # 只读快照采集 profile：可信采集器生成 Web 只读快照所需的最小 Core 集合。
+            # 不加载 privilege.sh / access_control.sh / 备份 / 防火墙 / DNS / 报告 / 邮件 / TUI。
+            # 采集器只调用只读查询函数，绝不执行系统写操作。
+            modules=(
+                "common.sh"
+                "config.sh"
+                "env_core.sh"
+                "gpu_core.sh"
+                "host_probe_core.sh"
+                "smb_core.sh"
+                "quota_core.sh"
+                "resource_core.sh"
+                "audit_core.sh"
+                "snapshot_core.sh"
+            )
+            ;;
         tui)
             modules=(
                 "common.sh"

@@ -40,6 +40,7 @@ P1_SCRIPTS=(
     test_security_scan.sh
     test_shell_config_core.sh
     test_smb_core.sh
+    test_snapshot.sh
     test_systemd_timer_core.sh
     test_tui_core.sh
     test_tui_logs_view.sh
