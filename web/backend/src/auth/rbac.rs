@@ -34,6 +34,7 @@ pub const CAP_TO_SNAPSHOT: &[(&str, &str)] = &[
     ("dashboard.read", "system"),
     ("audit.read", "audit-summary"),
     ("logs.read", "logs"),
+    ("reports.read", "reports"),
 ];
 
 /// 读取某 kind 快照所需的 capability；未映射 → None（拒绝）。

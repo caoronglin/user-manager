@@ -20,6 +20,7 @@ pub const SNAPSHOT_KINDS: &[&str] = &[
     "system",
     "audit-summary",
     "logs",
+    "reports",
     "manifest",
 ];
 
@@ -128,6 +129,7 @@ fn default_threshold(kind: &str) -> u64 {
         "users" | "quota" | "smb" => 300,
         "hosts" | "gpu" | "manifest" => 120,
         "logs" => 60,
+        "reports" => 300,
         "audit-summary" => 30,
         _ => 300,
     }

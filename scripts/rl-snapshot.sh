@@ -230,6 +230,23 @@ collect_logs() {
         '{sources: (map({(.key): {available: .available, lines: .lines}}) | add // {})}'
 }
 
+# 采集报告索引：仅元数据（名称/大小/修改时间），封顶 200 条；不含内容、不含敏感字段。
+collect_reports() {
+    local dir="${REPORT_DIR:-$DATA_DIR/report}"
+    local -a rows=()
+    if [[ -d "$dir" ]]; then
+        while IFS= read -r row; do
+            [[ -n "$row" ]] && rows+=("$row")
+        done < <(find "$dir" -maxdepth 2 -type f -printf '%f\t%s\t%T@\n' 2>/dev/null | sort | head -n 200)
+    fi
+    printf '%s\n' "${rows[@]}" | jq -R -s '
+        split("\n") | map(select(length > 0)) | map(split("\t")) as $r
+        | {reports: ($r | map({name: .[0], size_bytes: (.[1] | tonumber),
+                               modified_at: ((.[2] | tonumber) | floor)})),
+           count: ($r | length)}
+    '
+}
+
 collect_system() {
     local hostname kernel arch uptime load1 load5 load15 memtotal memavail ncpu
     hostname="$(hostname 2>/dev/null || printf 'unknown')"

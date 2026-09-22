@@ -35,6 +35,7 @@ snapshot_kind_threshold() {
     logs) printf '60\n' ;;
     hosts | gpu) printf '120\n' ;;
     audit-summary) printf '30\n' ;;
+    reports) printf '300\n' ;;
     manifest) printf '120\n' ;;
     *) return 1 ;;
     esac
@@ -42,7 +43,7 @@ snapshot_kind_threshold() {
 
 # 全部业务快照类型（manifest 单独处理，不在此列）。
 snapshot_all_kinds() {
-    printf '%s\n' users quota resources smb hosts gpu system audit-summary logs
+    printf '%s\n' users quota resources smb hosts gpu system audit-summary logs reports
 }
 
 # 供 atomic_install 使用的文件名安全校验：只允许小写字母与连字符，阻断路径穿越。
