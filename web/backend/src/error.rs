@@ -19,12 +19,28 @@ pub enum ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code, message) = match self {
-            ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "AUTH_REQUIRED", "authentication required".to_string()),
-            ApiError::Forbidden => (StatusCode::FORBIDDEN, "FORBIDDEN", "insufficient capability".to_string()),
+            ApiError::Unauthorized => (
+                StatusCode::UNAUTHORIZED,
+                "AUTH_REQUIRED",
+                "authentication required".to_string(),
+            ),
+            ApiError::Forbidden => (
+                StatusCode::FORBIDDEN,
+                "FORBIDDEN",
+                "insufficient capability".to_string(),
+            ),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "NOT_FOUND", "not found".to_string()),
-            ApiError::MethodNotAllowed => (StatusCode::METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", "method not allowed".to_string()),
+            ApiError::MethodNotAllowed => (
+                StatusCode::METHOD_NOT_ALLOWED,
+                "METHOD_NOT_ALLOWED",
+                "method not allowed".to_string(),
+            ),
             ApiError::BadRequest(m) => (StatusCode::BAD_REQUEST, "BAD_REQUEST", sanitize(&m)),
-            ApiError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMITED", "too many requests".to_string()),
+            ApiError::RateLimited => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "RATE_LIMITED",
+                "too many requests".to_string(),
+            ),
             ApiError::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", sanitize(&m)),
         };
 

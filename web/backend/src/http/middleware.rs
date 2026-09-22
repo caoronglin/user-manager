@@ -11,14 +11,18 @@ use std::time::Duration;
 use axum::extract::{Request, State};
 use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 
 use crate::state::SharedState;
 
 pub const REQUEST_ID_HEADER: &str = "x-request-id";
 
 /// 生成并注入 request-id，并记录访问日志（不含敏感头/体）。
-pub async fn request_id(State(_state): State<SharedState>, mut req: Request, next: Next) -> Response {
+pub async fn request_id(
+    State(_state): State<SharedState>,
+    mut req: Request,
+    next: Next,
+) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
     if let Ok(val) = HeaderValue::from_str(&request_id) {
         req.headers_mut().insert(REQUEST_ID_HEADER, val.clone());

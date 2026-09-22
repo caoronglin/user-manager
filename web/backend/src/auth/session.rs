@@ -75,7 +75,8 @@ impl Default for SessionStore {
 
 /// 构造 Set-Cookie 值（HttpOnly; Secure; SameSite=Strict; Path=/）。
 pub fn session_cookie(id: &str, max_age_secs: i64, secure: bool) -> String {
-    let mut c = format!("umweb_session={id}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age_secs}");
+    let mut c =
+        format!("umweb_session={id}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age_secs}");
     if secure {
         c.push_str("; Secure");
     }

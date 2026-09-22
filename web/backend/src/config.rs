@@ -39,9 +39,40 @@ pub struct Config {
     pub enforce_mfa_admin: bool,
 }
 
+/// 配置错误（骨架：当前 from_env 不失败，保留类型以便后续校验）。
+#[derive(Debug)]
+pub enum ConfigError {
+    Invalid(String),
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::Invalid(m) => write!(f, "config error: {m}"),
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
 impl Config {
-    pub fn from_env() -> Result<Self, config::ConfigError> {
-        use config::ConfigError;
+    /// 测试用构造器：直接给路径，避免进程级 env 在并行测试间相互污染。
+    pub fn for_tests(db_path: std::path::PathBuf, snapshot_dir: std::path::PathBuf) -> Self {
+        Self {
+            bind_addr: "127.0.0.1".to_string(),
+            bind_port: 0,
+            snapshot_dir,
+            db_path,
+            master_key_path: std::env::temp_dir().join("umweb-test-master.key"),
+            require_tls: false,
+            trusted_proxies: Vec::new(),
+            allowed_origins: Vec::new(),
+            capabilities: default_role_capabilities(),
+            enforce_mfa_admin: true,
+        }
+    }
+
+    pub fn from_env() -> Result<Self, ConfigError> {
         let bind_addr = env::var("UMWEB_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0".to_string());
         let bind_port = env::var("UMWEB_PORT")
             .ok()
@@ -52,9 +83,7 @@ impl Config {
             .unwrap_or_else(|_| std::path::PathBuf::from("/var/lib/user-manager-web/snapshots"));
         let db_path = env::var("UMWEB_DB_PATH")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| {
-                std::path::PathBuf::from("/var/lib/user-manager-web/app.db")
-            });
+            .unwrap_or_else(|_| std::path::PathBuf::from("/var/lib/user-manager-web/app.db"));
         let master_key_path = env::var("UMWEB_MASTER_KEY")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|_| {
@@ -64,10 +93,20 @@ impl Config {
             .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
             .unwrap_or(true);
         let trusted_proxies = env::var("UMWEB_TRUSTED_PROXIES")
-            .map(|v| v.split(',').filter(|s| !s.is_empty()).map(str::to_string).collect())
+            .map(|v| {
+                v.split(',')
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
             .unwrap_or_default();
         let allowed_origins = env::var("UMWEB_ALLOWED_ORIGINS")
-            .map(|v| v.split(',').filter(|s| !s.is_empty()).map(str::to_string).collect())
+            .map(|v| {
+                v.split(',')
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
             .unwrap_or_default();
         let enforce_mfa_admin = env::var("UMWEB_ENFORCE_MFA_ADMIN")
             .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
@@ -93,7 +132,10 @@ impl Config {
 fn default_role_capabilities() -> std::collections::BTreeMap<String, Capabilities> {
     use std::collections::BTreeSet;
     let caps = |list: &[&str]| Capabilities {
-        allowed: list.iter().map(|s| s.to_string()).collect::<BTreeSet<String>>(),
+        allowed: list
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<BTreeSet<String>>(),
     };
 
     let viewer = caps(&[

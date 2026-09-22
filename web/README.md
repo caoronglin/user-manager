@@ -5,20 +5,11 @@
 
 技术栈：Rust + axum + tokio + rusqlite + Argon2id + TOTP(P4) + Ant Design Pro 6(P5)。
 
-> ## ⚠️ 验证状态（重要）
-> 本目录为 **P1 骨架**，在无 Rust 工具链的环境中编写，**尚未编译/测试/审查**。
-> 合入前必须在具备 Rust 工具链的环境（或 CI）完成：
->
-> ```bash
-> cd web/backend
-> cargo fmt --check
-> cargo clippy -- -D warnings
-> cargo test
-> cargo audit
-> cargo deny check
-> ```
->
-> 在完成这些门禁之前，不得认为 P1 已完成，也不得据此上线。
+> ## ✅ 验证状态
+> 本目录为 **P1 骨架**，已在 Rust 工具链（1.98）完成编译与全部质量门禁：
+> `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、
+> `cargo audit`、`cargo deny check` 全部通过。Cargo.lock 与 deny.toml 已入库。
+> 后续 P2+ 继续遵循同一门禁。
 
 ## 安全边界（最高优先级）
 
@@ -57,12 +48,12 @@ web/backend/
 
 - [x] axum 骨架、config、tracing、request-id、健康检查
 - [x] capability RBAC（默认拒绝 + 只读快照 kind 白名单映射）
-- [x] CSRF/Origin、security headers（CSP/HSTS/nosniff/Referrer-Policy/Permissions-Policy）
+- [x] CSRF/Origin（仅作用于已注册变更路由）、security headers（CSP/HSTS/nosniff/Referrer-Policy/Permissions-Policy）
 - [x] rate limit（IP+username 双维、指数退避）
 - [x] Argon2id 密码哈希、服务端会话（hash-only、HttpOnly/Secure/SameSite=Strict Cookie）
 - [x] SQLite schema（web_users/sessions/api_tokens/wecom_settings/web_audit）
-- [x] 危险路由不存在（契约测试）
-- [ ] `cargo fmt/clippy/test/audit/deny` 全部通过（需 Rust 环境）
+- [x] 危险路由不存在（契约测试：POST /api/users → 404 等）
+- [x] `cargo fmt/clippy/test/audit/deny` 全部通过（Rust 1.98）
 - [ ] /login /logout /me 完整接线、MFA/TOTP、Snapshot 读取（P2/P4）
 
 ## 本地运行（需 Rust）
