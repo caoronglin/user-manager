@@ -59,6 +59,8 @@ web/backend/
 - [x] P3 Logs/Audit/Reports 只读 API（audit 过滤+游标+导出上限；logs allowlist 源；reports 元数据索引）
 - [x] P4a Web 用户管理（web_users.manage：list/create/patch/delete，绝不触碰 Linux 账户）
 - [x] P4a MFA/TOTP：setup/verify/challenge/disable；secret 加密（AES-256-GCM，Web 独立 master key）；登录两步挑战
+- [x] P4b API Tokens：create(一次性明文)/list(无明文无hash)/revoke；DB 仅存 SHA-256 hash；
+      能力 allowlist 校验（KNOWN_CAPS 子集）；expire_days；Bearer 认证可用于只读 API
 
 ## 本地运行（需 Rust）
 

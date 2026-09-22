@@ -11,6 +11,13 @@ use crate::config::Capabilities;
 use crate::error::ApiError;
 use crate::state::SharedState;
 
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 /// 解析出的调用方能力上下文。
 #[derive(Clone, Debug)]
 pub struct Auth {
@@ -32,16 +39,41 @@ pub fn parse_session_cookie(headers: &HeaderMap) -> Option<String> {
     None
 }
 
+fn bearer_token(headers: &HeaderMap) -> Option<String> {
+    let v = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
+    v.strip_prefix("Bearer ")
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+}
+
 /// 从请求头解析会话并解析能力；无/过期会话 → 401。
 pub fn authenticate(state: &SharedState, headers: &HeaderMap) -> Result<Auth, ApiError> {
+    // 优先 Bearer API Token（hash-only 校验）。
+    if let Some(token) = bearer_token(headers) {
+        let th = crate::auth::csrf::sha256_hex(&token);
+        let now = now_unix();
+        let conn = state.db.lock().unwrap();
+        if let Some(row) = crate::store::token::find_active_by_hash(&conn, &th, now) {
+            return Ok(Auth {
+                user_id: format!("token:{}", row.id),
+                role: "(token)".to_string(),
+                capabilities: Capabilities {
+                    allowed: row.capabilities.into_iter().collect(),
+                },
+                session_hash: th,
+            });
+        }
+        return Err(ApiError::Unauthorized);
+    }
+
     let session_id = parse_session_cookie(headers).ok_or(ApiError::Unauthorized)?;
     let id_hash = crate::auth::csrf::sha256_hex(&session_id);
     let session = state.sessions.get(&id_hash).ok_or(ApiError::Unauthorized)?;
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+    let now = now_unix();
     if session.expires_at <= now {
         return Err(ApiError::Unauthorized);
     }

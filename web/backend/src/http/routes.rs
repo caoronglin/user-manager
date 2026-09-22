@@ -216,6 +216,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/sessions/:id", delete(revoke_session))
         .merge(crate::http::admin_api::mfa_router())
         .merge(crate::http::admin_api::web_users_router())
+        .merge(crate::http::tokens_api::router())
         .route_layer(csrf_layer);
 
     Router::new()

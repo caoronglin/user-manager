@@ -4,6 +4,7 @@
 use rusqlite::Connection;
 
 pub mod snapshot;
+pub mod token;
 pub mod user;
 
 pub fn init_schema(conn: &Connection) -> Result<(), rusqlite::Error> {

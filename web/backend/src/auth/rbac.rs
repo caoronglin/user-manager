@@ -44,3 +44,24 @@ pub fn capability_for_snapshot(kind: &str) -> Option<&'static str> {
         .find(|(_, k)| *k == kind)
         .map(|(c, _)| *c)
 }
+
+/// 已知 capability 全集（用于校验 API Token 请求的能力集合）。
+pub const KNOWN_CAPS: &[&str] = &[
+    "dashboard.read",
+    "users.read",
+    "quota.read",
+    "resource.read",
+    "smb.read",
+    "hosts.read",
+    "gpu.read",
+    "reports.read",
+    "logs.read",
+    "audit.read",
+    "notifications.read",
+    "notifications.manage",
+    "web_users.manage",
+    "sessions.manage",
+    "tokens.manage",
+    "wecom.manage",
+    "settings.manage",
+];

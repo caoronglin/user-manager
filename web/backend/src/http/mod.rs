@@ -8,5 +8,6 @@ pub mod read_api;
 pub mod reports_api;
 pub mod response;
 pub mod routes;
+pub mod tokens_api;
 
 pub use routes::build_router;
