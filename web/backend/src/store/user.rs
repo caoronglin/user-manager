@@ -34,17 +34,105 @@ pub fn get_by_username(conn: &Connection, username: &str) -> Option<WebUser> {
     conn.query_row(
         "SELECT id, username, role, password_hash, mfa_enabled FROM web_users WHERE username = ?1",
         params![username],
-        |row| {
-            Ok(WebUser {
-                id: row.get(0)?,
-                username: row.get(1)?,
-                role: row.get(2)?,
-                password_hash: row.get(3)?,
-                mfa_enabled: row.get::<_, i64>(4)? != 0,
-            })
-        },
+        row_to_user,
     )
     .ok()
+}
+
+pub fn get_by_id(conn: &Connection, id: &str) -> Option<WebUser> {
+    conn.query_row(
+        "SELECT id, username, role, password_hash, mfa_enabled FROM web_users WHERE id = ?1",
+        params![id],
+        row_to_user,
+    )
+    .ok()
+}
+
+pub fn list_users(conn: &Connection) -> Vec<WebUser> {
+    let mut stmt = match conn.prepare(
+        "SELECT id, username, role, password_hash, mfa_enabled FROM web_users ORDER BY username",
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let rows = stmt.query_map([], row_to_user);
+    match rows {
+        Ok(it) => it.filter_map(Result::ok).collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+pub fn update_role(conn: &Connection, id: &str, role: &str) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE web_users SET role = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, role, now_unix()],
+    )?;
+    Ok(())
+}
+
+pub fn update_password(
+    conn: &Connection,
+    id: &str,
+    password_hash: &str,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE web_users SET password_hash = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, password_hash, now_unix()],
+    )?;
+    Ok(())
+}
+
+pub fn delete_user(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
+    conn.execute("DELETE FROM web_users WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// 保存加密的 TOTP secret（mfa_secret_cipher）；尚未启用。
+pub fn set_mfa_secret(conn: &Connection, id: &str, cipher: &str) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE web_users SET mfa_secret_cipher = ?2, mfa_enabled = 0, updated_at = ?3 WHERE id = ?1",
+        params![id, cipher, now_unix()],
+    )?;
+    Ok(())
+}
+
+/// 读取加密的 TOTP secret。
+pub fn get_mfa_secret(conn: &Connection, id: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT mfa_secret_cipher FROM web_users WHERE id = ?1",
+        params![id],
+        |r| r.get::<_, Option<String>>(0),
+    )
+    .ok()
+    .flatten()
+}
+
+/// 验证通过后启用 MFA。
+pub fn enable_mfa(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE web_users SET mfa_enabled = 1, updated_at = ?2 WHERE id = ?1",
+        params![id, now_unix()],
+    )?;
+    Ok(())
+}
+
+/// 停用 MFA 并清空加密 secret。
+pub fn disable_mfa(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE web_users SET mfa_enabled = 0, mfa_secret_cipher = NULL, updated_at = ?2 WHERE id = ?1",
+        params![id, now_unix()],
+    )?;
+    Ok(())
+}
+
+fn row_to_user(row: &rusqlite::Row<'_>) -> rusqlite::Result<WebUser> {
+    Ok(WebUser {
+        id: row.get(0)?,
+        username: row.get(1)?,
+        role: row.get(2)?,
+        password_hash: row.get(3)?,
+        mfa_enabled: row.get::<_, i64>(4)? != 0,
+    })
 }
 
 pub fn count(conn: &Connection) -> i64 {

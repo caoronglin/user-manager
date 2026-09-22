@@ -2,6 +2,7 @@
 
 pub mod csrf;
 pub mod guard;
+pub mod mfa;
 pub mod password;
 pub mod rate_limit;
 pub mod rbac;

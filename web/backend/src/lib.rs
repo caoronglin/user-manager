@@ -1,4 +1,5 @@
 //! umweb library crate：暴露模块与运行入口，便于集成测试复用路由/能力等。
+pub mod crypto;
 
 pub mod auth;
 pub mod config;

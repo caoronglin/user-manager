@@ -45,6 +45,10 @@ pub fn authenticate(state: &SharedState, headers: &HeaderMap) -> Result<Auth, Ap
     if session.expires_at <= now {
         return Err(ApiError::Unauthorized);
     }
+    // 需要 MFA 但尚未完成 → 视为未认证（不得访问受 capability 保护的资源）。
+    if session.mfa_required && !session.mfa_done {
+        return Err(ApiError::Unauthorized);
+    }
 
     let capabilities = rbac::capabilities_for(&state.config, &session.role);
     Ok(Auth {

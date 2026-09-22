@@ -37,7 +37,9 @@ rand = "0.8"
 #  - session id 用 CSPRNG，不编码用户信息；
 #  - API token 仅保存 hash；
 #  - TOTP secret 用 Web 独立 master key 加密。
-subtle = "2"
+# TOTP (RFC 6238) 与 AEAD 加密（加密 TOTP secret / WeCom webhook，加密存储）
+totp-rs = { version = "6", default-features = false, features = ["std", "migration", "otpauth"] }
+aes-gcm = "0.10"
 hmac = "0.12"
 sha2 = "0.10"
 base64 = "0.22"

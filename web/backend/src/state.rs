@@ -2,7 +2,6 @@
 //!
 //! 会话为**服务端存储**（不依赖无状态 JWT），便于强制注销、MFA 后轮换、权限变更后失效。
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::auth::rate_limit::RateLimiter;
@@ -16,6 +15,7 @@ pub struct AppState {
     pub sessions: Arc<SessionStore>,
     pub rate_limiter: Arc<RateLimiter>,
     pub snapshots: crate::store::snapshot::SnapshotStore,
+    pub master_key: [u8; crate::crypto::KEY_LEN],
 }
 
 impl AppState {
@@ -37,9 +37,7 @@ impl AppState {
             }
         }
         crate::store::init_schema(&conn)?;
-
-        let _enforce = config.enforce_mfa_admin;
-        let _ = HashMap::<String, String>::new(); // 预留，避免未使用告警
+        let master_key = crate::crypto::load_or_create_master_key(&config.master_key_path)?;
 
         Ok(Self {
             config: config.clone(),
@@ -47,6 +45,7 @@ impl AppState {
             sessions: Arc::new(SessionStore::new()),
             rate_limiter: Arc::new(RateLimiter::new()),
             snapshots: crate::store::snapshot::SnapshotStore::new(config.snapshot_dir.clone()),
+            master_key,
         })
     }
 }

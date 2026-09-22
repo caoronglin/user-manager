@@ -56,8 +56,9 @@ web/backend/
 - [x] `cargo fmt/clippy/test/audit/deny` 全部通过（Rust 1.98）
 - [x] login/logout/me 完整接线；capability 默认拒绝（无会话 401 / 不足 403）
 - [x] P2 只读系统 API：users/quota/resources/smb/hosts/gpu/system-summary，全部来自 Snapshot，附 freshness（fresh/stale/缺失显式标识）
-- [ ] MFA/TOTP、Snapshot 定时采集的 systemd 接线、web_users.manage / api-tokens / wecom（P4）
-- [ ] Logs/Audit/Reports 只读 API（P3）、Ant Design Pro 前端（P5）
+- [x] P3 Logs/Audit/Reports 只读 API（audit 过滤+游标+导出上限；logs allowlist 源；reports 元数据索引）
+- [x] P4a Web 用户管理（web_users.manage：list/create/patch/delete，绝不触碰 Linux 账户）
+- [x] P4a MFA/TOTP：setup/verify/challenge/disable；secret 加密（AES-256-GCM，Web 独立 master key）；登录两步挑战
 
 ## 本地运行（需 Rust）
 

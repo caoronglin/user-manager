@@ -68,7 +68,7 @@ impl Config {
             trusted_proxies: Vec::new(),
             allowed_origins: Vec::new(),
             capabilities: default_role_capabilities(),
-            enforce_mfa_admin: true,
+            enforce_mfa_admin: false,
         }
     }
 

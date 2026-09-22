@@ -13,6 +13,8 @@ pub struct Session {
     pub role: String,
     /// MFA 是否已完成（web_admin 可被强制 MFA）。
     pub mfa_done: bool,
+    /// 本次登录是否需要 MFA 挑战（用户已启用 MFA 或 web_admin 强制）。
+    pub mfa_required: bool,
     pub created_at: i64,
     pub expires_at: i64,
     pub csrf_token: String,
@@ -46,6 +48,14 @@ impl SessionStore {
     pub fn get(&self, id_hash: &str) -> Option<Session> {
         let guard = self.inner.lock().expect("session store poisoned");
         guard.get(id_hash).cloned()
+    }
+
+    /// 标记会话 MFA 已完成（MFA 验证通过后）。
+    pub fn set_mfa_done(&self, id_hash: &str) {
+        let mut guard = self.inner.lock().expect("session store poisoned");
+        if let Some(s) = guard.get_mut(id_hash) {
+            s.mfa_done = true;
+        }
     }
 
     /// 注销单个会话。

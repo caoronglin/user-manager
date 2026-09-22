@@ -105,11 +105,15 @@ async fn login(
     let now = now_unix();
     let max_age = 3600 * 8;
     let csrf_token = crate::auth::csrf::sha256_hex(&uuid::Uuid::new_v4().to_string());
+    // 需要 MFA：用户已启用 TOTP，或 web_admin 被强制 MFA 且尚未启用。
+    let mfa_required =
+        user.mfa_enabled || (state.config.enforce_mfa_admin && user.role == "web_admin");
     state.sessions.put(Session {
         id_hash: id_hash.clone(),
         user_id: user.id.clone(),
         role: user.role.clone(),
-        mfa_done: false,
+        mfa_done: !mfa_required,
+        mfa_required,
         created_at: now,
         expires_at: now + max_age,
         csrf_token: csrf_token.clone(),
@@ -120,7 +124,7 @@ async fn login(
         "data": {
             "username": user.username,
             "role": user.role,
-            "mfa_required": state.config.enforce_mfa_admin && user.role == "web_admin",
+            "mfa_required": mfa_required,
         }
     }))
     .into_response();
@@ -210,6 +214,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
         .route("/api/sessions/:id", delete(revoke_session))
+        .merge(crate::http::admin_api::mfa_router())
+        .merge(crate::http::admin_api::web_users_router())
         .route_layer(csrf_layer);
 
     Router::new()
