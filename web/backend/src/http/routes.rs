@@ -8,68 +8,190 @@
 //! 也不提供任意 shell / command / SSH / file-path / log-path / URL-fetch 路由。
 
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
+use serde_json::{json, Value};
 
-use serde_json::json;
-
-use crate::auth::session::SessionStore;
+use crate::auth::password;
+use crate::auth::session::{self, Session, SessionStore};
 use crate::state::{AppState, SharedState};
-use crate::telemetry::redact;
 
 /// 只读健康检查（无 capability 要求，供探针/负载均衡）。
-async fn health() -> Json<serde_json::Value> {
+async fn health() -> Json<Value> {
     Json(json!({ "ok": true, "data": { "status": "up" } }))
 }
 
-/// 未认证的登录：校验 Argon2id、下发服务端会话 Cookie（HttpOnly/Secure/SameSite=Strict）。
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn session_id_from_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
+    let cookie = headers.get(header::COOKIE)?.to_str().ok()?;
+    for kv in cookie.split(';') {
+        if let Some(v) = kv.trim().strip_prefix("umweb_session=") {
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn client_ip(state: &SharedState, headers: &axum::http::HeaderMap) -> String {
+    // 仅当配了 trusted_proxies 才考虑 X-Forwarded-For；否则用占位（真实连接 IP 由反代层提供，P6）。
+    if !state.config.trusted_proxies.is_empty() {
+        if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+            if let Some(first) = xff.split(',').next() {
+                return first.trim().to_string();
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
+/// 登录：校验 Argon2id，建立服务端会话，下发 HttpOnly/Secure/SameSite=Strict Cookie。
 async fn login(
     State(state): State<SharedState>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<Value>,
 ) -> Result<axum::response::Response, crate::error::ApiError> {
-    // P1 骨架：完整实现见 P4。这里仅示范结构，返回未认证占位以避免误导。
-    let _ = &state.sessions;
-    Err(crate::error::ApiError::Unauthorized)
+    let username = body
+        .get("username")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let password_plain = body.get("password").and_then(Value::as_str).unwrap_or("");
+
+    // 限流：IP + 用户名双维度；命中指数退避。
+    let ip = client_ip(&state, &headers);
+    let rkey = format!("login|{ip}|{username}");
+    if let Err(wait) = state.rate_limiter.hit(&rkey) {
+        tracing::info!(
+            event = "security.login_failed",
+            reason = "rate_limited",
+            wait,
+            "login throttled"
+        );
+        return Err(crate::error::ApiError::RateLimited);
+    }
+
+    let conn = state.db.lock().expect("db lock");
+    let user = crate::store::user::get_by_username(&conn, &username);
+    let ok = match &user {
+        Some(u) => password::verify_password(password_plain, &u.password_hash).unwrap_or(false),
+        None => false,
+    };
+    drop(conn);
+
+    let user = match (ok, user) {
+        (true, Some(u)) => u,
+        _ => {
+            tracing::info!(
+                event = "security.login_failed",
+                reason = "bad_credentials",
+                "login failed"
+            );
+            // 统一返回未认证，避免用户枚举差异。
+            return Err(crate::error::ApiError::Unauthorized);
+        }
+    };
+
+    let (id_plain, id_hash) = SessionStore::new_session_id();
+    let now = now_unix();
+    let max_age = 3600 * 8;
+    let csrf_token = crate::auth::csrf::sha256_hex(&uuid::Uuid::new_v4().to_string());
+    state.sessions.put(Session {
+        id_hash: id_hash.clone(),
+        user_id: user.id.clone(),
+        role: user.role.clone(),
+        mfa_done: false,
+        created_at: now,
+        expires_at: now + max_age,
+        csrf_token: csrf_token.clone(),
+    });
+
+    let mut resp = Json(json!({
+        "ok": true,
+        "data": {
+            "username": user.username,
+            "role": user.role,
+            "mfa_required": state.config.enforce_mfa_admin && user.role == "web_admin",
+        }
+    }))
+    .into_response();
+    let cookie = session::session_cookie(&id_plain, max_age, state.config.require_tls);
+    if let Ok(v) = HeaderValue::from_str(&cookie) {
+        resp.headers_mut().insert(header::SET_COOKIE, v);
+    }
+    // CSRF token 以可读 cookie 形式下发（double-submit 用）；非 HttpOnly 以便前端读取提交。
+    let csrf_cookie = format!("umweb_csrf={csrf_token}; Path=/; SameSite=Strict; Secure");
+    if let Ok(v) = HeaderValue::from_str(&csrf_cookie) {
+        resp.headers_mut().append(header::SET_COOKIE, v);
+    }
+    Ok(resp)
 }
 
-/// 注销：删除服务端会话并清 Cookie。
+/// 注销：revoke 会话并清除 Cookie。
 async fn logout(
     State(state): State<SharedState>,
+    headers: axum::http::HeaderMap,
 ) -> Result<axum::response::Response, crate::error::ApiError> {
-    // P1 骨架占位。
-    let _ = state.sessions.clone();
-    Ok(StatusCode::NO_CONTENT.into_response())
+    if let Some(id) = session_id_from_cookie(&headers) {
+        state.sessions.revoke(&crate::auth::csrf::sha256_hex(&id));
+    }
+    let mut resp = StatusCode::NO_CONTENT.into_response();
+    if let Ok(v) = HeaderValue::from_str(&session::clear_cookie()) {
+        resp.headers_mut().insert(header::SET_COOKIE, v);
+    }
+    Ok(resp)
 }
 
-/// 返回当前 Web 用户与能力集合（前端 access 仅作 UX；真正授权在后端）。
+/// 当前 Web 用户 + 能力集合（前端 access 仅作 UX；真正授权在后端）。
 async fn me(
-    State(_state): State<SharedState>,
-) -> Result<Json<serde_json::Value>, crate::error::ApiError> {
-    // P1 骨架占位。
-    Err(crate::error::ApiError::Unauthorized)
+    State(state): State<SharedState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Value>, crate::error::ApiError> {
+    let auth = crate::auth::guard::authenticate(&state, &headers)?;
+    let conn = state.db.lock().expect("db lock");
+    let username = conn
+        .query_row(
+            "SELECT username FROM web_users WHERE id = ?1",
+            rusqlite::params![auth.user_id],
+            |r| r.get::<_, String>(0),
+        )
+        .unwrap_or_default();
+    drop(conn);
+    let caps: Vec<String> = auth.capabilities.allowed.iter().cloned().collect();
+    Ok(Json(json!({
+        "ok": true,
+        "data": { "id": auth.user_id, "username": username, "role": auth.role, "capabilities": caps }
+    })))
 }
 
-/// 会话管理（web_admin / sessions.manage）。
+/// 会话管理列表（sessions.manage）。
 async fn list_sessions(
     State(state): State<SharedState>,
-) -> Result<Json<serde_json::Value>, crate::error::ApiError> {
-    // P1 骨架占位；不泄露敏感信息。
-    let _ = &state.sessions;
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Value>, crate::error::ApiError> {
+    let auth = crate::auth::guard::authenticate(&state, &headers)?;
+    auth.require("sessions.manage")?;
     Ok(Json(json!({ "ok": true, "data": { "sessions": [] } })))
 }
 
 async fn revoke_session(
     State(state): State<SharedState>,
+    headers: axum::http::HeaderMap,
+    axum::extract::Path(_id): axum::extract::Path<String>,
 ) -> Result<axum::response::Response, crate::error::ApiError> {
-    // P1 骨架占位。
+    let auth = crate::auth::guard::authenticate(&state, &headers)?;
+    auth.require("sessions.manage")?;
     let _ = state.sessions.clone();
     Ok(StatusCode::NO_CONTENT.into_response())
-}
-
-/// 示例只读 read 路由占位（P2 接 Snapshot Read）。缺省拒绝，需 capability。
-async fn read_stub() -> Result<Json<serde_json::Value>, crate::error::ApiError> {
-    Ok(Json(json!({ "ok": true, "data": {} })))
 }
 
 pub fn build_router(state: AppState) -> Router {
@@ -91,13 +213,11 @@ pub fn build_router(state: AppState) -> Router {
         .route_layer(csrf_layer);
 
     Router::new()
-        // 只读健康（无需认证）
         .route("/api/health", get(health))
         .route("/api/auth/me", get(me))
-        // 会话管理列表（读；写走 mutating，带 CSRF）
         .route("/api/sessions", get(list_sessions))
-        // 只读 read 路由占位（P2 接 Snapshot）。示例：/api/system-summary
-        .route("/api/system-summary", get(read_stub))
+        // P2 只读系统 API（全部来自 Snapshot；capability 默认拒绝）
+        .merge(crate::http::read_api::router())
         // 变更类路由（带 CSRF/Origin）
         .merge(mutating)
         // 注意：此处不注册任何 users/smb/hosts/system 的写路由。
@@ -110,10 +230,4 @@ pub fn build_router(state: AppState) -> Router {
             crate::http::middleware::security_headers,
         ))
         .with_state(shared)
-}
-
-// 让未使用告警静默（骨架阶段部分函数暂未全量接线）。
-#[allow(dead_code)]
-fn _touch(_s: &SessionStore) {
-    let _ = redact("");
 }

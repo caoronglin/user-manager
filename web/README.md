@@ -48,13 +48,16 @@ web/backend/
 
 - [x] axum 骨架、config、tracing、request-id、健康检查
 - [x] capability RBAC（默认拒绝 + 只读快照 kind 白名单映射）
-- [x] CSRF/Origin（仅作用于已注册变更路由）、security headers（CSP/HSTS/nosniff/Referrer-Policy/Permissions-Policy）
+- [x] CSRF/Origin（仅作用于已认证会话的变更路由；登录为预认证豁免）、security headers
 - [x] rate limit（IP+username 双维、指数退避）
 - [x] Argon2id 密码哈希、服务端会话（hash-only、HttpOnly/Secure/SameSite=Strict Cookie）
 - [x] SQLite schema（web_users/sessions/api_tokens/wecom_settings/web_audit）
-- [x] 危险路由不存在（契约测试：POST /api/users → 404 等）
+- [x] 危险路由不存在（契约测试：写方法 404/405）
 - [x] `cargo fmt/clippy/test/audit/deny` 全部通过（Rust 1.98）
-- [ ] /login /logout /me 完整接线、MFA/TOTP、Snapshot 读取（P2/P4）
+- [x] login/logout/me 完整接线；capability 默认拒绝（无会话 401 / 不足 403）
+- [x] P2 只读系统 API：users/quota/resources/smb/hosts/gpu/system-summary，全部来自 Snapshot，附 freshness（fresh/stale/缺失显式标识）
+- [ ] MFA/TOTP、Snapshot 定时采集的 systemd 接线、web_users.manage / api-tokens / wecom（P4）
+- [ ] Logs/Audit/Reports 只读 API（P3）、Ant Design Pro 前端（P5）
 
 ## 本地运行（需 Rust）
 

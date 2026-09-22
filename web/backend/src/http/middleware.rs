@@ -85,7 +85,11 @@ pub async fn security_headers(
 }
 
 /// Origin 校验 + CSRF（double-submit / token header）。仅对非安全方法强制。
-/// SameSite=Strict cookie 作为纵深，不作为唯一机制。
+/// SameSite=Strict cookie 作为纵深。
+///
+/// CSRF token 仅对**已认证会话**的变更请求强制（logout / 会话撤销 / 未来 settings 写）。
+/// 登录是预认证引导（此刻尚无 session/token），豁免 token、仍受 rate-limit + 统一 401 +
+/// Origin 校验保护——这是明确的登录 CSRF 例外，不是静默放宽特权边界。
 pub async fn csrf_origin_guard(
     State(state): State<SharedState>,
     req: Request,
@@ -110,9 +114,19 @@ pub async fn csrf_origin_guard(
         }
     }
 
-    // CSRF double-submit：X-CSRF-Token 必须与 session 绑定的 token 一致（P4 完整实现）。
-    if req.headers().get("x-csrf-token").is_none() {
-        return (StatusCode::FORBIDDEN, "missing csrf token").into_response();
+    // 仅当存在有效会话时才强制 CSRF token（double-submit，与 session 绑定的 token 常量时间比对）。
+    if let Some(id) = crate::auth::guard::parse_session_cookie(req.headers()) {
+        let id_hash = crate::auth::csrf::sha256_hex(&id);
+        if let Some(session) = state.sessions.get(&id_hash) {
+            let provided = req
+                .headers()
+                .get("x-csrf-token")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            if !crate::auth::csrf::constant_time_eq(provided, &session.csrf_token) {
+                return (StatusCode::FORBIDDEN, "csrf mismatch").into_response();
+            }
+        }
     }
 
     next.run(req).await

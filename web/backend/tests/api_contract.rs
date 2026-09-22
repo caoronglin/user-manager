@@ -35,65 +35,46 @@ async fn call(router: axum::Router, method: Method, uri: &str) -> StatusCode {
 #[tokio::test]
 async fn dangerous_user_routes_do_not_exist() {
     let r = app().await;
-    assert_eq!(
-        call(r.clone(), Method::POST, "/api/users").await,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        call(r.clone(), Method::DELETE, "/api/users/alice").await,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        call(r.clone(), Method::PATCH, "/api/users/alice").await,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        call(r.clone(), Method::PUT, "/api/users/alice/quota").await,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        call(r.clone(), Method::PUT, "/api/users/alice/resources").await,
-        StatusCode::NOT_FOUND
-    );
+    for (m, u) in [
+        (Method::POST, "/api/users"),
+        (Method::DELETE, "/api/users/alice"),
+        (Method::PATCH, "/api/users/alice"),
+        (Method::PUT, "/api/users/alice/quota"),
+        (Method::PUT, "/api/users/alice/resources"),
+    ] {
+        let s = call(r.clone(), m.clone(), u).await;
+        assert!(not_implemented(s), "{m} {u} must be 404/405, got {s}");
+    }
 }
 
 #[tokio::test]
 async fn dangerous_smb_routes_do_not_exist() {
     let r = app().await;
-    assert_eq!(
-        call(r.clone(), Method::POST, "/api/smb/password").await,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        call(r.clone(), Method::POST, "/api/smb/shares").await,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        call(r.clone(), Method::DELETE, "/api/smb/shares/pub").await,
-        StatusCode::NOT_FOUND
-    );
+    for (m, u) in [
+        (Method::POST, "/api/smb/password"),
+        (Method::POST, "/api/smb/shares"),
+        (Method::DELETE, "/api/smb/shares/pub"),
+    ] {
+        let s = call(r.clone(), m.clone(), u).await;
+        assert!(not_implemented(s), "{m} {u} must be 404/405, got {s}");
+    }
 }
 
 #[tokio::test]
 async fn dangerous_host_and_system_routes_do_not_exist() {
     let r = app().await;
-    assert_eq!(
-        call(r.clone(), Method::POST, "/api/hosts/compute-01/exec").await,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        call(r.clone(), Method::POST, "/api/hosts/compute-01/probe").await,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        call(r.clone(), Method::POST, "/api/system/reboot").await,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        call(r.clone(), Method::POST, "/api/snapshots/refresh").await,
-        StatusCode::NOT_FOUND
-    );
+    for (m, u) in [
+        (Method::POST, "/api/hosts/compute-01/exec"),
+        (Method::POST, "/api/hosts/compute-01/probe"),
+        (Method::POST, "/api/system/reboot"),
+        (Method::POST, "/api/snapshots/refresh"),
+    ] {
+        let s = call(r.clone(), m.clone(), u).await;
+        assert!(not_implemented(s), "{m} {u} must be 404/405, got {s}");
+    }
 }
+
+/// 危险写路由不得被实现：必须 404（不存在）或 405（方法不允许），绝不是 2xx。
 
 #[tokio::test]
 async fn health_is_public_and_readonly() {
@@ -107,6 +88,11 @@ async fn health_is_public_and_readonly() {
         call(r.clone(), Method::POST, "/api/health").await,
         StatusCode::OK
     );
+}
+
+/// 危险写路由不得被实现：必须 404（不存在）或 405（方法不允许），绝不是 2xx。
+fn not_implemented(status: StatusCode) -> bool {
+    status == StatusCode::NOT_FOUND || status == StatusCode::METHOD_NOT_ALLOWED
 }
 
 #[tokio::test]

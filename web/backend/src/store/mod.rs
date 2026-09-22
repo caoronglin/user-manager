@@ -3,6 +3,9 @@
 
 use rusqlite::Connection;
 
+pub mod snapshot;
+pub mod user;
+
 pub fn init_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         r#"

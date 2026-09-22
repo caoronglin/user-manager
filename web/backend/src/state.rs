@@ -15,6 +15,7 @@ pub struct AppState {
     pub db: Arc<Mutex<rusqlite::Connection>>,
     pub sessions: Arc<SessionStore>,
     pub rate_limiter: Arc<RateLimiter>,
+    pub snapshots: crate::store::snapshot::SnapshotStore,
 }
 
 impl AppState {
@@ -41,10 +42,11 @@ impl AppState {
         let _ = HashMap::<String, String>::new(); // 预留，避免未使用告警
 
         Ok(Self {
-            config,
+            config: config.clone(),
             db: Arc::new(Mutex::new(conn)),
             sessions: Arc::new(SessionStore::new()),
             rate_limiter: Arc::new(RateLimiter::new()),
+            snapshots: crate::store::snapshot::SnapshotStore::new(config.snapshot_dir.clone()),
         })
     }
 }
