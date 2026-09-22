@@ -203,6 +203,33 @@ collect_gpu() {
     gpu_snapshot_kv 2>/dev/null | snapshot_kv_to_json
 }
 
+# 采集 allowlist 日志源：boot / failed-services / auth-failures。
+# 复用 logs_core 只读函数（输出 __LOGS_META__/__LOGS_BODY__/body），只保留 body，
+# 每源封顶 200 行；不可用的源标记 available=false。绝不读取任意 path/unit。
+collect_logs() {
+    local pair key fn out avail lines_json
+    local -a entries=()
+    for pair in \
+        'boot:logs_get_boot_entries' \
+        'failed-services:logs_get_failed_units' \
+        'auth-failures:logs_get_auth_failures'; do
+        key="${pair%%:*}"
+        fn="${pair#*:}"
+        out="$("$fn" 2>/dev/null || true)"
+        if [[ "$out" == *'__LOGS_BODY__'* && "$out" != *'__LOGS_ERROR__'* && -n "$out" ]]; then
+            avail="true"
+        else
+            avail="false"
+        fi
+        lines_json="$(printf '%s\n' "$out" | awk 'p { print } /^__LOGS_BODY__$/ { p = 1 }' \
+            | tail -n 200 | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || printf '[]')"
+        entries+=("$(jq -cn --arg k "$key" --arg a "$avail" --argjson l "$lines_json" \
+            '{key: $k, available: ($a == "true"), lines: $l}')")
+    done
+    printf '%s\n' "${entries[@]}" | jq -s \
+        '{sources: (map({(.key): {available: .available, lines: .lines}}) | add // {})}'
+}
+
 collect_system() {
     local hostname kernel arch uptime load1 load5 load15 memtotal memavail ncpu
     hostname="$(hostname 2>/dev/null || printf 'unknown')"

@@ -152,14 +152,15 @@ test_start "manifest 聚合元数据且 overall 计算正确"
 manifest_res="$(
     set -Eeuo pipefail
     SNAPSHOT_DIR="$TEST_TMPDIR/snapM"
-    for k in users quota resources smb hosts gpu system audit-summary; do
+    while IFS= read -r k; do
         snapshot_emit "$k" local '{}' >/dev/null || exit 1
-    done
+    done < <(snapshot_all_kinds)
     snapshot_manifest_write || exit 1
     jq -r '"\(.overall),\(.snapshots|length),\(.snapshots[0].kind)"' "$SNAPSHOT_DIR/manifest.json"
 )" || manifest_res=''
-if [[ "$manifest_res" == 'fresh,8,users' ]]; then test_pass
-else test_fail "manifest 异常: $manifest_res"; fi
+total_kinds="$(snapshot_all_kinds | wc -l | tr -d ' ')"
+if [[ "$manifest_res" == "fresh,${total_kinds},users" ]]; then test_pass
+else test_fail "manifest 异常: $manifest_res (期望 total=${total_kinds})"; fi
 
 # ---- 端到端采集器（新进程，独立 source） ----
 test_start "采集器端到端：生成全部快照、目录 0750、无残留临时文件"

@@ -219,6 +219,7 @@ pub fn build_router(state: AppState) -> Router {
         // P2 只读系统 API（全部来自 Snapshot；capability 默认拒绝）
         .merge(crate::http::read_api::router())
         .merge(crate::http::audit_api::router())
+        .merge(crate::http::logs_api::router())
         // 变更类路由（带 CSRF/Origin）
         .merge(mutating)
         // 注意：此处不注册任何 users/smb/hosts/system 的写路由。

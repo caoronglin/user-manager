@@ -126,6 +126,8 @@ if [[ -z "${USER_MANAGER_BOOTSTRAP_LOADED:-}" ]]; then
                 "quota_core.sh"
                 "resource_core.sh"
                 "audit_core.sh"
+                "journalctl_core.sh"
+                "logs_core.sh"
                 "snapshot_core.sh"
             )
             ;;
