@@ -214,11 +214,11 @@ draw_usage_bar() {
     [[ $filled -gt $width ]] && filled=$width
     local empty=$((width - filled))
     local fill_char="#" empty_char="-"
-    printf "%s" "$color"
+    printf '%b' "$color"
     printf '%*s' "$filled" '' | tr ' ' "$fill_char"
-    printf "%s" "$C_DIM"
+    printf '%b' "$C_DIM"
     printf '%*s' "$empty" '' | tr ' ' "$empty_char"
-    printf "%s %s%3d%%%s" "$C_RESET" "$color" "$pct" "$C_RESET"
+    printf '%b %b%3d%%%b' "$C_RESET" "$color" "$pct" "$C_RESET"
 }
 
 # 确认提示

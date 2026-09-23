@@ -122,15 +122,16 @@ acl_cache_get() {
     local out_var="${2:-}"
     local now
     now=$(date +%s)
+    local cached_value="${_ACL_CACHE["$key"]:-}"
 
     # 检查缓存是否存在且未过期
-    if [[ -n "${_ACL_CACHE[$key]:-}" ]]; then
-        local timestamp="${_ACL_CACHE_TIMESTAMP[$key]:-0}"
+    if [[ -n "$cached_value" ]]; then
+        local timestamp="${_ACL_CACHE_TIMESTAMP["$key"]:-0}"
         local age=$((now - timestamp))
 
         if [[ $age -lt $ACL_CACHE_TTL ]]; then
             [[ -n "$out_var" ]] || return 1
-            printf -v "$out_var" '%s' "${_ACL_CACHE[$key]}"
+            printf -v "$out_var" '%s' "$cached_value"
             return 0
         fi
     fi
@@ -145,8 +146,8 @@ acl_cache_set() {
     local now
     now=$(date +%s)
 
-    _ACL_CACHE[$key]="$value"
-    _ACL_CACHE_TIMESTAMP[$key]="$now"
+    _ACL_CACHE["$key"]="$value"
+    _ACL_CACHE_TIMESTAMP["$key"]="$now"
 }
 
 # 清除所有缓存
@@ -159,10 +160,11 @@ acl_cache_clear() {
 acl_cache_refresh() {
     local now
     now=$(date +%s)
+    local key
     local -a keys_to_remove=()
 
     for key in "${!_ACL_CACHE[@]}"; do
-        local timestamp="${_ACL_CACHE_TIMESTAMP[$key]:-0}"
+        local timestamp="${_ACL_CACHE_TIMESTAMP["$key"]:-0}"
         local age=$((now - timestamp))
 
         if [[ $age -ge $ACL_CACHE_TTL ]]; then
