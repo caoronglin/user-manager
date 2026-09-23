@@ -184,18 +184,52 @@ async fn list_sessions(
 ) -> Result<Json<Value>, crate::error::ApiError> {
     let auth = crate::auth::guard::authenticate(&state, &headers)?;
     auth.require("sessions.manage")?;
-    Ok(Json(json!({ "ok": true, "data": { "sessions": [] } })))
+    state.sessions.purge_expired(now_unix());
+    let sessions: Vec<Value> = state
+        .sessions
+        .list()
+        .iter()
+        .map(|session| {
+            json!({
+                "id": session.id_hash,
+                "user_id": session.user_id,
+                "role": session.role,
+                "created_at": session.created_at,
+                "expires_at": session.expires_at,
+                "mfa_required": session.mfa_required,
+                "mfa_done": session.mfa_done,
+                "current": session.id_hash == auth.session_hash,
+            })
+        })
+        .collect();
+    Ok(Json(
+        json!({ "ok": true, "data": { "sessions": sessions } }),
+    ))
 }
 
 async fn revoke_session(
     State(state): State<SharedState>,
     headers: axum::http::HeaderMap,
-    axum::extract::Path(_id): axum::extract::Path<String>,
+    axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<axum::response::Response, crate::error::ApiError> {
     let auth = crate::auth::guard::authenticate(&state, &headers)?;
     auth.require("sessions.manage")?;
-    let _ = state.sessions.clone();
-    Ok(StatusCode::NO_CONTENT.into_response())
+    if id.len() != 64 || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(crate::error::ApiError::BadRequest(
+            "invalid session id".to_string(),
+        ));
+    }
+    state.sessions.purge_expired(now_unix());
+    if !state.sessions.revoke(&id) {
+        return Err(crate::error::ApiError::NotFound);
+    }
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    if id == auth.session_hash {
+        if let Ok(cookie) = HeaderValue::from_str(&session::clear_cookie()) {
+            response.headers_mut().insert(header::SET_COOKIE, cookie);
+        }
+    }
+    Ok(response)
 }
 
 pub fn build_router(state: AppState) -> Router {
@@ -217,6 +251,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(crate::http::admin_api::mfa_router())
         .merge(crate::http::admin_api::web_users_router())
         .merge(crate::http::tokens_api::router())
+        .merge(crate::http::notifications_api::mutating_router())
         .route_layer(csrf_layer);
 
     Router::new()
@@ -225,6 +260,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/sessions", get(list_sessions))
         // P2 只读系统 API（全部来自 Snapshot；capability 默认拒绝）
         .merge(crate::http::read_api::router())
+        .merge(crate::http::notifications_api::read_router())
         .merge(crate::http::audit_api::router())
         .merge(crate::http::logs_api::router())
         .merge(crate::http::reports_api::router())

@@ -61,7 +61,11 @@ pub fn authenticate(state: &SharedState, headers: &HeaderMap) -> Result<Auth, Ap
                 user_id: format!("token:{}", row.id),
                 role: "(token)".to_string(),
                 capabilities: Capabilities {
-                    allowed: row.capabilities.into_iter().collect(),
+                    allowed: row
+                        .capabilities
+                        .into_iter()
+                        .filter(|cap| rbac::TOKEN_READ_CAPS.contains(&cap.as_str()))
+                        .collect(),
                 },
                 session_hash: th,
             });

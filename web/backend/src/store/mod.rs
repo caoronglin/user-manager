@@ -3,6 +3,7 @@
 
 use rusqlite::Connection;
 
+pub mod notification;
 pub mod snapshot;
 pub mod token;
 pub mod user;
@@ -69,6 +70,26 @@ pub fn init_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
             target       TEXT,
             result       TEXT
         );
+
+        -- 通知中心 inbox：站内事件（来自 Web 安全事件 / 快照规则 / event spool）。
+        CREATE TABLE IF NOT EXISTS notifications (
+            id          TEXT PRIMARY KEY,
+            event_type  TEXT NOT NULL,
+            severity    TEXT NOT NULL,
+            title       TEXT NOT NULL,
+            summary     TEXT NOT NULL,
+            target      TEXT,
+            source      TEXT,
+            event_id    TEXT,
+            read        INTEGER NOT NULL DEFAULT 0,
+            created_at  INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_event_id
+            ON notifications(event_id) WHERE event_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_notifications_created
+            ON notifications(created_at DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_notifications_unread
+            ON notifications(created_at DESC, id DESC) WHERE read = 0;
         "#,
     )?;
     Ok(())

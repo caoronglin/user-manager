@@ -2,6 +2,7 @@
 
 use axum::body::Body;
 use axum::http::{header, HeaderMap, Method, Request, StatusCode};
+use rusqlite::Connection;
 use serde_json::Value;
 use tower::ServiceExt;
 
@@ -9,6 +10,7 @@ use umweb::auth::password;
 use umweb::config::Config;
 use umweb::http::build_router;
 use umweb::state::AppState;
+use umweb::store::token;
 use umweb::store::user;
 
 async fn make_app() -> (axum::Router, String) {
@@ -112,6 +114,19 @@ async fn token_create_list_revoke_and_bearer_auth() {
     .await;
     assert_eq!(s_bad, StatusCode::BAD_REQUEST);
 
+    // API Tokens may not carry management permissions or perform writes.
+    let (s_write_cap, _b, _h) = send(
+        app.clone(),
+        Method::POST,
+        "/api/api-tokens",
+        Some(r#"{"name":"writer","capabilities":["tokens.manage"],"expire_days":30}"#),
+        Some(&ac),
+        Some(&acsrf),
+        None,
+    )
+    .await;
+    assert_eq!(s_write_cap, StatusCode::BAD_REQUEST);
+
     // 创建 token：返回一次性明文
     let (s_ok, body, _h) = send(
         app.clone(),
@@ -195,4 +210,51 @@ async fn token_create_list_revoke_and_bearer_auth() {
     )
     .await;
     assert_eq!(s_after, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn legacy_management_tokens_are_downgraded_to_read_only() {
+    let (app, db) = make_app().await;
+    let plaintext = "legacy-management-token";
+    let token_hash = umweb::auth::csrf::sha256_hex(plaintext);
+    let expires_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+        + 3600;
+    let conn = Connection::open(db).unwrap();
+    token::insert_token(
+        &conn,
+        "legacy-id",
+        "legacy-token",
+        &token_hash,
+        r#"["users.read","notifications.manage","tokens.manage"]"#,
+        expires_at,
+    )
+    .unwrap();
+    drop(conn);
+
+    let (status, _, _) = send(
+        app.clone(),
+        Method::GET,
+        "/api/users",
+        None,
+        None,
+        None,
+        Some(plaintext),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _, _) = send(
+        app.clone(),
+        Method::POST,
+        "/api/api-tokens",
+        Some(r#"{"name":"escalated","capabilities":["users.read"],"expire_days":30}"#),
+        None,
+        None,
+        Some(plaintext),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
 }

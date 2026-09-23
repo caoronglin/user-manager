@@ -4,6 +4,7 @@ pub mod admin_api;
 pub mod audit_api;
 pub mod logs_api;
 pub mod middleware;
+pub mod notifications_api;
 pub mod read_api;
 pub mod reports_api;
 pub mod response;

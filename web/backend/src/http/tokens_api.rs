@@ -1,7 +1,7 @@
 //! P4b API Tokens API（tokens.manage）。明文只在创建时返回一次；DB 仅存 hash。
 //!
 //! 路由：POST /api/api-tokens 创建（返回一次性 token）、GET /api/api-tokens 列表（无 hash/明文）、
-//! DELETE /api/api-tokens/:id 撤销。capability 请求集合必须是 KNOWN_CAPS 子集。
+//! DELETE /api/api-tokens/:id 撤销。API Token 仅可携带只读 capability。
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -53,10 +53,16 @@ async fn tokens_list(
     let arr: Vec<Value> = rows
         .iter()
         .map(|t| {
+            let capabilities: Vec<&str> = t
+                .capabilities
+                .iter()
+                .map(String::as_str)
+                .filter(|cap| rbac::TOKEN_READ_CAPS.contains(cap))
+                .collect();
             json!({
                 "id": t.id,
                 "name": t.name,
-                "capabilities": t.capabilities,
+                "capabilities": capabilities,
                 "created_at": t.created_at,
                 "expires_at": t.expires_at,
                 "revoked": t.revoked,
@@ -107,6 +113,9 @@ async fn tokens_create(
     for c in &caps {
         if !rbac::KNOWN_CAPS.contains(&c.as_str()) {
             return Err(bad(&format!("unknown capability: {c}")));
+        }
+        if !rbac::TOKEN_READ_CAPS.contains(&c.as_str()) {
+            return Err(bad("API tokens may only carry read capabilities"));
         }
     }
 

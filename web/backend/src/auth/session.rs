@@ -50,6 +50,18 @@ impl SessionStore {
         guard.get(id_hash).cloned()
     }
 
+    /// 列出会话；调用方应先清理过期项，且不得序列化 csrf_token。
+    pub fn list(&self) -> Vec<Session> {
+        let guard = self.inner.lock().expect("session store poisoned");
+        let mut sessions: Vec<Session> = guard.values().cloned().collect();
+        sessions.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then_with(|| a.id_hash.cmp(&b.id_hash))
+        });
+        sessions
+    }
+
     /// 标记会话 MFA 已完成（MFA 验证通过后）。
     pub fn set_mfa_done(&self, id_hash: &str) {
         let mut guard = self.inner.lock().expect("session store poisoned");
@@ -59,9 +71,9 @@ impl SessionStore {
     }
 
     /// 注销单个会话。
-    pub fn revoke(&self, id_hash: &str) {
+    pub fn revoke(&self, id_hash: &str) -> bool {
         let mut guard = self.inner.lock().expect("session store poisoned");
-        guard.remove(id_hash);
+        guard.remove(id_hash).is_some()
     }
 
     /// 撤销某用户全部会话（权限变更/安全事件）。

@@ -6,10 +6,10 @@
 技术栈：Rust + axum + tokio + rusqlite + Argon2id + TOTP(P4) + Ant Design Pro 6(P5)。
 
 > ## ✅ 验证状态
-> 本目录为 **P1 骨架**，已在 Rust 工具链（1.98）完成编译与全部质量门禁：
+> P1 基线已在 Rust 工具链（1.98）完成编译与全部质量门禁：
 > `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、
 > `cargo audit`、`cargo deny check` 全部通过。Cargo.lock 与 deny.toml 已入库。
-> 后续 P2+ 继续遵循同一门禁。
+> 后续 API 阶段沿用同一质量门禁；P4c 通知 inbox 的当前改动尚待本地回归验证。
 
 ## 安全边界（最高优先级）
 
@@ -44,7 +44,7 @@ web/backend/
     api_contract.rs  危险路由必须 404/405 + capability 默认拒绝
 ```
 
-## P1 范围（骨架已含，待工具链验证 + 补齐）
+## 实现进度
 
 - [x] axum 骨架、config、tracing、request-id、健康检查
 - [x] capability RBAC（默认拒绝 + 只读快照 kind 白名单映射）
@@ -59,8 +59,10 @@ web/backend/
 - [x] P3 Logs/Audit/Reports 只读 API（audit 过滤+游标+导出上限；logs allowlist 源；reports 元数据索引）
 - [x] P4a Web 用户管理（web_users.manage：list/create/patch/delete，绝不触碰 Linux 账户）
 - [x] P4a MFA/TOTP：setup/verify/challenge/disable；secret 加密（AES-256-GCM，Web 独立 master key）；登录两步挑战
-- [x] P4b API Tokens：create(一次性明文)/list(无明文无hash)/revoke；DB 仅存 SHA-256 hash；
-      能力 allowlist 校验（KNOWN_CAPS 子集）；expire_days；Bearer 认证可用于只读 API
+- [x] P4a Session 管理：列出活跃会话、CSRF 保护的撤销、过期会话清理
+- [x] P4b API Tokens：create(一次性明文)/list(无明文无hash)/revoke；DB 仅存 SHA-256 hash；仅允许只读 capability；Bearer 认证可用于只读 API
+- [x] P4c 通知 inbox API：读取/未读计数、事件类型过滤、限量游标分页、标记已读/全部已读、event_id 幂等去重；权限由 notifications.read/manage 控制
+- [ ] P4 后续：WeCom 配置与发送、投递记录、事件目录与节流合并、root 事件 spool 消费
 
 ## 本地运行（需 Rust）
 

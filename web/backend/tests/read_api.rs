@@ -67,6 +67,22 @@ fn session_cookie_from(headers: &HeaderMap) -> String {
         .unwrap_or_default()
 }
 
+fn csrf_cookie_from(headers: &HeaderMap) -> String {
+    headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find(|cookie| cookie.starts_with("umweb_csrf="))
+        .map(|cookie| {
+            cookie["umweb_csrf=".len()..]
+                .split(';')
+                .next()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .unwrap_or_default()
+}
+
 fn write_users_snapshot(dir: &str, generated_at: &str) {
     let env = serde_json::json!({
         "schema_version": 1,
@@ -214,7 +230,8 @@ async fn admin_can_list_sessions_and_bad_password_is_401() {
     )
     .await;
     let admin_cookie = session_cookie_from(&headers);
-    let (status, _b3, _h) = send(
+    let csrf = csrf_cookie_from(&headers);
+    let (status, body, _h) = send(
         app.clone(),
         Method::GET,
         "/api/sessions",
@@ -223,6 +240,41 @@ async fn admin_can_list_sessions_and_bad_password_is_401() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
+    let value: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let sessions = value["data"]["sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["current"], true);
+    let session_id = sessions[0]["id"].as_str().unwrap();
+
+    // Revocation is a CSRF-protected mutation and takes effect immediately.
+    let req = Request::builder()
+        .method(Method::DELETE)
+        .uri(format!("/api/sessions/{session_id}"))
+        .header(header::COOKIE, &admin_cookie)
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    let req = Request::builder()
+        .method(Method::DELETE)
+        .uri(format!("/api/sessions/{session_id}"))
+        .header(header::COOKIE, &admin_cookie)
+        .header("x-csrf-token", &csrf)
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    let (status, _, _) = send(
+        app.clone(),
+        Method::GET,
+        "/api/auth/me",
+        None,
+        Some(&admin_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

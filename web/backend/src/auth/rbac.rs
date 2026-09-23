@@ -65,3 +65,19 @@ pub const KNOWN_CAPS: &[&str] = &[
     "wecom.manage",
     "settings.manage",
 ];
+
+/// API Token 只允许访问只读能力。服务端认证时也会应用此 allowlist，
+/// 因此旧数据库中已有的管理型 token 也无法调用变更接口。
+pub const TOKEN_READ_CAPS: &[&str] = &[
+    "dashboard.read",
+    "users.read",
+    "quota.read",
+    "resource.read",
+    "smb.read",
+    "hosts.read",
+    "gpu.read",
+    "reports.read",
+    "logs.read",
+    "audit.read",
+    "notifications.read",
+];
