@@ -58,12 +58,13 @@ impl std::error::Error for ConfigError {}
 impl Config {
     /// 测试用构造器：直接给路径，避免进程级 env 在并行测试间相互污染。
     pub fn for_tests(db_path: std::path::PathBuf, snapshot_dir: std::path::PathBuf) -> Self {
+        let master_key_path = db_path.with_extension("master.key");
         Self {
             bind_addr: "127.0.0.1".to_string(),
             bind_port: 0,
             snapshot_dir,
             db_path,
-            master_key_path: std::env::temp_dir().join("umweb-test-master.key"),
+            master_key_path,
             require_tls: false,
             trusted_proxies: Vec::new(),
             allowed_origins: Vec::new(),
