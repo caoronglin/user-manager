@@ -445,6 +445,12 @@ for k in users quota resources smb hosts gpu system audit-summary; do
     fi
     if grep -qE '-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----' "$f" 2>/dev/null; then secret_leak=1; fi
 done
+if jq -e '.data.users | all(.[]; type == "string" and (contains("pdbedit 不可用") | not))' \
+    "$TEST_TMPDIR/snapE2E/smb.json" >/dev/null 2>&1; then
+    :
+else
+    all_valid=0
+fi
 if ((all_valid == 1 && secret_leak == 0)); then
     test_pass
 else test_fail "快照校验/secret 异常 valid=$all_valid leak=$secret_leak"; fi

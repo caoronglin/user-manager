@@ -195,14 +195,21 @@ collect_resources() {
 collect_smb() {
     local available="false" include="false" svc="unknown" line state users shares
     if smb_is_available 2>/dev/null; then available="true"; fi
-    if smb_include_status 2>/dev/null; then include="true"; fi
+    # smb_include_status may report an unreadable/missing config through msg_warn,
+    # which writes to stdout. Keep diagnostics out of the JSON payload.
+    if smb_include_status >/dev/null 2>&1; then include="true"; fi
     line="$(smb_show_status 2>/dev/null | grep -E '^smbd 服务:' | head -n1 || true)"
     if [[ -n "$line" ]]; then
         state="${line#smbd 服务: }"
         state="${state//[[:space:]]/}"
         [[ -n "$state" ]] && svc="$state"
     fi
-    users="$(smb_list_users 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || printf '[]')"
+    users="$(
+        # The read-only query may warn through msg_warn on stdout when its helper
+        # is unavailable. Suppress only that human message so it cannot become a username.
+        msg_warn() { :; }
+        smb_list_users 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || printf '[]'
+    )"
     shares="$(smb_share_list 2>/dev/null | jq -R -s '
         split("\n") | map(select(length > 0))
         | map(split("|") | {name: .[0], path: (.[1] // "")})' 2>/dev/null || printf '[]')"
@@ -224,7 +231,13 @@ collect_hosts() {
 }
 
 collect_gpu() {
-    gpu_snapshot_kv 2>/dev/null | snapshot_kv_to_json
+    local raw rc=0
+    raw="$(gpu_snapshot_kv 2>/dev/null)" || rc=$?
+    # GPU_TOOL_MISSING / GPU_NOT_FOUND are expected read-only capability states.
+    # Preserve their structured payload while keeping real probe failures visible.
+    if ((rc != 0 && rc != 4)); then return "$rc"; fi
+    [[ -n "$raw" ]] || return 1
+    printf '%s\n' "$raw" | snapshot_kv_to_json
 }
 
 # 采集 allowlist 日志源：boot / failed-services / auth-failures。
