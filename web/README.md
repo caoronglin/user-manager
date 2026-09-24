@@ -6,8 +6,8 @@
 技术栈：Rust + axum + tokio + rusqlite + Argon2id + TOTP；前端为 React 19 + Vite 8 + Ant Design 6。当前前端尚未迁移到计划中的 Umi / Ant Design ProComponents。
 
 > ## ✅ 验证状态
-> **2026-09-24 工作树验证：** Rust fmt、Clippy 通过，后端 59 个测试通过；前端离线依赖安装、生产构建通过，npm 报告 0 个依赖漏洞。Ops 快照 7/7、安全加固 25/25、事件 spool 11/11、systemd 边界 9/9 通过。完整 Shell 回归为 41 个套件通过、0 个失败、1 个可选性能套件跳过。
-> 生产构建仍提示 Ant Design `use client` 和约 1.12 MB 主 JS bundle。系统 Chrome/Playwright 已走通临时账号密码登录→TOTP→Dashboard，验证键盘提交、语言/密码显隐、移动抽屉及 1366/1200/992/390px 无横向溢出；主要数据页权限/交互、无障碍审计与目标机部署仍待验收。`v0.2.0` 仍是最新发布，本轮通知和前端修正已推送到 `main` 但未打新标签。阶段状态见根目录 [`plan.md`](../plan.md) 与 [`docs/M1_REPOSITORY_AUDIT.md`](../docs/M1_REPOSITORY_AUDIT.md)。
+> **2026-09-24 工作树验证：** Rust fmt、Clippy 通过，后端 65 个测试通过；前端离线依赖安装、生产构建通过，npm 报告 0 个依赖漏洞。Ops 快照 7/7、安全加固 25/25、事件 spool 11/11、systemd 边界 9/9 通过。完整 Shell 回归为 41 个套件通过、0 个失败、1 个可选性能套件跳过。
+> 生产构建仍提示 Ant Design `use client` 和约 1.12 MB 主 JS bundle。系统 Chrome/Playwright 已走通临时账号密码登录→TOTP→Dashboard，并验证主要数据页、键盘菜单/筛选、移动抽屉与窄屏表格导航；完整 WCAG/读屏器审计和目标机部署仍待验收。Web 原生 inbox 事件现由独立非特权 worker 按固定模板投递 WeCom；真实 webhook 与多实例共享 SQLite 未验证。版本与阶段状态见根目录 [`plan.md`](../plan.md) 与 [`docs/M1_REPOSITORY_AUDIT.md`](../docs/M1_REPOSITORY_AUDIT.md)。
 
 ## 安全边界（最高优先级）
 
@@ -63,12 +63,13 @@ web/frontend/        React/Vite/Ant Design 前端
 - [x] P4c 通知 inbox API：读取/未读计数、事件类型过滤、限量游标分页、标记已读/全部已读、event_id 幂等去重；权限由 notifications.read/manage 控制
 - [x] P4d WeCom 管理 API：事件目录、加密 Webhook、脱敏设置、版本冲突保护、固定模板测试投递与有界投递历史；重试限定网络/超时/429/5xx 并有上限
 - [x] P4e root event spool：安全读取固定 root-owned 目录，`user.created`/`user.disabled` 幂等进入 inbox；按配置投递 WeCom，五分钟按事件类型/用户去重，限制并发和重试
-- [x] P4f Web inbox 事件：密码校验失败按五分钟全局桶合并，Token 首次成功撤销与经校验 manifest 的 fresh/stale 转换写固定脱敏通知；未知/缺失状态不误报；WeCom 目录只列出 worker 当前可投递的用户生命周期事件
-- [ ] P4 后续：为 Web 原生事件建设独立 WeCom 投递通路，并在目标机验证真实 webhook
+- [x] P4f Web inbox 事件：密码校验失败按五分钟全局桶合并，Token 首次成功撤销与经校验 manifest 的 fresh/stale 转换写固定脱敏通知；未知/缺失状态不误报
+- [x] P4g 原生事件投递：`security.login_failed`、`security.token_revoked`、`snapshot.freshness_changed` 使用独立 outbox/worker、固定消息模板和有界重试；不外发个人信息或通知详情
+- [ ] P4 后续验收：在目标机验证服务和真实 webhook；当前 worker 假定每个 SQLite 数据库只有一个 `umweb` 实例
 - [x] P5 前端页面：登录/MFA、Dashboard、用户/配额/资源、SMB、主机/GPU、系统状态、日志、审计/报表、WeCom 设置/投递历史；能力控制、快照新鲜度提示、主题和中英文切换
-- [ ] P5 视觉验收：真实密码+TOTP 登录到 Dashboard、键盘表单提交、语言/密码交互、移动抽屉导航及 1366/1200/992/390px 无横向溢出已通过；主要数据页权限/交互、菜单与表格键盘操作、无障碍审计仍待完成。当前工程使用 React/Vite/Ant Design，没有采用计划中的 Umi/ProComponents
+- [ ] P5 验收：真实密码+TOTP 登录、主要数据页权限/交互、键盘菜单/筛选、窄屏表格导航已验证；完整 WCAG/读屏器审计仍待完成。当前工程使用 React/Vite/Ant Design，没有采用计划中的 Umi/ProComponents
 - [x] P6 Ubuntu Ops 快照：系统与 CPU/内存/PSI、文件系统/inode、systemd、APT/reboot、AppArmor；单节不可用时降级，新增回归 7/7 通过
-- [x] P7 已发布 `v0.2.0`；通知与前端修正已推送到 `main` 但尚未打新版本标签；全仓 Shell 回归 41 个套件通过、1 个可选性能项跳过；数据页权限/交互、无障碍与目标机验收仍待完成
+- [ ] P7 `v0.2.0` 是当前最新发布；本轮 CI 增加 Rust/前端门禁，Shell 回归 41 个套件通过、1 个可选性能项跳过；待完成新版本发布与目标机验收
 
 ## 本地运行（需 Rust）
 
