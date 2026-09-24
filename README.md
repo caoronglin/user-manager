@@ -100,7 +100,7 @@ Rust 后端提供 Web 用户/MFA/会话/token 管理、只读系统 API、审计
 
 CLI 用户创建/禁用事件现由 root event spool 只读送入 inbox，并按配置投递企业微信；相同事件类型与用户五分钟内只投递一次。当前生产者覆盖 `user.created`、`user.disabled`，事件目录中的登录安全和快照状态事件尚无生产者。
 
-`v0.2.0` 已推送到 GitHub 并发布。尚未完成的验收包括前端浏览器视觉/响应式/无障碍检查、目标机服务与文件权限验证，以及在标准 root-owned `/tmp` 环境复跑 3 个 Host/SSH 回归套件。代码已发布但尚未部署；阶段详情和验证记录见 [`plan.md`](plan.md) 与 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
+`v0.2.0` 已推送到 GitHub 并发布。浏览器已检查桌面登录页、语言切换和密码显隐；认证/MFA 端到端、响应式/无障碍、目标机服务与文件权限验证，以及在标准 root-owned `/tmp` 环境复跑 3 个 Host/SSH 回归套件仍待完成。代码已发布但尚未部署；阶段详情和验证记录见 [`plan.md`](plan.md) 与 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
 
 ```bash
 # 手动生成全部快照到默认目录（部署时由 root + systemd timer 运行）

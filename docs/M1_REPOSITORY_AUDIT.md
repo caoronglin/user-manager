@@ -36,7 +36,7 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 | P2 只读系统 API | [DONE] | users/quota/resources/SMB/hosts/GPU/system summary 均从固定快照读取。 |
 | P3 Logs/Audit/Reports | [DONE] | 固定来源日志、审计过滤/分页/导出上限及报表索引已实现。 |
 | P4 Web 身份与通知 | [PARTIAL] | root event spool 已消费 CLI 的 `user.created`/`user.disabled`，幂等写入 inbox 并按配置投递 WeCom，同类同用户五分钟抑制；登录安全与快照事件尚无生产者，真实 webhook 仍待目标机验收。 |
-| P5 前端 | [PARTIAL] | 页面已实现且生产构建通过；浏览器视觉、响应式、键盘/无障碍验收未完成，且当前栈与 Umi/ProComponents 规划不同。 |
+| P5 前端 | [PARTIAL] | 生产构建通过；已在浏览器检查桌面登录页、语言切换和密码显隐。因未运行后端，认证/MFA 端到端、响应式与键盘/无障碍验收仍未完成；当前栈与 Umi/ProComponents 规划不同。 |
 | P6 Ubuntu Ops/多主机只读观测 | [DONE] | 本机 Ops 采集器覆盖系统、CPU/内存/压力、文件系统/inode、systemd、APT/reboot、AppArmor，并有分节降级处理和测试。目标环境的数据可用性仍需实机确认。 |
 | P7 Hardening/回归/发布 | [PARTIAL] | `v0.2.0` 已推送并发布；38 个全仓 Shell 套件和针对性门禁通过，3 个 Host/SSH 套件受测试容器 `/tmp` 属主影响，浏览器/目标机验收仍未完成。 |
 
@@ -57,7 +57,7 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 | `cargo fmt --all -- --check` | 通过 | Web backend。 |
 | `cargo clippy --locked --all-targets -- -D warnings` | 通过 | Web backend。 |
 | `cargo test --locked` | 通过，51 个测试 | 当前 backend 单元与集成测试；不覆盖目标机部署。 |
-| `npm ci --offline` + `npm run build` | 通过 | 前端生产构建；npm audit 报告 0 个漏洞。构建有 Ant Design `use client` 提示和约 1.12 MB 主 JS bundle 提示；浏览器视觉/交互测试未运行。 |
+| `npm ci --offline` + `npm run build` | 通过 | 前端生产构建；npm audit 报告 0 个漏洞。构建有 Ant Design `use client` 提示和约 1.12 MB 主 JS bundle 提示。浏览器已检查桌面登录页渲染、语言切换和密码显隐；由于后端未启动，API 显示 404，认证/MFA 流程未验证；响应式和无障碍仍未验收。 |
 | `tests/test_snapshot_ops.sh` | 通过，7/7 | Ops collector 测试；当前容器/主机工具缺失时会验证降级状态。 |
 | `tests/test_backup_core.sh` | 通过，16/16 | 备份保留与参数校验。 |
 | `tests/test_security_hardening.sh` | 通过，25/25 | 在临时 Mamba/SQLite 环境中运行；环境与缓存将在本轮结束时清理。 |
@@ -71,7 +71,7 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 ## 未完成项与发布边界
 
 1. 为目录中的 `security.*`、`snapshot.*` 类型添加可信事件生产者，并在真实机器人配置下验证投递。
-2. 使用浏览器完成前端登录、MFA、权限隐藏、WeCom 保存/测试、主要页面数据状态、响应式与键盘操作验收；当前 Vite/Ant Design 栈尚未迁移到 Umi/ProComponents。
+2. 继续使用浏览器验证登录/MFA、权限隐藏、WeCom 保存/测试、主要页面数据状态、响应式与键盘/无障碍；当前仅完成登录页桌面渲染、语言和密码显隐检查，且 Vite/Ant Design 栈尚未迁移到 Umi/ProComponents。
 3. 在目标 Ubuntu 主机验证 `umweb` 的组成员、sudoers、capability、systemd 属性、数据库/密钥属主权限、只读快照权限和 timer 运行状态。
 4. 在标准 root-owned sticky `/tmp` 环境重跑三个 Host/SSH 相关失败套件；本轮其余 38 个回归套件及聚焦测试已通过。
 5. `v0.2.0` 已推送到 `main`，标签与 GitHub Release 均已验证；GitHub 发布页为 https://github.com/caoronglin/user-manager/releases/tag/v0.2.0。旧版 `v0.1.0` 不包含本轮更改。
