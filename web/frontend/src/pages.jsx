@@ -132,14 +132,14 @@ export function UsersPage({ capabilities }) {
     { title: text('用户名', 'Username'), dataIndex: 'username', key: 'username', render: (value) => <Text strong>{value || '—'}</Text> },
     { title: text('主目录', 'Home directory'), dataIndex: 'home', key: 'home', render: (value) => value || '—' },
     { title: text('挂载点', 'Mount point'), dataIndex: 'mountpoint', key: 'mountpoint', render: (value) => value || '—' },
-    { title: text('配额详情', 'Quota details'), key: 'detail', render: (_, record) => capabilities.has('quota.read') ? <Button type="link" onClick={() => setSelected(record)}>{text('查看', 'View')}</Button> : <Text type="secondary">—</Text> },
+    { title: text('配额详情', 'Quota details'), key: 'detail', render: (_, record) => capabilities.has('quota.read') ? <Button type="link" aria-label={text(`查看 ${record.username} 的配额详情`, `View quota details for ${record.username}`)} onClick={() => setSelected(record)}>{text('查看配额', 'View quota')}</Button> : <Text type="secondary">{text('无权查看', 'No access')}</Text> },
   ];
   return <>
     <PageHeader title={text('用户与配额', 'Users & quota')} description={text('查看受管 Linux 用户及其存储配额。', 'View managed Linux users and their storage quotas.')} freshness={users.freshness} />
     <FreshnessAlert freshness={users.freshness} />
     <DataState loading={users.loading} error={users.error} onRetry={users.refresh} empty={!users.loading && !users.error && rows.length === 0} emptyTitle={text('没有受管用户', 'No managed users found')}>
       <ContentCard title={text('用户列表', 'Users')} extra={<Text type="secondary">{users.data?.count ?? rows.length} {text('个用户', 'users')}</Text>}>
-        <DataTable dataSource={rows.map((row, index) => ({ ...row, key: row.username || index }))} columns={columns} onRow={(record) => ({ onDoubleClick: () => capabilities.has('quota.read') && setSelected(record) })} />
+        <DataTable dataSource={rows.map((row, index) => ({ ...row, key: row.username || index }))} columns={columns} />
       </ContentCard>
     </DataState>
     <Drawer
@@ -324,11 +324,25 @@ export function LogsPage() {
           ]}
           aria-label={text('日志来源', 'Log source')}
         />
-        <Input.Search value={input} onChange={(event) => setInput(event.target.value)} onSearch={setSearch} allowClear placeholder={text('按关键词过滤', 'Filter by keyword')} enterButton={text('搜索', 'Search')} />
+        <Input.Search value={input} onChange={(event) => setInput(event.target.value)} onSearch={setSearch} allowClear placeholder={text('按关键词过滤', 'Filter by keyword')} aria-label={text('按关键词过滤日志', 'Filter logs by keyword')} enterButton={text('搜索', 'Search')} />
       </div>
       <DataState loading={logs.loading} error={logs.error} onRetry={logs.refresh} empty={!logs.loading && !logs.error && lines.length === 0} emptyTitle={text('此来源暂无日志', 'No log lines for this source')}>
         {logs.data?.truncated && <Alert showIcon type="info" title={text('显示最近的 500 行。', 'Showing the most recent 500 lines.')} className="log-truncated" />}
-        <pre className="log-output">{lines.map((line, index) => <span className="log-line" key={`${index}-${line}`}><span className="log-index">{String(index + 1).padStart(3, '0')}</span>{line}</span>)}</pre>
+        <pre className="log-output" role="region" tabIndex={0} aria-label={text('日志内容，可聚焦后使用方向键或 Home/End 滚动', 'Log output; focus this region and use the arrow keys or Home/End to scroll')} onKeyDown={(event) => {
+          const output = event.currentTarget;
+          const lineHeight = Number.parseFloat(getComputedStyle(output).lineHeight) || 20;
+          const pageStep = Math.max(lineHeight, Math.round(output.clientHeight * 0.8));
+          const offsets = { ArrowDown: lineHeight, ArrowUp: -lineHeight, PageDown: pageStep, PageUp: -pageStep };
+          if (event.key === 'Home' || event.key === 'End') {
+            event.preventDefault();
+            output.scrollTop = event.key === 'Home' ? 0 : output.scrollHeight;
+          } else if (offsets[event.key] !== undefined) {
+            event.preventDefault();
+            output.scrollTop += offsets[event.key];
+          }
+        }}>
+          {lines.map((line, index) => <span className="log-line" key={`${index}-${line}`}><span className="log-index" aria-hidden="true">{String(index + 1).padStart(3, '0')}</span>{line}</span>)}
+        </pre>
       </DataState>
     </ContentCard>
   </>;
@@ -369,14 +383,14 @@ export function AuditPage() {
     <PageHeader title={text('审计记录', 'Audit')} description={text('查询只读审计摘要；详情文本不会在此展示。', 'Search the read-only audit summary. Detail text is not exposed here.')} freshness={audit.freshness} actions={<ExportLink endpoint={`/api/audit/export?${exportQuery}`} filename="audit.csv" />} />
     <FreshnessAlert freshness={audit.freshness} />
     <ContentCard title={text('筛选条件', 'Filters')} className="audit-filters-card">
-      <div className="filter-row">
+      <form className="filter-row" onSubmit={(event) => { event.preventDefault(); applyFilters(); }}>
         <Input value={formValues.user} onChange={(event) => setFormValues((current) => ({ ...current, user: event.target.value }))} placeholder={text('用户', 'User')} aria-label={text('按用户筛选', 'Filter by user')} />
         <Input value={formValues.action} onChange={(event) => setFormValues((current) => ({ ...current, action: event.target.value }))} placeholder={text('操作', 'Action')} aria-label={text('按操作筛选', 'Filter by action')} />
-        <Select value={formValues.result || undefined} onChange={(value) => setFormValues((current) => ({ ...current, result: value || '' }))} allowClear placeholder={text('全部结果', 'Any result')} options={[{ value: 'success', label: text('成功', 'Success') }, { value: 'failure', label: text('失败', 'Failure') }]} />
-        <Button type="primary" onClick={applyFilters}>{text('应用筛选', 'Apply filters')}</Button>
-      </div>
+        <Select value={formValues.result || undefined} onChange={(value) => setFormValues((current) => ({ ...current, result: value || '' }))} allowClear placeholder={text('全部结果', 'Any result')} aria-label={text('按结果筛选', 'Filter by result')} options={[{ value: 'success', label: text('成功', 'Success') }, { value: 'failure', label: text('失败', 'Failure') }]} />
+        <Button type="primary" htmlType="submit">{text('应用筛选', 'Apply filters')}</Button>
+      </form>
     </ContentCard>
-    <ContentCard title={text('审计事件', 'Audit events')} extra={<Text type="secondary">{text(`匹配 ${total} 条`, `${total} matched`)}</Text>}>
+    <ContentCard title={text('审计事件', 'Audit events')} extra={<Text type="secondary" aria-live="polite" aria-atomic="true">{text(`匹配 ${total} 条`, `${total} matched`)}</Text>}>
       <DataState loading={audit.loading} error={audit.error} onRetry={audit.refresh} empty={!audit.loading && !audit.error && rows.length === 0} emptyTitle={text('没有匹配的审计事件', 'No matching audit events')}>
         <DataTable dataSource={rows.map((row, index) => ({ ...row, key: row.id || `${row.timestamp}-${index}` }))} columns={[
           { title: text('时间', 'Time'), dataIndex: 'timestamp', key: 'timestamp', render: (value) => formatTime(value, language) },
@@ -386,7 +400,7 @@ export function AuditPage() {
           { title: text('结果', 'Result'), dataIndex: 'result', key: 'result', render: (value) => <Tag color={value === 'success' ? 'success' : value === 'failure' ? 'error' : 'default'}>{value || '—'}</Tag> },
         ]} />
       </DataState>
-      <div className="table-pager"><Button disabled={cursor <= 0 || audit.loading} onClick={() => setCursor(Math.max(0, cursor - 50))}>{text('上一页', 'Previous')}</Button><Text type="secondary">{total ? `${cursor + 1}–${Math.min(cursor + rows.length, total)} / ${total}` : '0'}</Text><Button disabled={nextCursor == null || audit.loading} onClick={() => setCursor(nextCursor || 0)}>{text('下一页', 'Next')}</Button></div>
+      <div className="table-pager"><Button disabled={cursor <= 0 || audit.loading} onClick={() => setCursor(Math.max(0, cursor - 50))}>{text('上一页', 'Previous')}</Button><Text type="secondary" aria-live="polite" aria-atomic="true">{total ? `${cursor + 1}–${Math.min(cursor + rows.length, total)} / ${total}` : '0'}</Text><Button disabled={nextCursor == null || audit.loading} onClick={() => setCursor(nextCursor || 0)}>{text('下一页', 'Next')}</Button></div>
     </ContentCard>
   </>;
 }
@@ -561,10 +575,10 @@ export function WeComSettingsPage() {
 
               <Form.Item name="events" label={text('事件订阅', 'Event subscriptions')}>
                 <Checkbox.Group className="event-groups">
-                  {groups.map((group) => <section className="event-group" key={group.key}>
-                    <div className="event-group-title">{group.title}</div>
+                  {groups.map((group) => <fieldset className="event-group" key={group.key}>
+                    <legend className="event-group-title">{group.title}</legend>
                     <div className="event-options">{group.events.map((event) => <Checkbox value={event} key={event}>{EVENT_LABELS[event]?.[language === 'zh' ? 0 : 1] || event}<small className="event-code">{event}</small></Checkbox>)}</div>
-                  </section>)}
+                  </fieldset>)}
                 </Checkbox.Group>
               </Form.Item>
 
