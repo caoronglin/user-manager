@@ -58,6 +58,7 @@ function AppContent({ dark, setDark }) {
   const [page, setPage] = useState(readPage);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [freshnessBySource, setFreshnessBySource] = useState({});
   const [loginNotice, setLoginNotice] = useState('');
 
@@ -217,6 +218,7 @@ function AppContent({ dark, setDark }) {
     <FreshnessContext.Provider value={{ registerFreshness, freshnessBySource }}>
       <LanguageContext.Provider value={{ language, text }}>
         <Layout className={`app-layout ${dark ? 'app-dark' : ''}`} style={{ background: token.colorBgLayout }}>
+          <button className="skip-link" type="button" onClick={() => document.getElementById('main-content')?.focus()}>{text('跳到主要内容', 'Skip to main content')}</button>
           <Sider
             className="desktop-sider"
             width={240}
@@ -237,7 +239,7 @@ function AppContent({ dark, setDark }) {
           <Layout className="main-layout">
             <Header className="app-header">
               <div className="header-left">
-                <Button className="mobile-menu-trigger" type="text" icon={<Icon name="menu" />} aria-label={text('打开导航', 'Open navigation')} onClick={() => setMobileOpen(true)} />
+                <Button className="mobile-menu-trigger" type="text" icon={<Icon name="menu" />} aria-label={text('打开导航', 'Open navigation')} aria-expanded={mobileOpen} aria-controls="mobile-nav-drawer" onClick={() => setMobileOpen(true)} />
                 {collapsed && <div className="header-brand"><span className="brand-mark"><span>U</span></span><strong>User Manager</strong></div>}
                 <div className="header-current">{active ? text(active.zh, active.en) : text('控制台', 'Console')}</div>
               </div>
@@ -245,8 +247,8 @@ function AppContent({ dark, setDark }) {
                 <SnapshotStatus freshness={freshnessSummary} language={language} compact />
                 <Tooltip title={text('切换语言', 'Switch language')}><Button type="text" className="header-control" onClick={() => { const next = language === 'zh' ? 'en' : 'zh'; localStorage.setItem('um.language', next); setLanguage(next); }} aria-label={text('切换到 English', 'Switch to Chinese')}>{language === 'zh' ? '中' : 'EN'}</Button></Tooltip>
                 <Tooltip title={text(dark ? '切换到浅色主题' : '切换到深色主题', dark ? 'Use light theme' : 'Use dark theme')}><Button type="text" className="header-control theme-control" icon={<Icon name={dark ? 'sun' : 'moon'} />} onClick={() => { const next = !dark; localStorage.setItem('um.theme', next ? 'dark' : 'light'); setDark(next); }} aria-label={text('切换主题', 'Toggle theme')} /></Tooltip>
-                <Dropdown menu={{ items: userMenu, onClick: ({ key }) => key === 'logout' && handleLogout() }} trigger={['click']} placement="bottomRight">
-                  <button className="profile-button" type="button" aria-label={text('打开账户菜单', 'Open account menu')}>
+                <Dropdown open={userMenuOpen} onOpenChange={setUserMenuOpen} menu={{ items: userMenu, onClick: ({ key }) => key === 'logout' && handleLogout() }} trigger={['click']} placement="bottomRight">
+                  <button className="profile-button" type="button" aria-label={text(`打开 ${identity.username} 的账户菜单`, `Open ${identity.username}'s account menu`)} aria-haspopup="menu" aria-expanded={userMenuOpen}>
                     <Avatar size={32} className="profile-avatar">{identity.username.slice(0, 1).toUpperCase()}</Avatar>
                     <span className="profile-name">{identity.username}</span>
                     <Icon name="chevron" />
@@ -255,7 +257,7 @@ function AppContent({ dark, setDark }) {
               </div>
             </Header>
 
-            <Content className="content-area">
+            <Content id="main-content" className="content-area" role="main" tabIndex={-1}>
               {active && Page ? <Page capabilities={capabilities} /> : (
                 <EmptyState title={text('暂无可查看的页面', 'No pages available')} description={text('当前账号尚未获得只读查看权限。', 'This account has no read access capabilities.')}/>
               )}
@@ -268,6 +270,7 @@ function AppContent({ dark, setDark }) {
             size={280}
             open={mobileOpen}
             onClose={() => setMobileOpen(false)}
+            id="mobile-nav-drawer"
             className="mobile-nav-drawer"
             styles={{ body: { padding: '12px 8px' } }}
           >
