@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — 2026-09-24 (release draft)
+## 0.2.0 — 2026-09-24
 
 - Add the React/Vite Web console with MFA login, capability-aware pages, system snapshots, audit/log/report views, and WeCom settings/history.
 - Add encrypted WeCom configuration, bounded retries and delivery history, plus a read-only root event spool for user creation/disable events with inbox deduplication and five-minute suppression.
@@ -14,4 +14,4 @@
 - Frontend: offline dependency install and production build pass; npm reports no known dependency vulnerabilities.
 - Focused shell security, snapshot, event-spool, and systemd-boundary suites pass.
 - Full shell regression: 38 suites pass; three Host/SSH-related suites are blocked by this container's non-root-owned `/tmp`; one optional performance suite is skipped.
-- Browser visual/accessibility checks and target-host deployment validation remain pending. This is a release draft until pushed and published.
+- Published on GitHub: https://github.com/caoronglin/user-manager/releases/tag/v0.2.0. Browser visual/accessibility checks and target-host deployment validation remain pending.

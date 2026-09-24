@@ -38,7 +38,7 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 | P4 Web 身份与通知 | [PARTIAL] | root event spool 已消费 CLI 的 `user.created`/`user.disabled`，幂等写入 inbox 并按配置投递 WeCom，同类同用户五分钟抑制；登录安全与快照事件尚无生产者，真实 webhook 仍待目标机验收。 |
 | P5 前端 | [PARTIAL] | 页面已实现且生产构建通过；浏览器视觉、响应式、键盘/无障碍验收未完成，且当前栈与 Umi/ProComponents 规划不同。 |
 | P6 Ubuntu Ops/多主机只读观测 | [DONE] | 本机 Ops 采集器覆盖系统、CPU/内存/压力、文件系统/inode、systemd、APT/reboot、AppArmor，并有分节降级处理和测试。目标环境的数据可用性仍需实机确认。 |
-| P7 Hardening/回归/发布 | [PARTIAL] | 38 个全仓 Shell 套件和针对性门禁通过；3 个 Host/SSH 套件受测试容器 `/tmp` 属主影响，浏览器/目标机验收和 GitHub 发布仍未完成。 |
+| P7 Hardening/回归/发布 | [PARTIAL] | `v0.2.0` 已推送并发布；38 个全仓 Shell 套件和针对性门禁通过，3 个 Host/SSH 套件受测试容器 `/tmp` 属主影响，浏览器/目标机验收仍未完成。 |
 
 ## 本轮修复与新增实现
 
@@ -74,4 +74,4 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 2. 使用浏览器完成前端登录、MFA、权限隐藏、WeCom 保存/测试、主要页面数据状态、响应式与键盘操作验收；当前 Vite/Ant Design 栈尚未迁移到 Umi/ProComponents。
 3. 在目标 Ubuntu 主机验证 `umweb` 的组成员、sudoers、capability、systemd 属性、数据库/密钥属主权限、只读快照权限和 timer 运行状态。
 4. 在标准 root-owned sticky `/tmp` 环境重跑三个 Host/SSH 相关失败套件；本轮其余 38 个回归套件及聚焦测试已通过。
-5. 当前工作树尚未推送或发布。GitHub 当前 DNS 查询失败，本机 `gh` token 已失效；恢复网络/DNS 并重新认证后，再推送提交和 `v0.2.0` 版本标签。旧版 `v0.1.0` 不包含本轮更改。
+5. `v0.2.0` 已推送到 `main`，标签与 GitHub Release 均已验证；GitHub 发布页为 https://github.com/caoronglin/user-manager/releases/tag/v0.2.0。旧版 `v0.1.0` 不包含本轮更改。
