@@ -1688,7 +1688,7 @@ quota.warning
 - `quota.warning` 来源于快照规则判断，不由 Web 修改 quota；
 - `host.*` 来源于采集结果；
 - `security.*` 来源于 Web 自身认证系统。
-- 当前 WeCom API 目录仅开放 `user.created`、`user.disabled`，因为现有 delivery worker 只实现这两种事件；`security.login_failed`、`security.token_revoked`、`snapshot.*` 当前只进入站内 inbox。
+- WeCom 订阅 API 只暴露受支持的固定事件类型：CLI spool 投递 `user.created`/`user.disabled`，Web 原生 worker 投递 `security.login_failed`、`security.token_revoked` 和归一化的 `snapshot.freshness_changed`。两条通路使用各自的白名单和固定消息模板。
 - `notification.test` 是固定模板手工测试投递，不是可订阅事件。
 
 CLI/TUI 的 `user.created`、`user.disabled` 等事件如需进入 Web 通知，应通过**只读事件快照/事件 spool**对接，而不是让 Web 调用特权 Action。
@@ -2274,14 +2274,14 @@ sensitive file scan
 | P1 Rust 非特权后端骨架 | [DONE] | Axum、认证、会话、RBAC、CSRF、限流和 SQLite 已实现；Rust 门禁通过。 |
 | P2 只读系统 API | [DONE] | users/quota/resources/SMB/hosts/GPU/system-summary 已由快照 API 提供。 |
 | P3 Logs / Audit / Reports | [DONE] | 只读日志、审计分页/导出和报告索引 API 已实现。 |
-| P4 Web 自身身份与通知 | [PARTIAL] | root event spool 将 `user.created`/`user.disabled` 幂等写入 inbox 并按配置投递 WeCom；真实密码失败按全局 5 分钟桶合并、首次成功撤销 Token 和 manifest freshness 转换也会写入 Web inbox。WeCom 当前只开放实际支持的用户生命周期事件；Web 原生事件的 WeCom 投递和真实目标机验收仍待完成。 |
-| P5 Ant Design 前端 | [PARTIAL] | React/Vite/Ant Design 前端页面与 WeCom 设置页已实现，生产构建通过；临时管理员真实密码+TOTP 登录、键盘提交、语言/密码显隐、移动抽屉导航和 1366/1200/992/390px 断点均已验证且无横向溢出。主要数据页权限/交互、菜单与表格键盘操作、无障碍审计仍待验收，工程也未采用计划中的 Umi/ProComponents。 |
+| P4 Web 自身身份与通知 | [PARTIAL] | CLI spool 投递 `user.created`/`user.disabled`；独立 Web outbox/worker 投递固定模板的 `security.login_failed`、`security.token_revoked`、`snapshot.freshness_changed`。真实目标机、真实 webhook 验收仍待完成；worker 假定单实例使用数据库。 |
+| P5 Ant Design 前端 | [PARTIAL] | React/Vite/Ant Design 页面已生产构建并在临时后端/browser 环境验证：密码+TOTP、主要数据页权限/交互、键盘导航与窄屏表格滚动通过。完整 WCAG/读屏器审计仍待验收，工程也未采用计划中的 Umi/ProComponents。 |
 | P6 Ubuntu Ops / 多主机观测 | [DONE] | system/filesystem/inode/systemd/APT/reboot/AppArmor 只读采集器已接入快照和回归；不可用能力按状态降级。实际主机采集结果依部署环境而异。 |
-| P7 Hardening / 回归 / 发布 | [PARTIAL] | `v0.2.0` 仍是最新发布；P4 通知和本轮前端修正已推送到 `main`，尚未打新版本标签。Rust、前端构建、聚焦安全测试和登录/MFA 浏览器流程均通过。全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过；数据页权限/交互、无障碍和目标机权限/服务验证仍待完成。 |
+| P7 Hardening / 回归 / 发布 | [PARTIAL] | Rust 65 项测试、前端构建、浏览器主要路径、聚焦安全测试和 Shell 回归通过；CI 增加后端/前端门禁。`v0.2.0` 仍是最新发布，当前开发更新尚未打新版本；目标机部署与完整 WCAG/读屏器审计未完成。 |
 
 复核记录见 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
 
-本轮验证：Rust `cargo fmt --all -- --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过（59 个后端测试）；前端离线安装与生产构建通过，npm audit 为 0 个漏洞，构建仍有 Ant Design `use client` 与主 bundle 体积提示。使用隔离临时数据库和管理员账号，通过系统 Chrome/Playwright 完成密码登录→TOTP→Dashboard；键盘提交、语言切换、密码显隐、移动抽屉导航均通过；1366/1200/992/390px 页面无横向溢出，未捕获页面异常为 0。聚焦 Shell 回归：安全加固 25/25、快照 25/25、Ops 7/7、事件 spool 11/11、systemd 边界 9/9、独立脚本 19/19、改密权限包装 19/19、远程 CLI 9/9 均通过。全仓 `tests/run_regression.sh --level all` 在一次性 ext4 clone 与私有 TMPDIR 下为 41 个通过、0 个失败、1 个可选性能套件跳过；P0 ShellCheck 使用本机 Mamba 包缓存中的可执行文件。P4 通知更新和本轮前端修正已推送到 GitHub `main`；`v0.2.0` 仍是已发布版本，本轮更新尚未收入 release。数据页权限/交互、无障碍及目标机验收未完成。
+本轮验证：Rust `cargo fmt --all -- --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过（65 个后端测试）；前端离线安装与生产构建通过，npm audit 报告 0 个漏洞，构建仍有 Ant Design `use client` 与主 bundle 体积提示。临时浏览器验证覆盖密码+TOTP、主要数据页权限/交互、键盘菜单和筛选、窄屏表格键盘滚动，页面错误为 0；尚未完成完整 WCAG/读屏器审计。聚焦 Shell 回归：安全加固 25/25、快照 25/25、Ops 7/7、事件 spool 11/11、systemd 边界 9/9、独立脚本 19/19、改密权限包装 19/19、远程 CLI 9/9 均通过。全仓 `tests/run_regression.sh --level all` 在一次性 ext4 clone 与私有 TMPDIR 下为 41 个通过、0 个失败、1 个可选性能套件跳过；P0 ShellCheck 使用本机 Mamba 包缓存中的可执行文件。原生 WeCom worker 不读取用户/IP/token/通知详情，只发送固定模板；真实 webhook、目标机服务与文件权限仍待验收。`v0.2.0` 仍是当前最新发布。
 
 ## P0 — 安全边界与 Snapshot 契约
 
@@ -2396,11 +2396,11 @@ system summary
 - notification inbox；
 - event dedup；
 
-已实现 root→Web 固定 spool 消费，CLI 生产者覆盖用户创建与禁用；Web 幂等写入 inbox，并可依配置投递 WeCom，持久化五分钟同类/同用户抑制状态。账号密码明确校验失败时写固定脱敏 `security.login_failed` 通知，使用全局五分钟桶去重，unknown user、限流与内部错误不产生事件。Token 首次成功撤销会在同一 SQLite 事务中写入固定脱敏的 `security.token_revoked` 通知。后台观察器每 30 秒读取同一份已校验 manifest 与 freshness，仅在 fresh↔stale 转换时原子更新状态并写 inbox；missing/invalid/partial/unavailable 不产生事件。WeCom 目录仅开放实际 dispatcher 支持的 `user.created`、`user.disabled`。仍待实现/验收：
+已实现 root→Web 固定 spool 消费，CLI 生产者覆盖用户创建与禁用；Web 幂等写入 inbox，并可依配置投递 WeCom，持久化五分钟同类/同用户抑制状态。账号密码明确校验失败时写固定脱敏 `security.login_failed` 通知，使用全局五分钟桶去重，unknown user、限流与内部错误不产生事件。Token 首次成功撤销会在同一 SQLite 事务中写入固定脱敏 `security.token_revoked` 通知。后台观察器每 30 秒读取同一份已校验 manifest 与 freshness，仅在 fresh↔stale 转换时原子更新状态并写 inbox；missing/invalid/partial/unavailable 不产生事件。独立 Web 原生 outbox/worker 以白名单和固定模板投递登录失败、Token 撤销及快照 freshness 变化事件，不读取通知详情或用户/IP/token。仍待验收：
 
-- 为 Web 原生 `security.*` / `snapshot.*` inbox 事件增加独立且受限的 WeCom 投递通路后，再开放对应订阅选项；
 - 在目标 Ubuntu 主机验证目录属主/权限、服务启动和故障恢复；
-- 配置真实机器人后完成实际外部投递验收（测试环境覆盖逻辑、dry-run 和错误分类，不证明生产机器人已配置）。
+- 配置真实机器人后完成实际外部投递验收（开发阶段覆盖逻辑、dry-run 和队列行为，不证明生产机器人已配置）；
+- Web 原生 worker 目前假定单个 `umweb` 实例使用同一个 SQLite 数据库。
 
 验收：
 
@@ -2417,7 +2417,7 @@ system summary
 
 ## P5 — Ant Design Pro 前端与视觉验收
 
-当前 `web/frontend` 使用 React、Vite 和 Ant Design，已有登录/MFA、只读数据页、系统状态页、通知/WeCom 设置与投递历史、主题和中英文切换。浏览器已走通临时管理员密码登录、TOTP 挑战和 Dashboard，并验证键盘提交、语言/密码交互、移动抽屉和 1366/1200/992/390px 页面无横向溢出。工程目前不是 Umi/Ant Design ProComponents；主要数据页权限与交互、菜单/表格键盘操作及无障碍审计仍须完成。
+当前 `web/frontend` 使用 React、Vite 和 Ant Design，已有登录/MFA、只读数据页、系统状态页、通知/WeCom 设置与投递历史、主题和中英文切换。临时环境已走通管理员密码登录、TOTP 挑战和主要数据页，并验证键盘菜单/筛选和窄屏表格键盘滚动。完整 WCAG/读屏器审计仍待完成。工程目前不是 Umi/Ant Design ProComponents。
 
 实现应用壳：
 
