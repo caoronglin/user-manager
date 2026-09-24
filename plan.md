@@ -2281,7 +2281,7 @@ sensitive file scan
 
 复核记录见 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
 
-本轮验证：Rust `cargo fmt --all -- --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过（59 个后端测试）；前端 `npm ci --offline`、`npm run build` 通过（npm audit 0 个漏洞，构建有 bundle/Ant Design 提示）。浏览器检查桌面登录页、语言切换和密码显隐；因后端未启动，API 返回 404，未验证认证/MFA 端到端流程，响应式/无障碍仍待验收。聚焦 Shell 回归：安全加固 25/25、快照 25/25、Ops 7/7、事件 spool 11/11、systemd 边界 9/9、独立脚本 19/19、改密权限包装 19/19、远程 CLI 9/9 均通过。全仓 `tests/run_regression.sh --level all` 在一次性 ext4 clone 与私有 TMPDIR 下为 41 个通过、0 个失败、1 个可选性能套件跳过；P0 ShellCheck 使用本机 Mamba 包缓存中的可执行文件。GitHub `main` 已到 `35dc834`；`v0.2.0` 已发布，但本轮更新尚未收入 release。目标机验收未完成。
+本轮验证：Rust `cargo fmt --all -- --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过（59 个后端测试）；前端 `npm ci --offline`、`npm run build` 通过（npm audit 0 个漏洞，构建有 bundle/Ant Design 提示）。浏览器检查桌面登录页、语言切换和密码显隐；因后端未启动，API 返回 404，未验证认证/MFA 端到端流程，响应式/无障碍仍待验收。聚焦 Shell 回归：安全加固 25/25、快照 25/25、Ops 7/7、事件 spool 11/11、systemd 边界 9/9、独立脚本 19/19、改密权限包装 19/19、远程 CLI 9/9 均通过。全仓 `tests/run_regression.sh --level all` 在一次性 ext4 clone 与私有 TMPDIR 下为 41 个通过、0 个失败、1 个可选性能套件跳过；P0 ShellCheck 使用本机 Mamba 包缓存中的可执行文件。P4 通知更新已推送到 GitHub `main`；`v0.2.0` 仍是已发布版本，本轮更新尚未收入 release。目标机验收未完成。
 
 ## P0 — 安全边界与 Snapshot 契约
 
