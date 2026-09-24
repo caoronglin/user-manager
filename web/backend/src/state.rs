@@ -14,7 +14,7 @@ pub struct AppState {
     pub db: Arc<Mutex<rusqlite::Connection>>,
     pub sessions: Arc<SessionStore>,
     pub rate_limiter: Arc<RateLimiter>,
-    /// Single in-flight live/dry-run WeCom test to bound outbound work.
+    /// Shared semaphore bounds concurrent WeCom test and event delivery work.
     pub wecom_test_gate: Arc<tokio::sync::Semaphore>,
     pub snapshots: crate::store::snapshot::SnapshotStore,
     pub master_key: [u8; crate::crypto::KEY_LEN],

@@ -453,7 +453,7 @@ fn valid_linux_username(username: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"_-".contains(byte))
 }
 
-fn validate_webhook(input: &str) -> Option<Url> {
+pub(crate) fn validate_webhook(input: &str) -> Option<Url> {
     if input.is_empty() || input.len() > 512 || input.trim() != input {
         return None;
     }

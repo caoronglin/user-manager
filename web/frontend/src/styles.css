@@ -21,6 +21,9 @@
 body { min-width: 320px; min-height: 100vh; margin: 0; background: var(--page-bg); color: var(--text); }
 button, input, textarea, select { font: inherit; }
 button:focus-visible, a:focus-visible, input:focus-visible, .ant-select-focused .ant-select-selector { outline: 2px solid rgba(49, 94, 232, .8); outline-offset: 2px; }
+.skip-link { position: fixed; z-index: 1000; inset-block-start: 8px; inset-inline-start: 8px; transform: translateY(-160%); padding: 9px 12px; border: 1px solid #315ee8; border-radius: 6px; color: #fff; background: #244bc4; cursor: pointer; }
+.skip-link:focus-visible { transform: translateY(0); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); border: 0; }
 #root { min-height: 100vh; }
 .ui-icon { display: inline-block; flex: 0 0 auto; vertical-align: -0.16em; }
 
@@ -93,6 +96,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, .ant-select-focused 
 .data-table .ant-table-tbody > tr > td { max-width: 360px; overflow-wrap: anywhere; }
 .data-table .ant-table-cell { padding: 11px 12px !important; }
 .data-table .ant-table-tbody > tr:hover > td { background: var(--row-hover) !important; }
+.data-table .ant-table-content[role="region"]:focus-visible, .log-output:focus-visible { outline: 2px solid rgba(49, 94, 232, .85); outline-offset: 2px; }
 .dashboard-filesystems .content-card .ant-card-body { padding-top: 4px; }
 .dashboard-health .ant-card-body { display: flex; flex-direction: column; }
 .health-list { display: grid; gap: 14px; }
@@ -164,9 +168,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, .ant-select-focused 
 .field-extra { margin-top: 6px; color: #98a2b3; font-size: 11px; line-height: 1.6; }
 .cancel-replace { padding-inline: 0; font-size: 11px; }
 .event-groups { display: grid; width: 100%; gap: 14px; }
-.event-group { padding: 11px 12px; border: 1px solid var(--border); border-radius: 7px; }
-.event-group-title { margin-bottom: 9px; color: #677487; font-size: 11px; font-weight: 600; }
-.event-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 12px; }
+.event-group { min-width: 0; margin: 0; padding: 7px 12px 11px; border: 1px solid var(--border); border-radius: 7px; }
+.event-group-title { padding: 0 5px; color: #677487; font-size: 11px; font-weight: 600; }
+.event-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 12px; padding-top: 5px; }
 .event-options .ant-checkbox-wrapper { align-items: flex-start; color: #455367; font-size: 12px; }
 .event-code { display: block; margin-top: 3px; color: #99a3b1; font-family: "SFMono-Regular", Consolas, monospace; font-size: 9px; }
 .save-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 15px; border-top: 1px solid var(--border); }

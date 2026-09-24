@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert, Button, Card, Empty, Form, Input, Result, Skeleton, Space, Table, Tag, Typography,
 } from 'antd';
@@ -95,16 +95,17 @@ export function FreshnessAlert({ freshness }) {
 }
 
 export function EmptyState({ title, description, action }) {
-  return <div className="empty-state"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span><strong>{title}</strong>{description && <small>{description}</small>}</span>} />{action}</div>;
+  return <div className="empty-state" role="status" aria-live="polite"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<span><strong>{title}</strong>{description && <small>{description}</small>}</span>} />{action}</div>;
 }
 
 export function DataState({ loading, error, onRetry, children, empty, emptyTitle, emptyDescription }) {
   const { text } = useLanguage();
-  if (loading) return <Card className="content-card"><Skeleton active paragraph={{ rows: 4 }} /></Card>;
+  if (loading) return <div className="data-state-loading" role="status" aria-live="polite" aria-busy="true"><span className="visually-hidden">{text('正在加载数据…', 'Loading data…')}</span><Card aria-hidden="true" className="content-card"><Skeleton active paragraph={{ rows: 4 }} /></Card></div>;
   if (error) {
     return <Alert
       type={error.status === 403 ? 'warning' : 'error'}
       showIcon
+      role="alert"
       className="data-error"
       title={error.status === 403 ? text('没有访问权限', 'Access denied') : text('暂时无法读取数据', 'Data is temporarily unavailable')}
       description={error.message || text('请稍后重试。', 'Please try again later.')}
@@ -117,18 +118,55 @@ export function DataState({ loading, error, onRetry, children, empty, emptyTitle
 
 export function DataTable({ columns, dataSource, rowKey = 'key', emptyText, pagination = false, size = 'middle', scrollX = true, onRow }) {
   const { text } = useLanguage();
+  const shellRef = useRef(null);
+  useEffect(() => {
+    if (!scrollX || !shellRef.current) return undefined;
+    const viewport = shellRef.current.querySelector('.ant-table-content');
+    if (!viewport) return undefined;
+    const onHorizontalKey = (event) => {
+      if (event.target !== viewport || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+      event.preventDefault();
+      const step = Math.max(40, Math.round(viewport.clientWidth * 0.8));
+      viewport.scrollBy({ left: event.key === 'ArrowRight' ? step : -step });
+    };
+    const updateKeyboardRegion = () => {
+      const canScroll = viewport.scrollWidth > viewport.clientWidth + 1;
+      if (canScroll) {
+        viewport.tabIndex = 0;
+        viewport.setAttribute('role', 'region');
+        viewport.setAttribute('aria-label', text('可横向滚动的表格；聚焦后可使用左右方向键浏览隐藏列。', 'Scrollable table; focus it and use the left and right arrow keys to view hidden columns.'));
+        viewport.addEventListener('keydown', onHorizontalKey);
+      } else {
+        viewport.removeAttribute('tabindex');
+        viewport.removeAttribute('role');
+        viewport.removeAttribute('aria-label');
+        viewport.removeEventListener('keydown', onHorizontalKey);
+      }
+    };
+    updateKeyboardRegion();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateKeyboardRegion);
+    observer?.observe(viewport);
+    const table = viewport.querySelector('table');
+    if (table) observer?.observe(table);
+    return () => {
+      observer?.disconnect();
+      viewport.removeEventListener('keydown', onHorizontalKey);
+    };
+  }, [dataSource, scrollX, text]);
   return (
-    <Table
-      className="data-table"
-      columns={columns}
-      dataSource={dataSource}
-      rowKey={rowKey}
-      size={size}
-      pagination={pagination}
-      locale={{ emptyText: emptyText || <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={text('暂无记录', 'No records')} /> }}
-      scroll={scrollX ? { x: 'max-content' } : undefined}
-      onRow={onRow}
-    />
+    <div ref={shellRef}>
+      <Table
+        className="data-table"
+        columns={columns}
+        dataSource={dataSource}
+        rowKey={rowKey}
+        size={size}
+        pagination={pagination}
+        locale={{ emptyText: emptyText || <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={text('暂无记录', 'No records')} /> }}
+        scroll={scrollX ? { x: 'max-content' } : undefined}
+        onRow={onRow}
+      />
+    </div>
   );
 }
 
@@ -242,5 +280,5 @@ export function ExportLink({ endpoint, filename, label, format = 'csv' }) {
       setBusy(false);
     }
   };
-  return <Space direction="vertical" size={8} align="end"><Button loading={busy} onClick={download}>{label || text(`导出 ${format.toUpperCase()}`, `Export ${format.toUpperCase()}`)}</Button>{error && <Text type="danger">{error}</Text>}</Space>;
+  return <Space orientation="vertical" size={8} align="end"><Button loading={busy} onClick={download}>{label || text(`导出 ${format.toUpperCase()}`, `Export ${format.toUpperCase()}`)}</Button>{error && <Text role="alert" type="danger">{error}</Text>}</Space>;
 }

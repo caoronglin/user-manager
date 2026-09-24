@@ -5,6 +5,17 @@
 
 use rusqlite::{params, Connection};
 
+/// Fixed subscription types accepted by the settings API. Delivery workers
+/// validate their own event types before sending; update this catalog when a
+/// worker's supported event set changes.
+pub const EVENT_CATALOG: &[&str] = &[
+    "user.created",
+    "user.disabled",
+    "security.login_failed",
+    "security.token_revoked",
+    "snapshot.freshness_changed",
+];
+
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub enabled: bool,

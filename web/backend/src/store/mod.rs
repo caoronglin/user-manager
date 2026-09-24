@@ -9,6 +9,7 @@ pub mod snapshot;
 pub mod snapshot_observer;
 pub mod token;
 pub mod user;
+pub mod web_event_delivery;
 pub mod wecom;
 
 pub fn init_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -110,5 +111,6 @@ pub fn init_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
             ON notifications(created_at DESC, id DESC) WHERE read = 0;
         "#,
     )?;
+    web_event_delivery::ensure_schema(conn)?;
     Ok(())
 }
