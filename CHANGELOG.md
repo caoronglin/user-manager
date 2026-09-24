@@ -7,6 +7,7 @@
 - Observe validated snapshot-manifest freshness transitions and notify only on fresh/stale changes; missing, invalid and indeterminate manifests do not alert.
 - Limit WeCom event subscriptions to event types the delivery worker can actually send.
 - Replace deprecated Ant Design `Alert.message` and `Card.bordered` props with their current equivalents.
+- Replace deprecated Drawer `width` props and keep the Chinese sign-in button's accessible name aligned with its visible text.
 - Fix the execution-plan regression fixture host keys; the full shell regression now passes (41 suites, one optional performance suite skipped).
 
 ## 0.2.0 — 2026-09-24

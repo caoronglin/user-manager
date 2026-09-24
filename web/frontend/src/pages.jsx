@@ -146,7 +146,7 @@ export function UsersPage({ capabilities }) {
       title={selected?.username || text('配额详情', 'Quota details')}
       open={Boolean(selected)}
       onClose={() => setSelected(null)}
-      width={560}
+      size={560}
       destroyOnHidden
     >
       {selected && <QuotaDetail username={selected.username} allowed={capabilities.has('quota.read')} />}

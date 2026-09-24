@@ -265,7 +265,7 @@ function AppContent({ dark, setDark }) {
           <Drawer
             title={<div className="drawer-brand"><span className="brand-mark"><span>U</span></span><strong>User Manager</strong></div>}
             placement="left"
-            width={280}
+            size={280}
             open={mobileOpen}
             onClose={() => setMobileOpen(false)}
             className="mobile-nav-drawer"

@@ -206,7 +206,7 @@ export function LoginPage({ language, setLanguage, onSubmit, mfaPending, notice,
                 </Form.Item>
               </>
             )}
-            <Button type="primary" size="large" htmlType="submit" loading={busy} block>{mfaPending ? (zh ? '验证并登录' : 'Verify and sign in') : (zh ? '登录' : 'Sign in')}</Button>
+            <Button type="primary" size="large" autoInsertSpace={false} htmlType="submit" loading={busy} block>{mfaPending ? (zh ? '验证并登录' : 'Verify and sign in') : (zh ? '登录' : 'Sign in')}</Button>
             {mfaPending && <Button type="link" block onClick={() => window.dispatchEvent(new Event('um:unauthorized'))}>{zh ? '返回账号登录' : 'Back to sign in'}</Button>}
           </Form>
           <div className="login-footnote">{zh ? '系统数据来自受控快照，不执行主机操作。' : 'Data is read from controlled snapshots. Host actions are not available.'}</div>

@@ -2275,13 +2275,13 @@ sensitive file scan
 | P2 只读系统 API | [DONE] | users/quota/resources/SMB/hosts/GPU/system-summary 已由快照 API 提供。 |
 | P3 Logs / Audit / Reports | [DONE] | 只读日志、审计分页/导出和报告索引 API 已实现。 |
 | P4 Web 自身身份与通知 | [PARTIAL] | root event spool 将 `user.created`/`user.disabled` 幂等写入 inbox 并按配置投递 WeCom；真实密码失败按全局 5 分钟桶合并、首次成功撤销 Token 和 manifest freshness 转换也会写入 Web inbox。WeCom 当前只开放实际支持的用户生命周期事件；Web 原生事件的 WeCom 投递和真实目标机验收仍待完成。 |
-| P5 Ant Design 前端 | [PARTIAL] | React/Vite/Ant Design 前端页面与 WeCom 设置页已实现，生产构建通过；已检查桌面登录页、语言切换与密码显隐，认证/MFA 端到端、响应式/无障碍验收仍未完成，技术栈也未采用计划中的 Umi/ProComponents。 |
+| P5 Ant Design 前端 | [PARTIAL] | React/Vite/Ant Design 前端页面与 WeCom 设置页已实现，生产构建通过；临时管理员真实密码+TOTP 登录、键盘提交、语言/密码显隐、移动抽屉导航和 1366/1200/992/390px 断点均已验证且无横向溢出。主要数据页权限/交互、菜单与表格键盘操作、无障碍审计仍待验收，工程也未采用计划中的 Umi/ProComponents。 |
 | P6 Ubuntu Ops / 多主机观测 | [DONE] | system/filesystem/inode/systemd/APT/reboot/AppArmor 只读采集器已接入快照和回归；不可用能力按状态降级。实际主机采集结果依部署环境而异。 |
-| P7 Hardening / 回归 / 发布 | [PARTIAL] | `v0.2.0` 仍是最新发布；本轮 P4 通知改动已推送到 `main`，尚未打新版本标签。Rust、前端构建、聚焦安全测试均通过。全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过；浏览器完整流程及目标机权限/服务验证仍待完成。 |
+| P7 Hardening / 回归 / 发布 | [PARTIAL] | `v0.2.0` 仍是最新发布；P4 通知和本轮前端修正已推送到 `main`，尚未打新版本标签。Rust、前端构建、聚焦安全测试和登录/MFA 浏览器流程均通过。全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过；数据页权限/交互、无障碍和目标机权限/服务验证仍待完成。 |
 
 复核记录见 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
 
-本轮验证：Rust `cargo fmt --all -- --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过（59 个后端测试）；前端 `npm ci --offline`、`npm run build` 通过（npm audit 0 个漏洞，构建有 bundle/Ant Design 提示）。浏览器检查桌面登录页、语言切换和密码显隐；因后端未启动，API 返回 404，未验证认证/MFA 端到端流程，响应式/无障碍仍待验收。聚焦 Shell 回归：安全加固 25/25、快照 25/25、Ops 7/7、事件 spool 11/11、systemd 边界 9/9、独立脚本 19/19、改密权限包装 19/19、远程 CLI 9/9 均通过。全仓 `tests/run_regression.sh --level all` 在一次性 ext4 clone 与私有 TMPDIR 下为 41 个通过、0 个失败、1 个可选性能套件跳过；P0 ShellCheck 使用本机 Mamba 包缓存中的可执行文件。P4 通知更新已推送到 GitHub `main`；`v0.2.0` 仍是已发布版本，本轮更新尚未收入 release。目标机验收未完成。
+本轮验证：Rust `cargo fmt --all -- --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过（59 个后端测试）；前端离线安装与生产构建通过，npm audit 为 0 个漏洞，构建仍有 Ant Design `use client` 与主 bundle 体积提示。使用隔离临时数据库和管理员账号，通过系统 Chrome/Playwright 完成密码登录→TOTP→Dashboard；键盘提交、语言切换、密码显隐、移动抽屉导航均通过；1366/1200/992/390px 页面无横向溢出，未捕获页面异常为 0。聚焦 Shell 回归：安全加固 25/25、快照 25/25、Ops 7/7、事件 spool 11/11、systemd 边界 9/9、独立脚本 19/19、改密权限包装 19/19、远程 CLI 9/9 均通过。全仓 `tests/run_regression.sh --level all` 在一次性 ext4 clone 与私有 TMPDIR 下为 41 个通过、0 个失败、1 个可选性能套件跳过；P0 ShellCheck 使用本机 Mamba 包缓存中的可执行文件。P4 通知更新和本轮前端修正已推送到 GitHub `main`；`v0.2.0` 仍是已发布版本，本轮更新尚未收入 release。数据页权限/交互、无障碍及目标机验收未完成。
 
 ## P0 — 安全边界与 Snapshot 契约
 
@@ -2417,7 +2417,7 @@ system summary
 
 ## P5 — Ant Design Pro 前端与视觉验收
 
-当前 `web/frontend` 使用 React、Vite 和 Ant Design，已有登录/MFA、只读数据页、系统状态页、通知/WeCom 设置与投递历史、主题和中英文切换。它目前不是 Umi/Ant Design ProComponents 工程，下面的视觉与交互验收仍须完成；构建通过不代表浏览器验收通过。
+当前 `web/frontend` 使用 React、Vite 和 Ant Design，已有登录/MFA、只读数据页、系统状态页、通知/WeCom 设置与投递历史、主题和中英文切换。浏览器已走通临时管理员密码登录、TOTP 挑战和 Dashboard，并验证键盘提交、语言/密码交互、移动抽屉和 1366/1200/992/390px 页面无横向溢出。工程目前不是 Umi/Ant Design ProComponents；主要数据页权限与交互、菜单/表格键盘操作及无障碍审计仍须完成。
 
 实现应用壳：
 
