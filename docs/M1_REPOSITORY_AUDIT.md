@@ -38,7 +38,7 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 | P4 Web 身份与通知 | [PARTIAL] | root event spool 已消费 CLI 的 `user.created`/`user.disabled`，幂等写入 inbox 并按配置投递 WeCom，同类同用户五分钟抑制；登录安全与快照事件尚无生产者，真实 webhook 仍待目标机验收。 |
 | P5 前端 | [PARTIAL] | 生产构建通过；已在浏览器检查桌面登录页、语言切换和密码显隐。因未运行后端，认证/MFA 端到端、响应式与键盘/无障碍验收仍未完成；当前栈与 Umi/ProComponents 规划不同。 |
 | P6 Ubuntu Ops/多主机只读观测 | [DONE] | 本机 Ops 采集器覆盖系统、CPU/内存/压力、文件系统/inode、systemd、APT/reboot、AppArmor，并有分节降级处理和测试。目标环境的数据可用性仍需实机确认。 |
-| P7 Hardening/回归/发布 | [PARTIAL] | `v0.2.0` 已推送并发布；38 个全仓 Shell 套件和针对性门禁通过，3 个 Host/SSH 套件受测试容器 `/tmp` 属主影响，浏览器/目标机验收仍未完成。 |
+| P7 Hardening/回归/发布 | [PARTIAL] | `v0.2.0` 已推送并发布；全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过。浏览器完整流程和目标机验收仍未完成。 |
 
 ## 本轮修复与新增实现
 
@@ -60,11 +60,11 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 | `npm ci --offline` + `npm run build` | 通过 | 前端生产构建；npm audit 报告 0 个漏洞。构建有 Ant Design `use client` 提示和约 1.12 MB 主 JS bundle 提示。浏览器已检查桌面登录页渲染、语言切换和密码显隐；由于后端未启动，API 显示 404，认证/MFA 流程未验证；响应式和无障碍仍未验收。 |
 | `tests/test_snapshot_ops.sh` | 通过，7/7 | Ops collector 测试；当前容器/主机工具缺失时会验证降级状态。 |
 | `tests/test_backup_core.sh` | 通过，16/16 | 备份保留与参数校验。 |
-| `tests/test_security_hardening.sh` | 通过，25/25 | 在临时 Mamba/SQLite 环境中运行；环境与缓存将在本轮结束时清理。 |
+| `tests/test_security_hardening.sh` | 通过，25/25 | 在临时 Mamba/SQLite 环境中运行；测试环境与缓存已删除。 |
 | Snapshot 专项测试 | 通过，25/25 | 在 ext4 Git 副本中恢复索引保存的执行位后通过。 |
 | Ops / CLI event spool / Web 边界测试 | 通过，7/7、11/11、9/9 | Ubuntu Ops collector、事件发布器和 systemd 安全边界。 |
 | 脚本入口 / 改密包装 / Remote CLI | 通过，19/19、19/19、9/9 | 在 ext4 Git 副本中验证入口执行位和只读协议。 |
-| 全仓 `tests/run_regression.sh --level all` | 38 个通过、3 个套件失败、1 个跳过 | Host/SSH 三个套件因当前容器 `/tmp` 所有者为 uid 65534 被安全父路径验证拒绝；可选性能套件按默认规则跳过。未放宽生产安全检查。 |
+| 全仓 `tests/run_regression.sh --level all` | 41 个通过、0 个失败、1 个跳过 | 在一次性 ext4 clone 与私有临时目录中运行；Host/SSH 用例通过，执行计划测试 fixture 键修正后通过。可选性能套件按默认规则跳过，生产安全校验未放宽。 |
 
 此前审计记录的 shell 数值注入、子 shell FD 路径、Snapshot 错误处理、WeCom 缺失和 P5/P6 缺失已在当前工作树有对应实现。P4 event spool 目前覆盖用户创建/禁用；其他事件生产者、浏览器和目标机验收仍在下列未完成项中。
 
@@ -73,5 +73,5 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 1. 为目录中的 `security.*`、`snapshot.*` 类型添加可信事件生产者，并在真实机器人配置下验证投递。
 2. 继续使用浏览器验证登录/MFA、权限隐藏、WeCom 保存/测试、主要页面数据状态、响应式与键盘/无障碍；当前仅完成登录页桌面渲染、语言和密码显隐检查，且 Vite/Ant Design 栈尚未迁移到 Umi/ProComponents。
 3. 在目标 Ubuntu 主机验证 `umweb` 的组成员、sudoers、capability、systemd 属性、数据库/密钥属主权限、只读快照权限和 timer 运行状态。
-4. 在标准 root-owned sticky `/tmp` 环境重跑三个 Host/SSH 相关失败套件；本轮其余 38 个回归套件及聚焦测试已通过。
+4. 已完成：在一次性 ext4 clone 和私有临时目录重跑完整回归；修复执行计划测试 fixture 中带空格的主机键，41 个套件通过、0 个失败，生产代码的安全父路径校验保持不变。
 5. `v0.2.0` 已推送到 `main`，标签与 GitHub Release 均已验证；GitHub 发布页为 https://github.com/caoronglin/user-manager/releases/tag/v0.2.0。旧版 `v0.1.0` 不包含本轮更改。

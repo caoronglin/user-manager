@@ -6,7 +6,7 @@
 技术栈：Rust + axum + tokio + rusqlite + Argon2id + TOTP；前端为 React 19 + Vite 8 + Ant Design 6。当前前端尚未迁移到计划中的 Umi / Ant Design ProComponents。
 
 > ## ✅ 验证状态
-> **2026-09-24 工作树验证：** Rust fmt、Clippy 通过，后端 51 个测试通过；前端 `npm ci --offline` 和 `npm run build` 通过，npm 报告 0 个依赖漏洞。Ops 快照 7/7、安全加固 25/25、事件 spool 11/11、systemd 边界 9/9 通过。完整 Shell 回归为 38 个套件通过、3 个 Host/SSH 套件受当前容器 `/tmp` 属主影响失败、1 个可选性能套件跳过。
+> **2026-09-24 工作树验证：** Rust fmt、Clippy 通过，后端 51 个测试通过；前端 `npm ci --offline` 和 `npm run build` 通过，npm 报告 0 个依赖漏洞。Ops 快照 7/7、安全加固 25/25、事件 spool 11/11、systemd 边界 9/9 通过。完整 Shell 回归为 41 个套件通过、0 个失败、1 个可选性能套件跳过。
 > 生产构建还有 Ant Design `use client` 提示和约 1.12 MB 的主 JS bundle 提示。`v0.2.0` 已推送并发布；浏览器已完成桌面登录页、语言切换与密码显隐冒烟检查，但认证/MFA 端到端、响应式/无障碍和目标机部署仍未验收。阶段状态见根目录 [`plan.md`](../plan.md) 与 [`docs/M1_REPOSITORY_AUDIT.md`](../docs/M1_REPOSITORY_AUDIT.md)。
 
 ## 安全边界（最高优先级）
@@ -67,7 +67,7 @@ web/frontend/        React/Vite/Ant Design 前端
 - [x] P5 前端页面：登录/MFA、Dashboard、用户/配额/资源、SMB、主机/GPU、系统状态、日志、审计/报表、WeCom 设置/投递历史；能力控制、快照新鲜度提示、主题和中英文切换
 - [ ] P5 视觉验收：已检查桌面登录页、语言切换和密码显隐；完整认证/MFA/权限/主要数据页交互、响应式断点、键盘与无障碍检查仍待完成。当前工程使用 React/Vite/Ant Design，没有采用计划中的 Umi/ProComponents
 - [x] P6 Ubuntu Ops 快照：系统与 CPU/内存/PSI、文件系统/inode、systemd、APT/reboot、AppArmor；单节不可用时降级，新增回归 7/7 通过
-- [x] P7 版本发布：`v0.2.0` 已推送并发布；剩余 Host/SSH 环境回归、浏览器/无障碍与目标机验收
+- [x] P7 版本发布：`v0.2.0` 已推送并发布；Shell 回归已全通过，浏览器完整流程/无障碍与目标机验收仍待完成
 
 ## 本地运行（需 Rust）
 

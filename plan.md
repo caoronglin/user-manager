@@ -2277,11 +2277,11 @@ sensitive file scan
 | P4 Web 自身身份与通知 | [PARTIAL] | root event spool 已将 `user.created`/`user.disabled` 幂等写入 inbox，并按配置投递 WeCom；同类同用户五分钟抑制。安全登录和快照事件尚无生产者，真实目标机 webhook 验收待做。 |
 | P5 Ant Design 前端 | [PARTIAL] | React/Vite/Ant Design 前端页面与 WeCom 设置页已实现，生产构建通过；已检查桌面登录页、语言切换与密码显隐，认证/MFA 端到端、响应式/无障碍验收仍未完成，技术栈也未采用计划中的 Umi/ProComponents。 |
 | P6 Ubuntu Ops / 多主机观测 | [DONE] | system/filesystem/inode/systemd/APT/reboot/AppArmor 只读采集器已接入快照和回归；不可用能力按状态降级。实际主机采集结果依部署环境而异。 |
-| P7 Hardening / 回归 / 发布 | [PARTIAL] | `v0.2.0` 已推送并发布；Rust、前端构建、聚焦安全测试已通过。全仓回归中的 3 个 Host/SSH 套件受当前容器 `/tmp` 非 root 属主影响；浏览器只完成登录页基础冒烟，完整流程及目标机权限/服务验证仍待完成。 |
+| P7 Hardening / 回归 / 发布 | [PARTIAL] | `v0.2.0` 已推送并发布；Rust、前端构建、聚焦安全测试均通过。全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过；浏览器完整流程及目标机权限/服务验证仍待完成。 |
 
 复核记录见 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
 
-本轮验证：Rust `cargo fmt --all -- --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过（51 个后端测试）；前端 `npm ci --offline`、`npm run build` 通过（npm audit 0 个漏洞，构建有 bundle/Ant Design 提示）。浏览器检查桌面登录页、语言切换和密码显隐；因后端未启动，API 返回 404，未验证认证/MFA 端到端流程，响应式/无障碍仍待验收。聚焦 Shell 回归：安全加固 25/25、快照 25/25、Ops 7/7、事件 spool 11/11、systemd 边界 9/9、独立脚本 19/19、改密权限包装 19/19、远程 CLI 9/9 均通过。全仓 regression 为 38 个通过、3 个 Host/SSH 相关套件失败、1 个可选性能套件跳过；失败因容器 `/tmp` 所有者为 uid 65534，而安全父路径验证要求标准 root-owned sticky `/tmp`，未放宽生产检查。GitHub `main` 与 `v0.2.0` 已推送并发布；目标机验收未完成。
+本轮验证：Rust `cargo fmt --all -- --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过（51 个后端测试）；前端 `npm ci --offline`、`npm run build` 通过（npm audit 0 个漏洞，构建有 bundle/Ant Design 提示）。浏览器检查桌面登录页、语言切换和密码显隐；因后端未启动，API 返回 404，未验证认证/MFA 端到端流程，响应式/无障碍仍待验收。聚焦 Shell 回归：安全加固 25/25、快照 25/25、Ops 7/7、事件 spool 11/11、systemd 边界 9/9、独立脚本 19/19、改密权限包装 19/19、远程 CLI 9/9 均通过。全仓 `tests/run_regression.sh --level all` 在一次性 ext4 clone 与私有 TMPDIR 下为 41 个通过、0 个失败、1 个可选性能套件跳过；P0 ShellCheck 使用本机 Mamba 包缓存中的可执行文件。GitHub `main` 与 `v0.2.0` 已推送并发布；目标机验收未完成。
 
 ## P0 — 安全边界与 Snapshot 契约
 
@@ -2493,7 +2493,7 @@ system summary
 
 ## P7 — 部署加固与发布
 
-当前已完成代码层面的私密文件权限/符号链接校验、Snapshot 严格校验、安全扫描门禁和 systemd `UMask=0077` 加固。全仓回归有 38 个套件通过，3 个 Host/SSH 套件因容器 `/tmp` 属主不符合安全父路径预期而失败；未降低安全校验。浏览器和目标主机的运行属性仍待验收；`v0.2.0` 已推送并发布。
+当前已完成代码层面的私密文件权限/符号链接校验、Snapshot 严格校验、安全扫描门禁和 systemd `UMask=0077` 加固。全仓回归 41 个套件通过、0 个失败、1 个可选性能套件跳过；执行计划测试 fixture 键已修正，未降低生产路径校验。浏览器完整流程和目标主机的运行属性仍待验收；`v0.2.0` 已推送并发布。
 
 实现：
 

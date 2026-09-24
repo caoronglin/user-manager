@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Replace deprecated Ant Design `Alert.message` and `Card.bordered` props with their current equivalents.
+- Fix the execution-plan regression fixture host keys; the full shell regression now passes (41 suites, one optional performance suite skipped).
 
 ## 0.2.0 — 2026-09-24
 
