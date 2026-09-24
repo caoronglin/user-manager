@@ -252,6 +252,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(crate::http::admin_api::web_users_router())
         .merge(crate::http::tokens_api::router())
         .merge(crate::http::notifications_api::mutating_router())
+        .merge(crate::http::wecom_api::mutating_router())
         .route_layer(csrf_layer);
 
     Router::new()
@@ -261,6 +262,7 @@ pub fn build_router(state: AppState) -> Router {
         // P2 只读系统 API（全部来自 Snapshot；capability 默认拒绝）
         .merge(crate::http::read_api::router())
         .merge(crate::http::notifications_api::read_router())
+        .merge(crate::http::wecom_api::read_router())
         .merge(crate::http::audit_api::router())
         .merge(crate::http::logs_api::router())
         .merge(crate::http::reports_api::router())

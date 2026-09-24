@@ -14,28 +14,19 @@ pub struct AppState {
     pub db: Arc<Mutex<rusqlite::Connection>>,
     pub sessions: Arc<SessionStore>,
     pub rate_limiter: Arc<RateLimiter>,
+    /// Single in-flight live/dry-run WeCom test to bound outbound work.
+    pub wecom_test_gate: Arc<tokio::sync::Semaphore>,
     pub snapshots: crate::store::snapshot::SnapshotStore,
     pub master_key: [u8; crate::crypto::KEY_LEN],
 }
 
 impl AppState {
     pub async fn init(config: Config) -> Result<Self, Box<dyn std::error::Error>> {
-        // 确保父目录存在（部署脚本负责把 /var/lib/user-manager-web 设为 umweb 可写）。
-        if let Some(parent) = config.db_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        // 数据库文件 0600（Web 自身数据，不含 secret 明文：密码为 Argon2id hash，
-        // token 为 hash，webhook/TOTP secret 为加密存储）。
+        // 预先原子创建/验证 SQLite 主库，避免 SQLite 在宽松 umask 下新建
+        // 可被其他本地用户读取的 DB。WAL/SHM 侧文件由 systemd UMask=0077 保护。
+        // 数据只包含密码 hash、token hash 与加密后的 Web secret。
+        let (_db_file, _created) = crate::crypto::open_private_file(&config.db_path)?;
         let conn = rusqlite::Connection::open(&config.db_path)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(meta) = std::fs::metadata(&config.db_path) {
-                let mut perm = meta.permissions();
-                perm.set_mode(0o600);
-                let _ = std::fs::set_permissions(&config.db_path, perm);
-            }
-        }
         crate::store::init_schema(&conn)?;
         let master_key = crate::crypto::load_or_create_master_key(&config.master_key_path)?;
 
@@ -44,6 +35,7 @@ impl AppState {
             db: Arc::new(Mutex::new(conn)),
             sessions: Arc::new(SessionStore::new()),
             rate_limiter: Arc::new(RateLimiter::new()),
+            wecom_test_gate: Arc::new(tokio::sync::Semaphore::new(1)),
             snapshots: crate::store::snapshot::SnapshotStore::new(config.snapshot_dir.clone()),
             master_key,
         })
@@ -51,3 +43,59 @@ impl AppState {
 }
 
 pub type SharedState = Arc<AppState>;
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    fn temp_dir() -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "umweb-state-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir(&path).expect("create temp dir");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        path
+    }
+
+    #[tokio::test]
+    async fn database_and_master_key_are_private() {
+        let dir = temp_dir();
+        let config = Config::for_tests(dir.join("app.db"), dir.join("snapshots"));
+        let _state = AppState::init(config.clone())
+            .await
+            .expect("initialize state");
+        assert_eq!(
+            std::fs::metadata(&config.db_path)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        assert_eq!(
+            std::fs::metadata(&config.master_key_path)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn database_symlink_is_rejected() {
+        let dir = temp_dir();
+        let target = dir.join("target.db");
+        std::fs::write(&target, b"not a database").unwrap();
+        let database = dir.join("app.db");
+        symlink(&target, &database).unwrap();
+        let config = Config::for_tests(database, dir.join("snapshots"));
+        assert!(AppState::init(config).await.is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"not a database");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}

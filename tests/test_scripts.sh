@@ -159,7 +159,8 @@ for rl_file in "${remote_shell_files[@]}"; do
         break
     fi
 done
-if [[ -z "$remote_syntax_failure" ]]; then test_pass
+if [[ -z "$remote_syntax_failure" ]]; then
+    test_pass
 else test_fail "远程基础文件语法失败或缺失: $remote_syntax_failure"; fi
 
 test_suite_end

@@ -92,11 +92,15 @@ bash scripts/rl-hosts.sh probe group:gpu --dry-run
 bash run.sh
 ```
 
-## Web 只读快照层（P0）
+## Web 控制台与只读快照（P0–P7 实现状态）
 
-Web 控制台（规划中）不直接执行系统命令，而是由**可信采集器** `scripts/rl-snapshot.sh`
-生成脱敏、版本化、原子的只读 JSON 快照，供非特权 Web 服务 `umweb` 只读。Web 永不持有
-root/sudo/capability，也不执行任何系统写操作。
+Rust 后端提供 Web 用户/MFA/会话/token 管理、只读系统 API、审计/日志/报表、通知 inbox，以及企业微信配置、固定模板测试投递和投递历史。`web/frontend` 已有 React/Vite/Ant Design 页面，生产构建通过。系统状态快照还包含 Ubuntu、CPU/内存/压力、文件系统/inode、systemd、APT/reboot 和 AppArmor 的只读摘要。
+
+可信采集器 `scripts/rl-snapshot.sh` 生成脱敏、版本化、原子的 JSON 快照，非特权 Web 服务 `umweb` 只读这些数据。Web 不持有 root/sudo/capability，也不执行 Linux 系统写操作。
+
+CLI 用户创建/禁用事件现由 root event spool 只读送入 inbox，并按配置投递企业微信；相同事件类型与用户五分钟内只投递一次。当前生产者覆盖 `user.created`、`user.disabled`，事件目录中的登录安全和快照状态事件尚无生产者。
+
+尚未完成的验收包括前端浏览器视觉/响应式/无障碍检查、目标机服务与文件权限验证、在标准 root-owned `/tmp` 环境复跑 Host/SSH 回归，以及本轮改动的 GitHub 推送和版本发布。当前代码尚未部署或发布；阶段详情和验证记录见 [`plan.md`](plan.md) 与 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
 
 ```bash
 # 手动生成全部快照到默认目录（部署时由 root + systemd timer 运行）

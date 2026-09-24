@@ -5,9 +5,12 @@
 //! - 不 fork shell / 不执行任何命令；仅用 std::fs 读 + serde_json 解析；
 //! - 输出附带 freshness 元数据，过期/缺失必须显式标识，不伪装实时。
 
-use std::path::{Path, PathBuf};
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read};
+use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// 允许读取的快照类型白名单（与 lib/snapshot_core.sh 保持一致）。
 pub const SNAPSHOT_KINDS: &[&str] = &[
@@ -23,6 +26,10 @@ pub const SNAPSHOT_KINDS: &[&str] = &[
     "reports",
     "manifest",
 ];
+
+const SNAPSHOT_PROTOCOL: &str = "user-manager-snapshot-v1";
+const SNAPSHOT_GENERATOR: &str = "user-manager";
+const MAX_SNAPSHOT_BYTES: u64 = 16 * 1024 * 1024;
 
 /// 校验 kind 安全：仅小写字母/连字符，且在 allowlist 内。
 pub fn is_allowed_kind(kind: &str) -> bool {
@@ -78,10 +85,42 @@ impl SnapshotStore {
     /// 读取并解析某 kind 的快照信封；文件不存在/非法 JSON/路径非法返回 None。
     pub fn read(&self, kind: &str) -> Option<Envelope> {
         let path = self.path_for(kind)?;
-        let text = std::fs::read_to_string(&path).ok()?;
-        let env: Envelope = serde_json::from_str(&text).ok()?;
-        // 版本不符一律视为不可用（Web reader 拒识未知 schema_version）。
-        if env.schema_version != CORE_SCHEMA_VERSION {
+        if !path_has_no_symlink_components(&path) {
+            return None;
+        }
+        let file = open_snapshot_file(&path).ok()?;
+        let metadata = file.metadata().ok()?;
+        if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_SNAPSHOT_BYTES {
+            return None;
+        }
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        file.take(MAX_SNAPSHOT_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .ok()?;
+        if bytes.len() as u64 > MAX_SNAPSHOT_BYTES {
+            return None;
+        }
+        let text = String::from_utf8(bytes).ok()?;
+        let env = if kind == "manifest" {
+            parse_manifest(&text)?
+        } else {
+            serde_json::from_str::<Envelope>(&text).ok()?
+        };
+        // Bind each file to its requested kind and the exact snapshot protocol.
+        // Missing or malformed metadata must never look like a fresh snapshot.
+        if env.schema_version != CORE_SCHEMA_VERSION
+            || env.protocol != SNAPSHOT_PROTOCOL
+            || env.kind != kind
+            || env.generator != SNAPSHOT_GENERATOR
+            || env.source.is_empty()
+            || env.source.len() > 64
+            || !env
+                .source
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+            || env.threshold_seconds != default_threshold(kind)
+            || parse_rfc3339(&env.generated_at).is_none()
+        {
             return None;
         }
         Some(env)
@@ -92,9 +131,12 @@ impl SnapshotStore {
         let threshold = default_threshold(kind);
         match self.read(kind) {
             Some(env) => {
+                // Small clock skew is tolerated; a far-future timestamp is
+                // explicitly stale rather than clamped into a falsely fresh age.
                 let gen = parse_rfc3339(&env.generated_at).unwrap_or(now);
-                let age = (now - gen).max(0);
-                let fresh = age <= env.threshold_seconds as i64;
+                let raw_age = now - gen;
+                let age = raw_age.max(0);
+                let fresh = raw_age >= -300 && raw_age <= env.threshold_seconds as i64;
                 Freshness {
                     present: true,
                     fresh,
@@ -118,6 +160,87 @@ impl SnapshotStore {
     pub fn dir(&self) -> &Path {
         &self.dir
     }
+}
+
+#[derive(Deserialize)]
+struct ManifestEnvelope {
+    schema_version: u32,
+    protocol: String,
+    generator: String,
+    source: String,
+    generated_at: String,
+    overall: String,
+    snapshots: Vec<Value>,
+}
+
+fn parse_manifest(text: &str) -> Option<Envelope> {
+    let manifest: ManifestEnvelope = serde_json::from_str(text).ok()?;
+    if !matches!(
+        manifest.overall.as_str(),
+        "fresh" | "partial" | "stale" | "unavailable"
+    ) {
+        return None;
+    }
+    Some(Envelope {
+        schema_version: manifest.schema_version,
+        protocol: manifest.protocol,
+        kind: "manifest".to_string(),
+        generator: manifest.generator,
+        source: manifest.source,
+        generated_at: manifest.generated_at,
+        threshold_seconds: default_threshold("manifest"),
+        data: serde_json::json!({
+            "overall": manifest.overall,
+            "snapshots": manifest.snapshots,
+        }),
+    })
+}
+
+fn path_has_no_symlink_components(path: &Path) -> bool {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Ok(cwd) = std::env::current_dir() {
+        cwd.join(path)
+    } else {
+        return false;
+    };
+    let mut current = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::RootDir => current.push(component.as_os_str()),
+            Component::CurDir => {}
+            // Reject traversal instead of allowing path normalization to obscure
+            // a symlink in a parent component.
+            Component::ParentDir => return false,
+            Component::Normal(part) => {
+                current.push(part);
+                let metadata = match std::fs::symlink_metadata(&current) {
+                    Ok(metadata) => metadata,
+                    Err(_) => return false,
+                };
+                if metadata.file_type().is_symlink() {
+                    return false;
+                }
+            }
+            Component::Prefix(_) => return false,
+        }
+    }
+    true
+}
+
+#[cfg(unix)]
+fn open_snapshot_file(path: &Path) -> io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn open_snapshot_file(path: &Path) -> io::Result<File> {
+    OpenOptions::new().read(true).open(path)
 }
 
 /// 与 lib/snapshot_core.sh::SNAPSHOT_SCHEMA_VERSION 对齐。

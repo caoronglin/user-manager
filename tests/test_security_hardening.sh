@@ -23,6 +23,23 @@ source "$PROJECT_ROOT/lib/symlink_core.sh"
 
 test_suite_start "Security Hardening"
 
+test_start "numeric environment overrides reject arithmetic expressions"
+config_marker="$TEST_TMPDIR/arithmetic-injection"
+config_payload="1[\$(touch $config_marker)]"
+config_output="$(env \
+    USER_MANAGER_PASSWORD_POOL_KEEP="$config_payload" \
+    USER_MANAGER_QUOTA_DEFAULT="$config_payload" \
+    USER_MANAGER_BACKUP_MIN_KEEP="$config_payload" \
+    USER_MANAGER_BACKUP_RETENTION_DAYS="$config_payload" \
+    USER_MANAGER_DISK_WARNING_THRESHOLD="$config_payload" \
+    USER_MANAGER_PASSWORD_ROTATE_INTERVAL_DAYS="$config_payload" \
+    bash -c 'source "$1/lib/config.sh"; ((80 > DISK_WARNING_THRESHOLD)) || true; ((1 < QUOTA_DEFAULT)) || true; ((PASSWORD_POOL_KEEP >= 0)) || true; ((BACKUP_MIN_KEEP >= 0)) || true; ((BACKUP_RETENTION_DAYS >= 0)) || true; ((PASSWORD_ROTATE_INTERVAL_DAYS >= 1)) || true; printf "%s:%s:%s:%s:%s:%s" "$PASSWORD_POOL_KEEP" "$QUOTA_DEFAULT" "$BACKUP_MIN_KEEP" "$BACKUP_RETENTION_DAYS" "$DISK_WARNING_THRESHOLD" "$PASSWORD_ROTATE_INTERVAL_DAYS"' _ "$PROJECT_ROOT" 2>/dev/null)"
+if [[ "$config_output" == "5:536870912000:3:7:90:90" && ! -e "$config_marker" ]]; then
+    test_pass
+else
+    test_fail "非法数值配置未安全回退，输出为: $config_output"
+fi
+
 test_start "acl_cache_get 在 set -u 下不会触发未绑定变量"
 acl_cache_clear
 acl_cache_set "level:cacheuser" "$ACL_LEVEL_USER"
@@ -184,6 +201,9 @@ export EMAIL_QUEUE_DB="$DATA_DIR/security_mail_queue.db"
 source "$PROJECT_ROOT/lib/rl_mail_queue.sh"
 # shellcheck source=lib/async_core.sh
 source "$PROJECT_ROOT/lib/async_core.sh"
+export EMAIL_QUEUE_SECRET_DIR="$DATA_DIR/secrets"
+export EMAIL_QUEUE_KEY_FILE="$EMAIL_QUEUE_SECRET_DIR/.key"
+export EMAIL_QUEUE_MASTER_KEY=""
 
 test_start "邮件队列拒绝空必填字段"
 if ! rl_mail_queue_enqueue "" "" "" >/dev/null 2>&1; then
@@ -242,7 +262,7 @@ else
     export EMAIL_QUEUE_MASTER_KEY=""
     rl_enc_token=$(rl_mail_queue_store_secret "SuperSecret123")
     rl_enc_content=$(cat "$rl_test_secret_dir/$rl_enc_token")
-    if [[ "$rl_enc_content" == v1:* ]] && [[ "$rl_enc_content" != *"SuperSecret123"* ]]; then
+    if [[ "$rl_enc_content" == v2:* ]] && [[ "$rl_enc_content" != *"SuperSecret123"* ]]; then
         test_pass
     else
         test_fail "secret 文件未加密或仍含明文: $rl_enc_content"
@@ -267,6 +287,48 @@ else
     fi
 fi
 
+test_start "邮件队列兼容并升级旧版 base64 IV/MAC secret"
+if ! command -v openssl >/dev/null 2>&1; then
+    test_skip "openssl 未安装"
+else
+    rl_test_secret_dir="$TEST_TMPDIR/secret_legacy_test"
+    mkdir -p "$rl_test_secret_dir"
+    export EMAIL_QUEUE_SECRET_DIR="$rl_test_secret_dir"
+    export EMAIL_QUEUE_KEY_FILE="$rl_test_secret_dir/.key"
+    export EMAIL_QUEUE_MASTER_KEY=""
+    rl_legacy_key=$(rl_mail_secret_key)
+    rl_legacy_mac_key=$(rl_mail_secret_mac_key "$rl_legacy_key")
+    openssl rand 16 >"$rl_test_secret_dir/iv"
+    rl_legacy_iv_hex=$(od -An -v -tx1 "$rl_test_secret_dir/iv" | tr -d '[:space:]')
+    rl_legacy_iv_b64=$(openssl base64 -A <"$rl_test_secret_dir/iv")
+    rl_legacy_ct_b64=$(printf '%s' "LegacyEncryptedSecret" | openssl enc -aes-256-cbc -K "$rl_legacy_key" -iv "$rl_legacy_iv_hex" -a -A)
+    rl_legacy_mac_b64=$(printf '%s' "$rl_legacy_ct_b64" | openssl base64 -d -A | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$rl_legacy_mac_key" -binary | openssl base64 -A)
+    printf 'v1:%s:%s:%s' "$rl_legacy_iv_b64" "$rl_legacy_ct_b64" "$rl_legacy_mac_b64" >"$rl_test_secret_dir/legacy_token"
+    chmod 600 "$rl_test_secret_dir/legacy_token"
+    if [[ "$(rl_mail_queue_read_secret "legacy_token")" == "LegacyEncryptedSecret" ]]; then
+        rl_legacy_orig=$(cat "$rl_test_secret_dir/legacy_token")
+        IFS=':' read -r rl_legacy_version rl_legacy_iv rl_legacy_ct rl_legacy_mac <<<"$rl_legacy_orig"
+        if [[ "${rl_legacy_mac:0:1}" == A ]]; then rl_legacy_mac_flip=B; else rl_legacy_mac_flip=A; fi
+        printf '%s:%s:%s:%s' "$rl_legacy_version" "$rl_legacy_iv" "$rl_legacy_ct" "$rl_legacy_mac_flip${rl_legacy_mac:1}" >"$rl_test_secret_dir/legacy_token"
+        rl_legacy_tampered=$(cat "$rl_test_secret_dir/legacy_token")
+        if ! rl_mail_queue_migrate_secret "legacy_token" &&
+            [[ "$(cat "$rl_test_secret_dir/legacy_token")" == "$rl_legacy_tampered" ]]; then
+            printf '%s' "$rl_legacy_orig" >"$rl_test_secret_dir/legacy_token"
+            if rl_mail_queue_migrate_secret "legacy_token" &&
+                [[ "$(cat "$rl_test_secret_dir/legacy_token")" == v2:* ]] &&
+                [[ "$(rl_mail_queue_read_secret "legacy_token")" == "LegacyEncryptedSecret" ]]; then
+                test_pass
+            else
+                test_fail "有效旧版 secret 未安全升级为 v2"
+            fi
+        else
+            test_fail "无效旧版 secret 迁移成功或修改了原文件"
+        fi
+    else
+        test_fail "旧版 base64 IV/MAC secret 解密失败"
+    fi
+fi
+
 test_start "邮件队列 secret 篡改被 HMAC 检测拒绝"
 if ! command -v openssl >/dev/null 2>&1; then
     test_skip "openssl 未安装"
@@ -279,15 +341,42 @@ else
     rl_tamper_token=$(rl_mail_queue_store_secret "Secret789!")
     rl_tamper_path="$rl_test_secret_dir/$rl_tamper_token"
     rl_tamper_orig=$(cat "$rl_tamper_path")
-    IFS=':' read -r _ rl_t_iv rl_t_ct rl_t_mac <<<"$rl_tamper_orig"
-    # 篡改 HMAC 标签，触发认证失败。
-    printf 'v1:%s:%s:%s' "$rl_t_iv" "$rl_t_ct" "AAAAAAAAAAAAAAAAAAAAAAAAAAA=" >"$rl_tamper_path"
+    IFS=':' read -r rl_t_version rl_t_iv rl_t_ct rl_t_mac <<<"$rl_tamper_orig"
+    # 修改一个有效长度的标签，触发认证失败。
+    if [[ "${rl_t_mac:0:1}" == 0 ]]; then rl_t_mac_flip=1; else rl_t_mac_flip=0; fi
+    printf '%s:%s:%s:%s' "$rl_t_version" "$rl_t_iv" "$rl_t_ct" "$rl_t_mac_flip${rl_t_mac:1}" >"$rl_tamper_path"
     if ! rl_mail_queue_read_secret "$rl_tamper_token" >/dev/null 2>&1; then
         test_pass
     else
         test_fail "篡改后的 secret 未被拒绝"
     fi
     printf '%s' "$rl_tamper_orig" >"$rl_tamper_path"
+fi
+
+test_start "邮件队列 secret 篡改 IV 被 HMAC 检测拒绝"
+if ! command -v openssl >/dev/null 2>&1; then
+    test_skip "openssl 未安装"
+else
+    rl_test_secret_dir="$TEST_TMPDIR/secret_iv_tamper_test"
+    mkdir -p "$rl_test_secret_dir"
+    export EMAIL_QUEUE_SECRET_DIR="$rl_test_secret_dir"
+    export EMAIL_QUEUE_KEY_FILE="$rl_test_secret_dir/.key"
+    export EMAIL_QUEUE_MASTER_KEY=""
+    rl_iv_token=$(rl_mail_queue_store_secret "IVIntegrity123")
+    rl_iv_path="$rl_test_secret_dir/$rl_iv_token"
+    rl_iv_orig=$(cat "$rl_iv_path")
+    IFS=':' read -r rl_iv_version rl_iv_hex rl_iv_ct rl_iv_mac <<<"$rl_iv_orig"
+    if [[ "${rl_iv_hex:0:1}" == 0 ]]; then rl_iv_flip=1; else rl_iv_flip=0; fi
+    printf '%s:%s:%s:%s' "$rl_iv_version" "$rl_iv_flip${rl_iv_hex:1}" "$rl_iv_ct" "$rl_iv_mac" >"$rl_iv_path"
+    rl_iv_tampered=$(cat "$rl_iv_path")
+    if ! rl_mail_queue_read_secret "$rl_iv_token" >/dev/null 2>&1 &&
+        ! rl_mail_queue_migrate_secret "$rl_iv_token" &&
+        [[ "$(cat "$rl_iv_path")" == "$rl_iv_tampered" ]]; then
+        test_pass
+    else
+        test_fail "篡改后的 IV 未被拒绝，或迁移改写了原文件"
+    fi
+    printf '%s' "$rl_iv_orig" >"$rl_iv_path"
 fi
 
 test_start "邮件队列明文 secret 迁移为加密格式"
@@ -301,12 +390,55 @@ else
     export EMAIL_QUEUE_MASTER_KEY=""
     printf 'LegacyPlainSecret' >"$rl_test_secret_dir/legacy_token"
     if rl_mail_queue_migrate_secret "legacy_token" &&
-        [[ "$(cat "$rl_test_secret_dir/legacy_token")" == v1:* ]] &&
+        [[ "$(cat "$rl_test_secret_dir/legacy_token")" == v2:* ]] &&
         [[ "$(rl_mail_queue_read_secret "legacy_token")" == "LegacyPlainSecret" ]]; then
         test_pass
     else
         test_fail "明文 secret 迁移失败"
     fi
+fi
+
+test_start "邮件队列 secret token 拒绝路径穿越"
+rl_test_secret_dir="$TEST_TMPDIR/secret_token_path_test"
+mkdir -p "$rl_test_secret_dir"
+rl_token_sentinel="$TEST_TMPDIR/secret-token-sentinel"
+printf 'outside-secret' >"$rl_token_sentinel"
+export EMAIL_QUEUE_SECRET_DIR="$rl_test_secret_dir"
+export EMAIL_QUEUE_KEY_FILE="$rl_test_secret_dir/.key"
+if ! rl_mail_queue_read_secret '../secret-token-sentinel' >/dev/null 2>&1 &&
+    ! rl_mail_queue_migrate_secret '../secret-token-sentinel' >/dev/null 2>&1 &&
+    ! rl_mail_queue_remove_secret '../secret-token-sentinel' >/dev/null 2>&1 &&
+    [[ "$(cat "$rl_token_sentinel")" == 'outside-secret' ]]; then
+    test_pass
+else
+    test_fail "非法 secret token 可访问或修改 secret 目录外文件"
+fi
+
+test_start "邮件队列拒绝符号链接密钥文件"
+rl_test_secret_dir="$TEST_TMPDIR/secret_key_symlink_test"
+mkdir -p "$rl_test_secret_dir"
+printf '%064d\n' 1 >"$rl_test_secret_dir/real-key"
+ln -s real-key "$rl_test_secret_dir/.key"
+export EMAIL_QUEUE_SECRET_DIR="$rl_test_secret_dir"
+export EMAIL_QUEUE_KEY_FILE="$rl_test_secret_dir/.key"
+if ! rl_mail_secret_key >/dev/null 2>&1 &&
+    [[ "$(cat "$rl_test_secret_dir/real-key")" == "$(printf '%064d' 1)" ]]; then
+    test_pass
+else
+    test_fail "符号链接密钥未被拒绝"
+fi
+
+test_start "邮件队列拒绝硬链接密钥文件"
+rl_test_secret_dir="$TEST_TMPDIR/secret_key_hardlink_test"
+mkdir -p "$rl_test_secret_dir"
+printf '%064d\n' 2 >"$rl_test_secret_dir/.key"
+ln "$rl_test_secret_dir/.key" "$TEST_TMPDIR/secret-key-hardlink"
+export EMAIL_QUEUE_SECRET_DIR="$rl_test_secret_dir"
+export EMAIL_QUEUE_KEY_FILE="$rl_test_secret_dir/.key"
+if ! rl_mail_secret_key >/dev/null 2>&1 && [[ "$(stat -c '%h' "$rl_test_secret_dir/.key")" == 2 ]]; then
+    test_pass
+else
+    test_fail "硬链接密钥未被拒绝"
 fi
 
 cleanup_test_env

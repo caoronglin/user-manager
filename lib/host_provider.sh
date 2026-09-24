@@ -5,7 +5,10 @@ HOST_PROVIDER_PROTOCOL='user-manager-provider-v1'
 HOST_PROVIDER_MAX_STDOUT=65536
 HOST_PROVIDER_MAX_STDERR=8192
 
-PROVIDER_RESULT_STATUS=''; PROVIDER_RESULT_CODE=''; PROVIDER_RESULT_MESSAGE=''; PROVIDER_RESULT_DURATION_MS=0
+PROVIDER_RESULT_STATUS=''
+PROVIDER_RESULT_CODE=''
+PROVIDER_RESULT_MESSAGE=''
+PROVIDER_RESULT_DURATION_MS=0
 
 host_provider_action_allowed() {
     case "${1:-}" in host.probe | gpu.summary) return 0 ;; *) return 1 ;; esac
@@ -20,7 +23,9 @@ _host_provider_remote_command() {
 }
 
 _host_provider_set_result() {
-    PROVIDER_RESULT_STATUS="$1"; PROVIDER_RESULT_CODE="$2"; PROVIDER_RESULT_MESSAGE="${3:-$2}"
+    PROVIDER_RESULT_STATUS="$1"
+    PROVIDER_RESULT_CODE="$2"
+    PROVIDER_RESULT_MESSAGE="${3:-$2}"
 }
 
 _host_provider_now_ms() {
@@ -32,7 +37,8 @@ _host_provider_now_ms() {
 _host_provider_duration() {
     local start="$1" end
     end="$(_host_provider_now_ms)"
-    if [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ ]] && ((end >= start)); then printf '%s\n' "$((end - start))"
+    if [[ "$start" =~ ^[0-9]+$ && "$end" =~ ^[0-9]+$ ]] && ((end >= start)); then
+        printf '%s\n' "$((end - start))"
     else printf '0\n'; fi
 }
 
@@ -41,7 +47,10 @@ _host_provider_safe_limit() {
     if [[ "$value" =~ ^[0-9]+$ ]] && ((value >= min && value <= max)); then printf '%s\n' "$value"; else printf '%s\n' "$fallback"; fi
 }
 
-_host_provider_temp_dir() { umask 077; mktemp -d "${TMPDIR:-/tmp}/user-manager-provider.XXXXXX"; }
+_host_provider_temp_dir() {
+    umask 077
+    mktemp -d "${TMPDIR:-/tmp}/user-manager-provider.XXXXXX"
+}
 
 _host_provider_file_is_text_bounded() {
     local file="$1" max_bytes="$2" size clean_size
@@ -72,11 +81,13 @@ _host_provider_validate_payload() {
     local -A seen=()
     _host_provider_file_is_text_bounded "$file" "$HOST_PROVIDER_MAX_STDOUT" || return 1
     while IFS= read -r line || [[ -n "$line" ]]; do
-        ((line_count += 1)); ((line_count <= 400)) || return 1
+        ((line_count += 1))
+        ((line_count <= 400)) || return 1
         ((${#line} <= 1024)) || return 1
         [[ ! "$line" =~ [[:cntrl:]] ]] || return 1
         [[ "$line" == *=* ]] || return 1
-        key="${line%%=*}"; value="${line#*=}"
+        key="${line%%=*}"
+        value="${line#*=}"
         [[ "$key" =~ ^[A-Za-z0-9_.-]+$ ]] || return 1
         [[ "$value" =~ $value_pattern ]] || return 1
         _host_provider_key_allowed "$expected_action" "$key" || return 1
@@ -91,7 +102,9 @@ _host_provider_validate_payload() {
     success) ((command_rc == 0)) || return 1 ;; unsupported) ((command_rc == 4)) || return 1 ;;
     failed) ((command_rc != 0 && command_rc != 4)) || return 1 ;; *) return 1 ;;
     esac
-    PROVIDER_RESULT_STATUS="$status"; PROVIDER_RESULT_CODE="$code"; PROVIDER_RESULT_MESSAGE="$code"
+    PROVIDER_RESULT_STATUS="$status"
+    PROVIDER_RESULT_CODE="$code"
+    PROVIDER_RESULT_MESSAGE="$code"
 }
 
 _host_provider_emit_result() {
@@ -112,11 +125,17 @@ _host_provider_return_code() {
 
 _host_provider_execute_local() {
     local host="$1" action="$2" temp_dir payload rc=0 start
-    start="$(_host_provider_now_ms)"; temp_dir="$(_host_provider_temp_dir)" || return 6; payload="$temp_dir/payload"
+    start="$(_host_provider_now_ms)"
+    temp_dir="$(_host_provider_temp_dir)" || return 6
+    payload="$temp_dir/payload"
     case "$action" in
     host.probe) host_probe_snapshot_kv >"$payload" 2>/dev/null || rc=$? ;;
     gpu.summary) gpu_snapshot_kv >"$payload" 2>/dev/null || rc=$? ;;
-    *) rm -rf -- "$temp_dir"; _host_provider_set_result failed ACTION_NOT_ALLOWED; return 2 ;;
+    *)
+        rm -rf -- "$temp_dir"
+        _host_provider_set_result failed ACTION_NOT_ALLOWED
+        return 2
+        ;;
     esac
     if ! _host_provider_validate_payload "$payload" "$action" "$rc"; then _host_provider_set_result failed PROTOCOL_ERROR; fi
     PROVIDER_RESULT_DURATION_MS="$(_host_provider_duration "$start")"
@@ -127,12 +146,18 @@ _host_provider_execute_local() {
 
 _host_provider_map_ssh_error() {
     local rc="$1" diagnostic="$2"
-    if ((rc == 124 || rc == 137)); then _host_provider_set_result failed ACTION_TIMEOUT
-    elif [[ "$diagnostic" == *'REMOTE HOST IDENTIFICATION HAS CHANGED'* ]]; then _host_provider_set_result failed HOST_KEY_MISMATCH
-    elif [[ "$diagnostic" == *'No '*" host key is known"* || "$diagnostic" == *'Host key verification failed'* ]]; then _host_provider_set_result failed HOST_KEY_UNKNOWN
-    elif [[ "$diagnostic" == *'Permission denied'* ]]; then _host_provider_set_result failed AUTH_FAILED
-    elif [[ "$diagnostic" == *'Connection timed out'* || "$diagnostic" == *'Operation timed out'* ]]; then _host_provider_set_result unreachable CONNECT_TIMEOUT
-    elif ((rc == 255)); then _host_provider_set_result unreachable SSH_TRANSPORT_ERROR
+    if ((rc == 124 || rc == 137)); then
+        _host_provider_set_result failed ACTION_TIMEOUT
+    elif [[ "$diagnostic" == *'REMOTE HOST IDENTIFICATION HAS CHANGED'* ]]; then
+        _host_provider_set_result failed HOST_KEY_MISMATCH
+    elif [[ "$diagnostic" == *'No '*" host key is known"* || "$diagnostic" == *'Host key verification failed'* ]]; then
+        _host_provider_set_result failed HOST_KEY_UNKNOWN
+    elif [[ "$diagnostic" == *'Permission denied'* ]]; then
+        _host_provider_set_result failed AUTH_FAILED
+    elif [[ "$diagnostic" == *'Connection timed out'* || "$diagnostic" == *'Operation timed out'* ]]; then
+        _host_provider_set_result unreachable CONNECT_TIMEOUT
+    elif ((rc == 255)); then
+        _host_provider_set_result unreachable SSH_TRANSPORT_ERROR
     else _host_provider_set_result failed REMOTE_ACTION_FAILED; fi
 }
 
@@ -147,7 +172,8 @@ _host_provider_execute_ssh() {
         PROVIDER_RESULT_DURATION_MS="$(_host_provider_duration "$start")"
         return 6
     fi
-    ssh_bin="$(command -v ssh 2>/dev/null || true)"; timeout_bin="$(command -v timeout 2>/dev/null || true)"
+    ssh_bin="$(command -v ssh 2>/dev/null || true)"
+    timeout_bin="$(command -v timeout 2>/dev/null || true)"
     [[ -n "$ssh_bin" && -n "$timeout_bin" ]] || {
         _host_provider_set_result failed SSH_CLIENT_UNAVAILABLE
         PROVIDER_RESULT_DURATION_MS="$(_host_provider_duration "$start")"
@@ -173,7 +199,8 @@ _host_provider_execute_ssh() {
         -p "${HOST_PORT[$host]}" -l "${HOST_USER[$host]}" -- "${HOST_ADDRESS[$host]}" "$remote_command")
 
     temp_dir="$(_host_provider_temp_dir)" || return 6
-    payload="$temp_dir/payload"; diagnostic_file="$temp_dir/stderr"
+    payload="$temp_dir/payload"
+    diagnostic_file="$temp_dir/stderr"
     LC_ALL=C "$timeout_bin" --foreground --signal=TERM --kill-after=2 "$action_timeout" \
         "$ssh_bin" "${args[@]}" >"$payload" 2>"$diagnostic_file" || rc=$?
     if ! _host_provider_file_is_text_bounded "$diagnostic_file" "$HOST_PROVIDER_MAX_STDERR"; then
@@ -194,8 +221,14 @@ _host_provider_execute_ssh() {
 
 host_provider_execute() {
     local host="${1:-}" action="${2:-}"
-    PROVIDER_RESULT_STATUS=''; PROVIDER_RESULT_CODE=''; PROVIDER_RESULT_MESSAGE=''; PROVIDER_RESULT_DURATION_MS=0
-    if ! host_provider_action_allowed "$action"; then _host_provider_set_result failed ACTION_NOT_ALLOWED; return 2; fi
+    PROVIDER_RESULT_STATUS=''
+    PROVIDER_RESULT_CODE=''
+    PROVIDER_RESULT_MESSAGE=''
+    PROVIDER_RESULT_DURATION_MS=0
+    if ! host_provider_action_allowed "$action"; then
+        _host_provider_set_result failed ACTION_NOT_ALLOWED
+        return 2
+    fi
     if [[ -z "$host" || -z "${HOST_PROVIDER[$host]:-}" || "${HOST_ENABLED[$host]:-false}" != true ]]; then
         _host_provider_set_result failed HOST_NOT_AVAILABLE
         return 2
@@ -203,9 +236,11 @@ host_provider_execute() {
     case "${HOST_PROVIDER[$host]}" in
     local) _host_provider_execute_local "$host" "$action" ;;
     ssh) _host_provider_execute_ssh "$host" "$action" ;;
-    *) _host_provider_set_result failed PROVIDER_NOT_SUPPORTED; return 2 ;;
+    *)
+        _host_provider_set_result failed PROVIDER_NOT_SUPPORTED
+        return 2
+        ;;
     esac
 }
 
 host_provider_probe() { host_provider_execute "$1" host.probe; }
-

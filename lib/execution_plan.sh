@@ -2,7 +2,9 @@
 # execution_plan.sh - 只读多主机计划、顺序执行与结果汇总
 
 EXECUTION_PLAN_PROTOCOL='user-manager-plan-v1'
-EXECUTION_PLAN_ID=''; EXECUTION_PLAN_ACTION=''; EXECUTION_PLAN_SELECTOR=''
+EXECUTION_PLAN_ID=''
+EXECUTION_PLAN_ACTION=''
+EXECUTION_PLAN_SELECTOR=''
 declare -p EXECUTION_PLAN_HOSTS >/dev/null 2>&1 || declare -ag EXECUTION_PLAN_HOSTS=()
 
 _execution_plan_error() { printf '执行计划错误: %s\n' "$1" >&2; }
@@ -19,12 +21,23 @@ _execution_plan_new_id() {
 
 execution_plan_prepare() {
     local action="${1:-}" selector="${2:-local}" resolved
-    execution_plan_action_allowed "$action" || { _execution_plan_error "action 不在只读白名单"; return 2; }
-    resolved="$(host_inventory_resolve "$selector")" || { _execution_plan_error "目标无法解析"; return 2; }
+    execution_plan_action_allowed "$action" || {
+        _execution_plan_error "action 不在只读白名单"
+        return 2
+    }
+    resolved="$(host_inventory_resolve "$selector")" || {
+        _execution_plan_error "目标无法解析"
+        return 2
+    }
     EXECUTION_PLAN_HOSTS=()
     mapfile -t EXECUTION_PLAN_HOSTS <<<"$resolved"
-    ((${#EXECUTION_PLAN_HOSTS[@]} > 0)) || { _execution_plan_error "目标为空"; return 2; }
-    EXECUTION_PLAN_ACTION="$action"; EXECUTION_PLAN_SELECTOR="$selector"; EXECUTION_PLAN_ID="$(_execution_plan_new_id)"
+    ((${#EXECUTION_PLAN_HOSTS[@]} > 0)) || {
+        _execution_plan_error "目标为空"
+        return 2
+    }
+    EXECUTION_PLAN_ACTION="$action"
+    EXECUTION_PLAN_SELECTOR="$selector"
+    EXECUTION_PLAN_ID="$(_execution_plan_new_id)"
 }
 
 execution_plan_print() {
@@ -53,7 +66,10 @@ execution_plan_run() {
     local action="${1:-}" selector="${2:-local}" mode="${3:-dry-run}"
     local temp_dir result_file host provider_rc status code size
     local success=0 failed=0 unreachable=0 unsupported=0 total=0
-    [[ "$mode" == dry-run || "$mode" == execute ]] || { _execution_plan_error "mode 必须是 dry-run 或 execute"; return 2; }
+    [[ "$mode" == dry-run || "$mode" == execute ]] || {
+        _execution_plan_error "mode 必须是 dry-run 或 execute"
+        return 2
+    }
     execution_plan_prepare "$action" "$selector" || return $?
     execution_plan_print "$mode"
     if [[ "$mode" == dry-run ]]; then
@@ -65,12 +81,17 @@ execution_plan_run() {
     umask 077
     temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/user-manager-plan.XXXXXX")" || return 1
     for host in "${EXECUTION_PLAN_HOSTS[@]}"; do
-        ((total += 1)); result_file="$temp_dir/result.$total"; provider_rc=0
+        ((total += 1))
+        result_file="$temp_dir/result.$total"
+        provider_rc=0
         host_provider_execute "$host" "$action" >"$result_file" || provider_rc=$?
-        status="${PROVIDER_RESULT_STATUS:-failed}"; code="${PROVIDER_RESULT_CODE:-PROVIDER_RESULT_MISSING}"
+        status="${PROVIDER_RESULT_STATUS:-failed}"
+        code="${PROVIDER_RESULT_CODE:-PROVIDER_RESULT_MISSING}"
         size="$(stat -Lc '%s' -- "$result_file" 2>/dev/null || printf '0')"
         if [[ ! "$size" =~ ^[0-9]+$ ]] || ((size > 131072)); then
-            status=failed; code=PROVIDER_OUTPUT_TOO_LARGE; : >"$result_file"
+            status=failed
+            code=PROVIDER_OUTPUT_TOO_LARGE
+            : >"$result_file"
         fi
         if [[ -s "$result_file" ]]; then /bin/cat "$result_file"; else
             printf 'result.protocol=user-manager-provider-v1\nresult.host=%s\nresult.action=%s\n' "$host" "$action"
@@ -85,7 +106,9 @@ execution_plan_run() {
     printf 'summary.mode=execute\nsummary.total=%s\n' "$total"
     printf 'summary.success=%s\nsummary.failed=%s\n' "$success" "$failed"
     printf 'summary.unreachable=%s\nsummary.unsupported=%s\nsummary.end=1\n' "$unreachable" "$unsupported"
-    if ((failed > 0 || unreachable > 0)); then return 1
-    elif ((unsupported > 0)); then return 4
+    if ((failed > 0 || unreachable > 0)); then
+        return 1
+    elif ((unsupported > 0)); then
+        return 4
     else return 0; fi
 }

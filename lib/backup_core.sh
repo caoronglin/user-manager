@@ -526,8 +526,23 @@ GENEOF
 # ============================================================
 _safe_cleanup_backups() {
     local user_backup_dir="$1"
-    local retention_days="${2:-${BACKUP_RETENTION_DAYS:-7}}"
-    local min_keep="${3:-${BACKUP_MIN_KEEP:-3}}"
+    local retention_days="${2-${BACKUP_RETENTION_DAYS:-7}}"
+    local min_keep="${3-${BACKUP_MIN_KEEP:-3}}"
+
+    # These values reach find's -mtime argument and Bash arithmetic below.
+    # Parse only bounded decimal strings, normalize leading zeroes, and reject
+    # invalid explicit arguments before either consumer can interpret them.
+    local normalized
+    if ! normalized=$(_backup_core_bounded_uint "$retention_days" 36500); then
+        msg_err "安全拒绝: retention_days 必须是 0 到 36500 的十进制整数"
+        return 1
+    fi
+    retention_days="$normalized"
+    if ! normalized=$(_backup_core_bounded_uint "$min_keep" 1000); then
+        msg_err "安全拒绝: min_keep 必须是 0 到 1000 的十进制整数"
+        return 1
+    fi
+    min_keep="$normalized"
 
     [[ -z "$user_backup_dir" ]] && return 1
     [[ ! -d "$user_backup_dir" ]] && return 2
@@ -578,6 +593,27 @@ _safe_cleanup_backups() {
         msg_ok "清理旧备份: $cleaned 个, 释放 $(bytes_to_human "$freed")"
     fi
     return 0
+}
+
+# Print a canonical unsigned decimal integer only when it is within max_value.
+# The input is never evaluated as arithmetic; its length is capped before any
+# comparison, and max_value is a fixed internal literal at each call site.
+_backup_core_bounded_uint() {
+    local value="$1" max_value="$2"
+    local LC_ALL=C
+
+    [[ "$value" =~ ^[0-9]{1,20}$ ]] || return 1
+    while [[ ${#value} -gt 1 && "${value:0:1}" == 0 ]]; do
+        value="${value#0}"
+    done
+
+    if ((${#value} > ${#max_value})) || {
+        ((${#value} == ${#max_value})) && [[ "$value" > "$max_value" ]]
+    }; then
+        return 1
+    fi
+
+    printf '%s' "$value"
 }
 
 # ============================================================

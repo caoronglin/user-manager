@@ -13,9 +13,9 @@ setup_test_env
 test_suite_start "Execution Plan"
 
 HOST_INVENTORY_IDS=(local ok-01 down-01 nogpu-01 ok-02)
-declare -gA HOST_PROVIDER=([local]=local [ok-01]=ssh [down-01]=ssh [nogpu-01]=ssh [ok-02]=ssh)
-declare -gA HOST_ENABLED=([local]=true [ok-01]=true [down-01]=true [nogpu-01]=true [ok-02]=true)
-declare -gA HOST_GROUPS=([local]=local [ok-01]=gpu [down-01]=gpu [nogpu-01]=gpu [ok-02]=gpu)
+declare -gA HOST_PROVIDER=([local]=local [ok - 01]=ssh [down - 01]=ssh [nogpu - 01]=ssh [ok - 02]=ssh)
+declare -gA HOST_ENABLED=([local]=true [ok - 01]=true [down - 01]=true [nogpu - 01]=true [ok - 02]=true)
+declare -gA HOST_GROUPS=([local]=local [ok - 01]=gpu [down - 01]=gpu [nogpu - 01]=gpu [ok - 02]=gpu)
 
 provider_execute_count=0
 host_provider_execute() {
@@ -24,8 +24,14 @@ host_provider_execute() {
     printf '%s|%s\n' "$host" "$action" >>"$TEST_TMPDIR/provider.calls"
     PROVIDER_RESULT_CODE=OK
     case "$host" in
-    down-01) PROVIDER_RESULT_STATUS=unreachable; PROVIDER_RESULT_CODE=SSH_TRANSPORT_ERROR ;;
-    nogpu-01) PROVIDER_RESULT_STATUS=unsupported; PROVIDER_RESULT_CODE=GPU_NOT_FOUND ;;
+    down-01)
+        PROVIDER_RESULT_STATUS=unreachable
+        PROVIDER_RESULT_CODE=SSH_TRANSPORT_ERROR
+        ;;
+    nogpu-01)
+        PROVIDER_RESULT_STATUS=unsupported
+        PROVIDER_RESULT_CODE=GPU_NOT_FOUND
+        ;;
     *) PROVIDER_RESULT_STATUS=success ;;
     esac
     printf 'result.host=%s\nresult.status=%s\nresult.code=%s\nresult.end=1\n' \
@@ -72,9 +78,15 @@ fi
 
 test_start "全部成功时返回零"
 HOST_INVENTORY_IDS=(local ok-01 ok-02)
-HOST_PROVIDER[local]=local; HOST_PROVIDER[ok-01]=ssh; HOST_PROVIDER[ok-02]=ssh
-HOST_ENABLED[local]=true; HOST_ENABLED[ok-01]=true; HOST_ENABLED[ok-02]=true
-HOST_GROUPS[local]=all-ok; HOST_GROUPS[ok-01]=all-ok; HOST_GROUPS[ok-02]=all-ok
+HOST_PROVIDER[local]=local
+HOST_PROVIDER[ok - 01]=ssh
+HOST_PROVIDER[ok - 02]=ssh
+HOST_ENABLED[local]=true
+HOST_ENABLED[ok - 01]=true
+HOST_ENABLED[ok - 02]=true
+HOST_GROUPS[local]=all-ok
+HOST_GROUPS[ok - 01]=all-ok
+HOST_GROUPS[ok - 02]=all-ok
 success_output=""
 if success_output="$(execution_plan_run host.probe group:all-ok execute 2>/dev/null)" &&
     [[ "$success_output" == *"summary.success=3"* ]] && [[ "$success_output" == *"summary.failed=0"* ]]; then

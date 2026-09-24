@@ -14,7 +14,7 @@
 [Unit]
 Description=User Manager Web console (umweb) - non-privileged observation plane
 Documentation=file:/opt/user-manager/docs/WEB_SECURITY_BOUNDARY.md
-After=network.target
+After=network.target systemd-tmpfiles-setup.service
 Wants=um-snapshot.timer
 
 [Service]
@@ -22,6 +22,7 @@ Type=simple
 # 以普通系统用户运行，shell 为 nologin，绝不加入特权组。
 User=umweb
 Group=umweb
+UMask=0077
 
 Environment=RUST_LOG=info
 # umweb 二进制（由 Rust 构建产物）。部署路径需与实际一致。
@@ -32,6 +33,7 @@ RestartSec=2
 # 只写自身 DB/secrets；对只读快照目录只读。
 ReadWritePaths=/var/lib/user-manager-web
 ReadOnlyPaths=/var/lib/user-manager-web/snapshots
+ReadOnlyPaths=/var/lib/user-manager-web/events
 
 # ============================================================
 # 硬安全边界：永不提权（plan.md 12.3）
@@ -57,9 +59,10 @@ RestrictRealtime=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
-# 出站仅 IPv4/IPv6（企业微信/前端）；AF_UNIX 仅供 journald 日志。禁止访问
-# /var/run/docker.sock 等特权 socket（ProtectSystem=strict + 无 Docker 组已覆盖此点）。
+# 出站仅 IPv4/IPv6（企业微信/前端）；AF_UNIX 保留给日志。下面显式屏蔽本地
+# 特权控制面 socket，不能只依赖 ProtectSystem 或用户组权限。
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+InaccessiblePaths=-/var/run/docker.sock -/run/docker.sock -/run/containerd/containerd.sock -/run/podman/podman.sock -/run/systemd/private -/run/dbus/system_bus_socket
 
 [Install]
 WantedBy=multi-user.target

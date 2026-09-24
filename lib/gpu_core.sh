@@ -181,10 +181,15 @@ gpu_snapshot_kv() {
         IFS=',' read -r index uuid name driver temperature power memory_total memory_used utilization extra \
             <<<"$line"
         [[ -z "$extra" ]] || continue
-        index="$(_gpu_trim "$index")"; uuid="$(_gpu_trim "$uuid")"; name="$(_gpu_trim "$name")"
-        driver="$(_gpu_trim "$driver")"; temperature="$(_gpu_trim "$temperature")"
-        power="$(_gpu_trim "$power")"; memory_total="$(_gpu_trim "$memory_total")"
-        memory_used="$(_gpu_trim "$memory_used")"; utilization="$(_gpu_trim "$utilization")"
+        index="$(_gpu_trim "$index")"
+        uuid="$(_gpu_trim "$uuid")"
+        name="$(_gpu_trim "$name")"
+        driver="$(_gpu_trim "$driver")"
+        temperature="$(_gpu_trim "$temperature")"
+        power="$(_gpu_trim "$power")"
+        memory_total="$(_gpu_trim "$memory_total")"
+        memory_used="$(_gpu_trim "$memory_used")"
+        utilization="$(_gpu_trim "$utilization")"
         [[ "$index" =~ ^[0-9]+$ && -n "$uuid" ]] || continue
         gpu_records+=("index=$(_gpu_safe_value "$index");uuid=$(_gpu_safe_value "$uuid");name=$(_gpu_safe_value "$name");driver=$(_gpu_safe_value "$driver");temperature_c=$(_gpu_safe_value "$temperature");power_w=$(_gpu_safe_value "$power");memory_total_mib=$(_gpu_safe_value "$memory_total");memory_used_mib=$(_gpu_safe_value "$memory_used");utilization_pct=$(_gpu_safe_value "$utilization")")
         ((gpu_count += 1))
@@ -202,8 +207,10 @@ gpu_snapshot_kv() {
             [[ -n "$line" && "$line" != *'No running processes found'* ]] || continue
             IFS=',' read -r pid process_uuid process_memory process_name extra <<<"$line"
             [[ -z "$extra" ]] || continue
-            pid="$(_gpu_trim "$pid")"; process_uuid="$(_gpu_trim "$process_uuid")"
-            process_memory="$(_gpu_trim "$process_memory")"; process_name="$(_gpu_trim "$process_name")"
+            pid="$(_gpu_trim "$pid")"
+            process_uuid="$(_gpu_trim "$process_uuid")"
+            process_memory="$(_gpu_trim "$process_memory")"
+            process_name="$(_gpu_trim "$process_name")"
             [[ "$pid" =~ ^[0-9]+$ ]] || continue
             read -r process_short _ <<<"$process_name"
             process_user="$(ps -o user= -p "$pid" 2>/dev/null || true)"

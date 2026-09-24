@@ -88,8 +88,14 @@ tui_terminal_supported() {
 
     TUI_TERMINAL_SUPPORTED=false
     case "$term" in
-    '') TUI_TERMINAL_REASON='term-unset'; return 1 ;;
-    dumb | unknown | cons25 | emacs) TUI_TERMINAL_REASON="unsupported-term:$term"; return 1 ;;
+    '')
+        TUI_TERMINAL_REASON='term-unset'
+        return 1
+        ;;
+    dumb | unknown | cons25 | emacs)
+        TUI_TERMINAL_REASON="unsupported-term:$term"
+        return 1
+        ;;
     esac
     if ! tui_terminal_is_interactive; then
         TUI_TERMINAL_REASON='not-interactive-terminal'

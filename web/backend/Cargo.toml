@@ -1,6 +1,6 @@
 [package]
 name = "umweb"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "User Manager Web console — non-privileged observation & app-management control plane"
 license = "MIT"
@@ -17,7 +17,7 @@ license = "MIT"
 [dependencies]
 # Web 框架 / 异步运行时
 axum = "=0.7.9"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["set-header", "trace", "limit", "timeout", "cors"] }
 
@@ -32,6 +32,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # 密码哈希（Argon2id）与安全随机
 argon2 = "0.5"
 rand = "0.8"
+libc = "0.2"
 
 # 服务端会话 / TOTP / 令牌
 #  - session id 用 CSPRNG，不编码用户信息；

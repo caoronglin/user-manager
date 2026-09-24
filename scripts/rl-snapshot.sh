@@ -46,33 +46,55 @@ EOF
 while (($# > 0)); do
     case "$1" in
     --out)
-        (($# >= 2)) || { rl_usage >&2; exit 2; }
-        rl_out="$2"; shift 2
+        (($# >= 2)) || {
+            rl_usage >&2
+            exit 2
+        }
+        rl_out="$2"
+        shift 2
         ;;
     --source)
-        (($# >= 2)) || { rl_usage >&2; exit 2; }
-        rl_source="$2"; shift 2
+        (($# >= 2)) || {
+            rl_usage >&2
+            exit 2
+        }
+        rl_source="$2"
+        shift 2
         ;;
     --manifest-only)
-        rl_manifest_only=1; shift
+        rl_manifest_only=1
+        shift
         ;;
     --dry-run)
-        rl_dry=1; shift
+        rl_dry=1
+        shift
         ;;
     -h | --help)
-        rl_usage; exit 0
+        rl_usage
+        exit 0
         ;;
-    --) shift; break ;;
-    -*) rl_usage >&2; exit 2 ;;
-    *) rl_kinds+=("$1"); shift ;;
+    --)
+        shift
+        break
+        ;;
+    -*)
+        rl_usage >&2
+        exit 2
+        ;;
+    *)
+        rl_kinds+=("$1")
+        shift
+        ;;
     esac
 done
 
 cd "$rl_project_root" || exit 1
-SCRIPT_DIR="$rl_project_root"; LIB_DIR="$rl_project_root/lib"
+SCRIPT_DIR="$rl_project_root"
+LIB_DIR="$rl_project_root/lib"
 # shellcheck source=lib/bootstrap.sh
 source "$LIB_DIR/bootstrap.sh"
 um_load_profile snapshot
+source "$LIB_DIR/snapshot_ops.sh"
 
 [[ -n "$rl_out" ]] && SNAPSHOT_DIR="$rl_out"
 
@@ -124,7 +146,8 @@ collect_quota() {
             home="$(get_user_home "$user" 2>/dev/null || true)"
             mp="$(get_user_mountpoint "$home" 2>/dev/null || true)"
             qi="$(get_user_quota_info "$user" "$mp" 2>/dev/null || printf '0:0')"
-            used="${qi%%:*}"; limit="${qi##*:}"
+            used="${qi%%:*}"
+            limit="${qi##*:}"
             [[ "$used" =~ ^[0-9]+$ ]] || used=0
             [[ "$limit" =~ ^[0-9]+$ ]] || limit=0
             printf '%s\t%s\t%s\t%s\n' "$user" "$mp" "$used" "$limit"
@@ -151,7 +174,8 @@ collect_resources() {
             [[ -n "$user" ]] || continue
             uid="$(id -u "$user" 2>/dev/null || true)"
             limits="$(get_current_resource_limits "$user" 2>/dev/null || printf ':')"
-            cpu="${limits%%:*}"; mem="${limits##*:}"
+            cpu="${limits%%:*}"
+            mem="${limits##*:}"
             [[ "$uid" =~ ^[0-9]+$ ]] || uid=''
             printf '%s\t%s\t%s\t%s\n' "$user" "$uid" "$cpu" "$mem"
         done < <(get_managed_usernames 2>/dev/null)
@@ -221,8 +245,8 @@ collect_logs() {
         else
             avail="false"
         fi
-        lines_json="$(printf '%s\n' "$out" | awk 'p { print } /^__LOGS_BODY__$/ { p = 1 }' \
-            | tail -n 200 | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || printf '[]')"
+        lines_json="$(printf '%s\n' "$out" | awk 'p { print } /^__LOGS_BODY__$/ { p = 1 }' |
+            tail -n 200 | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || printf '[]')"
         entries+=("$(jq -cn --arg k "$key" --arg a "$avail" --argjson l "$lines_json" \
             '{key: $k, available: ($a == "true"), lines: $l}')")
     done
@@ -248,24 +272,25 @@ collect_reports() {
 }
 
 collect_system() {
-    local hostname kernel arch uptime load1 load5 load15 memtotal memavail ncpu
+    local hostname kernel arch uptime load1 load5 load15 memtotal memavail ncpu summary_json
     hostname="$(hostname 2>/dev/null || printf 'unknown')"
     kernel="$(uname -r 2>/dev/null || printf 'unknown')"
     arch="$(uname -m 2>/dev/null || printf 'unknown')"
-    uptime="$(awk '{printf "%d", $1}' /proc/uptime 2>/dev/null || printf '0')"
+    uptime="$(awk 'NR == 1 {printf "%.0f", $1; exit}' /proc/uptime 2>/dev/null || printf 'null')"
     load1="$(awk '{print $1}' /proc/loadavg 2>/dev/null || printf '0')"
     load5="$(awk '{print $2}' /proc/loadavg 2>/dev/null || printf '0')"
     load15="$(awk '{print $3}' /proc/loadavg 2>/dev/null || printf '0')"
-    memtotal="$(awk '/^MemTotal:/ {print $2 * 1024; exit}' /proc/meminfo 2>/dev/null || printf '0')"
-    memavail="$(awk '/^MemAvailable:/ {print $2 * 1024; exit}' /proc/meminfo 2>/dev/null || printf '0')"
-    ncpu="$(nproc 2>/dev/null || printf '0')"
-    [[ "$uptime" =~ ^[0-9]+$ ]] || uptime=0
+    ncpu="$(nproc 2>/dev/null || printf 'null')"
+    summary_json="$(snapshot_ops_system_summary 2>/dev/null || printf '{}')"
+    memtotal="$(jq -r '.mem_total_bytes // "null"' <<<"$summary_json")"
+    memavail="$(jq -r '.mem_available_bytes // "null"' <<<"$summary_json")"
+    [[ "$uptime" =~ ^[0-9]+$ ]] || uptime=null
     for _lv in load1 load5 load15; do
-        [[ "${!_lv}" =~ ^[0-9]+([.][0-9]+)?$ ]] || printf -v "$_lv" '%s' 0
+        [[ "${!_lv}" =~ ^[0-9]+([.][0-9]+)?$ ]] || printf -v "$_lv" '%s' null
     done
-    [[ "$memtotal" =~ ^[0-9]+$ ]] || memtotal=0
-    [[ "$memavail" =~ ^[0-9]+$ ]] || memavail=0
-    [[ "$ncpu" =~ ^[0-9]+$ ]] || ncpu=0
+    [[ "$memtotal" =~ ^[0-9]+$ ]] || memtotal=null
+    [[ "$memavail" =~ ^[0-9]+$ ]] || memavail=null
+    [[ "$ncpu" =~ ^[0-9]+$ ]] || ncpu=null
     jq -cn \
         --arg hostname "$hostname" \
         --arg kernel "$kernel" \
@@ -276,11 +301,13 @@ collect_system() {
         --argjson mem_available "$memavail" \
         --argjson cpu_count "$ncpu" \
         --arg project_version "${USER_MANAGER_VERSION:-dev}" \
+        --argjson summary "$summary_json" \
+        --argjson ops "$(snapshot_ops_collect 2>/dev/null || printf '{}')" \
         '{hostname: $hostname, kernel_release: $kernel, arch: $arch,
           uptime_seconds: $uptime,
-          loadavg: {load1: ($load1 | tonumber), load5: ($load5 | tonumber), load15: ($load15 | tonumber)},
+          loadavg: {load1: (if $load1 == "null" then null else ($load1 | tonumber) end), load5: (if $load5 == "null" then null else ($load5 | tonumber) end), load15: (if $load15 == "null" then null else ($load15 | tonumber) end)},
           mem_total_bytes: $mem_total, mem_available_bytes: $mem_available,
-          cpu_count: $cpu_count, project_version: $project_version}'
+          cpu_count: $cpu_count, project_version: $project_version} + $summary + {ops:$ops}'
 }
 
 collect_audit_summary() {

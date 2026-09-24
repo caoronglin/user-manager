@@ -3,13 +3,11 @@
 非特权 Rust Web 控制台。定位：**认证、展示、查询、审计、通知、非特权配置与只读观测**。
 它**不是**浏览器版 root 运维终端，也**不**执行任何系统写操作。
 
-技术栈：Rust + axum + tokio + rusqlite + Argon2id + TOTP(P4) + Ant Design Pro 6(P5)。
+技术栈：Rust + axum + tokio + rusqlite + Argon2id + TOTP；前端为 React 19 + Vite 8 + Ant Design 6。当前前端尚未迁移到计划中的 Umi / Ant Design ProComponents。
 
 > ## ✅ 验证状态
-> P1 基线已在 Rust 工具链（1.98）完成编译与全部质量门禁：
-> `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、
-> `cargo audit`、`cargo deny check` 全部通过。Cargo.lock 与 deny.toml 已入库。
-> 后续 API 阶段沿用同一质量门禁；P4c 通知 inbox 的当前改动尚待本地回归验证。
+> **2026-09-24 工作树验证：** Rust fmt、Clippy 通过，后端 51 个测试通过；前端 `npm ci --offline` 和 `npm run build` 通过，npm 报告 0 个依赖漏洞。Ops 快照 7/7、安全加固 25/25、事件 spool 11/11、systemd 边界 9/9 通过。完整 Shell 回归为 38 个套件通过、3 个 Host/SSH 套件受当前容器 `/tmp` 属主影响失败、1 个可选性能套件跳过。
+> 生产构建还有 Ant Design `use client` 提示和约 1.12 MB 的主 JS bundle 提示。浏览器视觉/无障碍及目标机部署未验收；GitHub 推送/发布也未完成。阶段状态见根目录 [`plan.md`](../plan.md) 与 [`docs/M1_REPOSITORY_AUDIT.md`](../docs/M1_REPOSITORY_AUDIT.md)。
 
 ## 安全边界（最高优先级）
 
@@ -42,6 +40,7 @@ web/backend/
     http/          routes / middleware(request-id, 安全头, CSRF+Origin) / response
   tests/
     api_contract.rs  危险路由必须 404/405 + capability 默认拒绝
+web/frontend/        React/Vite/Ant Design 前端
 ```
 
 ## 实现进度
@@ -62,7 +61,13 @@ web/backend/
 - [x] P4a Session 管理：列出活跃会话、CSRF 保护的撤销、过期会话清理
 - [x] P4b API Tokens：create(一次性明文)/list(无明文无hash)/revoke；DB 仅存 SHA-256 hash；仅允许只读 capability；Bearer 认证可用于只读 API
 - [x] P4c 通知 inbox API：读取/未读计数、事件类型过滤、限量游标分页、标记已读/全部已读、event_id 幂等去重；权限由 notifications.read/manage 控制
-- [ ] P4 后续：WeCom 配置与发送、投递记录、事件目录与节流合并、root 事件 spool 消费
+- [x] P4d WeCom 管理 API：事件目录、加密 Webhook、脱敏设置、版本冲突保护、固定模板测试投递与有界投递历史；重试限定网络/超时/429/5xx 并有上限
+- [x] P4e root event spool：安全读取固定 root-owned 目录，`user.created`/`user.disabled` 幂等进入 inbox；按配置投递 WeCom，五分钟按事件类型/用户去重，限制并发和重试
+- [ ] P4 后续：为登录安全、快照变化等目录事件接入受信任生产者，并在目标机验证实际 webhook 投递
+- [x] P5 前端页面：登录/MFA、Dashboard、用户/配额/资源、SMB、主机/GPU、系统状态、日志、审计/报表、WeCom 设置/投递历史；能力控制、快照新鲜度提示、主题和中英文切换
+- [ ] P5 视觉验收：浏览器截图/交互、响应式断点、键盘与无障碍检查；当前工程使用 React/Vite/Ant Design，没有采用计划中的 Umi/ProComponents
+- [x] P6 Ubuntu Ops 快照：系统与 CPU/内存/PSI、文件系统/inode、systemd、APT/reboot、AppArmor；单节不可用时降级，新增回归 7/7 通过
+- [ ] P7 发布门禁：修复测试容器 `/tmp` 前置条件后复跑 Host/SSH 套件，完成浏览器/目标机验收，推送 GitHub 并创建新版本
 
 ## 本地运行（需 Rust）
 

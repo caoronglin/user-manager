@@ -41,7 +41,10 @@ case "${1:-}" in
     exec bash user_manager.sh "$@"
     ;;
 -h | --help)
-    (($# == 1)) || { run_usage >&2; exit 2; }
+    (($# == 1)) || {
+        run_usage >&2
+        exit 2
+    }
     run_usage
     exit 0
     ;;

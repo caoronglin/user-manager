@@ -36,54 +36,96 @@ EOF
 while (($# > 0)); do
     case "$1" in
     --inventory)
-        (($# >= 2)) || { rl_usage >&2; exit 2; }
-        rl_inventory="$2"; shift 2
+        (($# >= 2)) || {
+            rl_usage >&2
+            exit 2
+        }
+        rl_inventory="$2"
+        shift 2
         ;;
     --known-hosts)
-        (($# >= 2)) || { rl_usage >&2; exit 2; }
-        rl_known_hosts="$2"; shift 2
+        (($# >= 2)) || {
+            rl_usage >&2
+            exit 2
+        }
+        rl_known_hosts="$2"
+        shift 2
         ;;
     -h | --help)
-        rl_usage; exit 0
+        rl_usage
+        exit 0
         ;;
-    --) shift; break ;;
-    -*) rl_usage >&2; exit 2 ;;
+    --)
+        shift
+        break
+        ;;
+    -*)
+        rl_usage >&2
+        exit 2
+        ;;
     *) break ;;
     esac
 done
 
-(($# > 0)) || { rl_usage >&2; exit 2; }
-rl_command="$1"; shift
+(($# > 0)) || {
+    rl_usage >&2
+    exit 2
+}
+rl_command="$1"
+shift
 
 cd "$rl_project_root" || exit 1
-SCRIPT_DIR="$rl_project_root"; LIB_DIR="$rl_project_root/lib"
+SCRIPT_DIR="$rl_project_root"
+LIB_DIR="$rl_project_root/lib"
 # shellcheck source=lib/bootstrap.sh
 source "$LIB_DIR/bootstrap.sh"
 um_load_profile remote
 [[ -z "$rl_known_hosts" ]] || USER_MANAGER_SSH_KNOWN_HOSTS_FILE="$rl_known_hosts"
 
-if [[ -n "$rl_inventory" ]]; then host_inventory_load "$rl_inventory"
+if [[ -n "$rl_inventory" ]]; then
+    host_inventory_load "$rl_inventory"
 else host_inventory_load; fi
 
 action_register_defaults_once
 case "$rl_command" in
 list)
-    (($# == 0)) || { rl_usage >&2; exit 2; }
+    (($# == 0)) || {
+        rl_usage >&2
+        exit 2
+    }
     host_inventory_list
     ;;
 validate)
-    (($# == 0)) || { rl_usage >&2; exit 2; }
+    (($# == 0)) || {
+        rl_usage >&2
+        exit 2
+    }
     printf 'inventory.valid=true\ninventory.host_count=%s\n' "${#HOST_INVENTORY_IDS[@]}"
     ;;
 probe | gpu)
-    rl_target='local'; rl_mode='execute'; rl_target_seen=0
+    rl_target='local'
+    rl_mode='execute'
+    rl_target_seen=0
     while (($# > 0)); do
         case "$1" in
-        --dry-run) [[ "$rl_mode" == execute ]] || { rl_usage >&2; exit 2; }; rl_mode='dry-run' ;;
-        -*) rl_usage >&2; exit 2 ;;
+        --dry-run)
+            [[ "$rl_mode" == execute ]] || {
+                rl_usage >&2
+                exit 2
+            }
+            rl_mode='dry-run'
+            ;;
+        -*)
+            rl_usage >&2
+            exit 2
+            ;;
         *)
-            ((rl_target_seen == 0)) || { rl_usage >&2; exit 2; }
-            rl_target="$1"; rl_target_seen=1
+            ((rl_target_seen == 0)) || {
+                rl_usage >&2
+                exit 2
+            }
+            rl_target="$1"
+            rl_target_seen=1
             ;;
         esac
         shift
@@ -92,5 +134,8 @@ probe | gpu)
     if [[ "$rl_command" == probe ]]; then rl_action='host.probe'; else rl_action='gpu.summary'; fi
     execution_plan_run "$rl_action" "$rl_target" "$rl_mode"
     ;;
-*) rl_usage >&2; exit 2 ;;
+*)
+    rl_usage >&2
+    exit 2
+    ;;
 esac

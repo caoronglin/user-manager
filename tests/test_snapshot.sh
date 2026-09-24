@@ -24,7 +24,8 @@ declare -a forbidden_tokens=(
 )
 
 test_start "快照契约库与采集器存在且采集器可执行"
-if [[ -f "$SNAP_LIB" && -f "$SNAP_GEN" && -x "$SNAP_GEN" ]]; then test_pass
+if [[ -f "$SNAP_LIB" && -f "$SNAP_GEN" && -x "$SNAP_GEN" ]]; then
+    test_pass
 else test_fail "缺少 snapshot_core.sh / 可执行的 rl-snapshot.sh"; fi
 
 test_start "采集器源码（去注释）不含特权写/提权命令"
@@ -35,7 +36,8 @@ for tok in "${forbidden_tokens[@]}"; do
         grep -nE "(^|[^_a-zA-Z.])${tok}([^_a-zA-Z]|$)" || true)"
     [[ -z "$hit" ]] || violations+="${tok} "
 done
-if [[ -z "$violations" ]]; then test_pass
+if [[ -z "$violations" ]]; then
+    test_pass
 else test_fail "采集器命中禁止 token: ${violations}"; fi
 
 test_start "契约常量与阈值合理"
@@ -100,7 +102,8 @@ val_ok=0
     printf '%s' '[]' | snapshot_validate_json && exit 1 || true
     exit 0
 ) && val_ok=1
-if ((val_ok == 1)); then test_pass
+if ((val_ok == 1)); then
+    test_pass
 else test_fail "validate 边界判定异常"; fi
 
 # ---- 原子写 / freshness / manifest ----
@@ -115,8 +118,245 @@ atomic_res="$(
     val="$(jq -r '.data.n' "$SNAPSHOT_DIR/users.json")"
     printf '%s|%s|%s' "$mode" "$leftovers" "$val"
 )" || atomic_res=''
-if [[ "$atomic_res" == '640|0|2' ]]; then test_pass
+if [[ "$atomic_res" == '640|0|2' ]]; then
+    test_pass
 else test_fail "atomic_install 异常: $atomic_res"; fi
+
+test_start "atomic_install：权限设置失败时拒绝安装且清理临时文件"
+chmod_fail_bin="$TEST_TMPDIR/chmod-fail-bin"
+mkdir -p "$chmod_fail_bin"
+real_chmod="$(type -P chmod)"
+cat >"$chmod_fail_bin/chmod" <<EOF
+#!/bin/sh
+case "\$*" in
+    *".users.json."*) exit 1 ;;
+esac
+exec "$real_chmod" "\$@"
+EOF
+chmod +x "$chmod_fail_bin/chmod"
+chmod_fail_res="$(
+    set +e
+    SNAPSHOT_DIR="$TEST_TMPDIR/snapChmodFail"
+    PATH="$chmod_fail_bin:$PATH"
+    export PATH
+    printf '{}' | snapshot_atomic_install users >/dev/null 2>&1
+    rc=$?
+    leftovers="$(find "$SNAPSHOT_DIR" -maxdepth 1 -name '.*.json.*' 2>/dev/null | wc -l)"
+    printf '%s|%s|%s' "$rc" "$([[ -e "$SNAPSHOT_DIR/users.json" ]] && echo yes || echo no)" "$leftovers"
+)"
+if [[ "$chmod_fail_res" == '1|no|0' ]]; then
+    test_pass
+else test_fail "chmod 失败后仍安装或遗留临时文件: $chmod_fail_res"; fi
+
+test_start "snapshot_ensure_dir：目录 chmod 失败时拒绝继续写入"
+dir_chmod_fail_bin="$TEST_TMPDIR/dir-chmod-fail-bin"
+mkdir -p "$dir_chmod_fail_bin"
+cat >"$dir_chmod_fail_bin/chmod" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+chmod +x "$dir_chmod_fail_bin/chmod"
+dir_chmod_fail_res="$(
+    set +e
+    SNAPSHOT_DIR="$TEST_TMPDIR/snapDirChmodFail"
+    PATH="$dir_chmod_fail_bin:$PATH"
+    export PATH
+    printf '{}' | snapshot_atomic_install users >/dev/null 2>&1
+    printf '%s|%s' "$?" "$(find "$SNAPSHOT_DIR" -maxdepth 1 -name '.*.json.*' 2>/dev/null | wc -l)"
+)"
+if [[ "$dir_chmod_fail_res" == '1|0' ]]; then
+    test_pass
+else test_fail "目录 chmod 失败后仍继续写入: $dir_chmod_fail_res"; fi
+
+test_start "snapshot_ensure_dir：mkdir 失败会向调用方返回错误"
+mkdir_blocker="$TEST_TMPDIR/snapshot-mkdir-blocker"
+printf 'file' >"$mkdir_blocker"
+mkdir_fail_res="$(
+    set +e
+    SNAPSHOT_DIR="$mkdir_blocker/child"
+    printf '{}' | snapshot_atomic_install users >/dev/null 2>&1
+    printf '%s|%s' "$?" "$([[ -f "$mkdir_blocker" ]] && echo preserved || echo changed)"
+)"
+if [[ "$mkdir_fail_res" == '1|preserved' ]]; then
+    test_pass
+else test_fail "mkdir 失败未正确传播: $mkdir_fail_res"; fi
+
+test_start "root 属主设置：umweb 组缺失时 fail-closed"
+group_fail_bin="$TEST_TMPDIR/group-fail-bin"
+mkdir -p "$group_fail_bin"
+cat >"$group_fail_bin/getent" <<'EOF'
+#!/bin/sh
+exit 2
+EOF
+cat >"$group_fail_bin/chown" <<'EOF'
+#!/bin/sh
+touch "$SNAPSHOT_TEST_CHOWN_LOG"
+exit 0
+EOF
+chmod +x "$group_fail_bin/getent" "$group_fail_bin/chown"
+group_fail_res="$(
+    set +e
+    PATH="$group_fail_bin:$PATH"
+    SNAPSHOT_GROUP=umweb
+    SNAPSHOT_OWNER=root
+    SNAPSHOT_TEST_CHOWN_LOG="$TEST_TMPDIR/group-chown-called"
+    export PATH SNAPSHOT_GROUP SNAPSHOT_OWNER SNAPSHOT_TEST_CHOWN_LOG
+    snapshot_apply_owner_for_uid "$TEST_TMPDIR/owner-target" 0 >/dev/null 2>&1
+    printf '%s|%s' "$?" "$([[ -e "$SNAPSHOT_TEST_CHOWN_LOG" ]] && echo called || echo skipped)"
+)"
+if [[ "$group_fail_res" == '1|skipped' ]]; then
+    test_pass
+else test_fail "umweb 组缺失时未拒绝写入: $group_fail_res"; fi
+
+test_start "root 属主设置：chown 失败会被传播且目标为 root:umweb"
+owner_fail_bin="$TEST_TMPDIR/owner-fail-bin"
+mkdir -p "$owner_fail_bin"
+cat >"$owner_fail_bin/getent" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+cat >"$owner_fail_bin/chown" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >"$SNAPSHOT_TEST_CHOWN_LOG"
+exit 1
+EOF
+chmod +x "$owner_fail_bin/getent" "$owner_fail_bin/chown"
+owner_fail_res="$(
+    set +e
+    PATH="$owner_fail_bin:$PATH"
+    SNAPSHOT_GROUP=umweb
+    SNAPSHOT_OWNER=root
+    SNAPSHOT_TEST_CHOWN_LOG="$TEST_TMPDIR/chown-args"
+    export PATH SNAPSHOT_GROUP SNAPSHOT_OWNER SNAPSHOT_TEST_CHOWN_LOG
+    snapshot_apply_owner_for_uid "$TEST_TMPDIR/owner-target" 0 >/dev/null 2>&1
+    rc=$?
+    printf '%s|%s' "$rc" "$(cat "$SNAPSHOT_TEST_CHOWN_LOG")"
+)"
+owner_fail_expected="1|root:umweb -- $TEST_TMPDIR/owner-target"
+if [[ "$owner_fail_res" == "$owner_fail_expected" ]]; then
+    test_pass
+else
+    test_fail "root:umweb chown 失败未传播或参数错误: $owner_fail_res"
+fi
+
+test_start "atomic_install：文件同步失败时保留旧快照并清理临时文件"
+sync_fail_bin="$TEST_TMPDIR/sync-fail-bin"
+mkdir -p "$sync_fail_bin"
+cat >"$sync_fail_bin/sync" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+chmod +x "$sync_fail_bin/sync"
+sync_fail_res="$(
+    set +e
+    SNAPSHOT_DIR="$TEST_TMPDIR/snapSyncFail"
+    snapshot_build_envelope users local 300 '{"n":1}' | snapshot_atomic_install users >/dev/null 2>&1 || exit 1
+    PATH="$sync_fail_bin:$PATH"
+    export PATH
+    printf '{"schema_version":1}' | snapshot_atomic_install users >/dev/null 2>&1
+    rc=$?
+    leftovers="$(find "$SNAPSHOT_DIR" -maxdepth 1 -name '.*.json.*' | wc -l)"
+    val="$(jq -r '.data.n // empty' "$SNAPSHOT_DIR/users.json")"
+    printf '%s|%s|%s' "$rc" "$leftovers" "$val"
+)"
+if [[ "$sync_fail_res" == '1|0|1' ]]; then
+    test_pass
+else test_fail "sync 失败后旧快照未保留或临时文件未清理: $sync_fail_res"; fi
+
+test_start "atomic_install：目录同步失败会返回错误并保留完整安装文件"
+dir_sync_fail_bin="$TEST_TMPDIR/dir-sync-fail-bin"
+mkdir -p "$dir_sync_fail_bin"
+real_sync="$(type -P sync)"
+cat >"$dir_sync_fail_bin/sync" <<EOF
+#!/bin/sh
+count=0
+if [ -f "\$SNAPSHOT_TEST_SYNC_COUNT" ]; then
+    count="\$(cat "\$SNAPSHOT_TEST_SYNC_COUNT")"
+fi
+count=\$((count + 1))
+printf '%s' "\$count" >"\$SNAPSHOT_TEST_SYNC_COUNT"
+if [ "\$count" -eq 2 ]; then
+    exit 1
+fi
+case "\$*" in
+    '') exit 1 ;;
+esac
+exec "$real_sync" "\$@"
+EOF
+chmod +x "$dir_sync_fail_bin/sync"
+dir_sync_fail_res="$(
+    set +e
+    SNAPSHOT_DIR="$TEST_TMPDIR/snapDirSyncFail"
+    snapshot_build_envelope users local 300 '{"n":1}' | snapshot_atomic_install users >/dev/null 2>&1 || exit 1
+    PATH="$dir_sync_fail_bin:$PATH"
+    SNAPSHOT_TEST_SYNC_COUNT="$TEST_TMPDIR/sync-call-count"
+    export PATH SNAPSHOT_TEST_SYNC_COUNT
+    snapshot_build_envelope users local 300 '{"n":2}' | snapshot_atomic_install users >/dev/null 2>&1
+    rc=$?
+    leftovers="$(find "$SNAPSHOT_DIR" -maxdepth 1 -name '.*.json.*' | wc -l)"
+    val="$(jq -r '.data.n' "$SNAPSHOT_DIR/users.json")"
+    printf '%s|%s|%s' "$rc" "$leftovers" "$val"
+)"
+if [[ "$dir_sync_fail_res" == '1|0|2' ]]; then
+    test_pass
+else test_fail "目录同步失败未报告或原子安装被破坏: $dir_sync_fail_res"; fi
+
+test_start "atomic_install：拒绝快照目录和目标文件符号链接"
+symlink_res="$(
+    set -Eeuo pipefail
+    mkdir -p "$TEST_TMPDIR/snapLinkTarget" "$TEST_TMPDIR/snapLinkOutside"
+    printf 'outside' >"$TEST_TMPDIR/snapLinkOutside/keep.txt"
+    outside_mode="$(stat -c '%a' "$TEST_TMPDIR/snapLinkOutside")"
+    ln -s "$TEST_TMPDIR/snapLinkOutside" "$TEST_TMPDIR/snapLinkDir"
+    SNAPSHOT_DIR="$TEST_TMPDIR/snapLinkDir"
+    if printf '{}' | snapshot_atomic_install users >/dev/null 2>&1; then exit 10; fi
+    [[ ! -e "$TEST_TMPDIR/snapLinkOutside/users.json" ]] || exit 11
+    [[ "$(stat -c '%a' "$TEST_TMPDIR/snapLinkOutside")" == "$outside_mode" ]] || exit 12
+    SNAPSHOT_DIR="$TEST_TMPDIR/snapLinkDir/child"
+    if printf '{}' | snapshot_atomic_install users >/dev/null 2>&1; then exit 17; fi
+    [[ ! -e "$TEST_TMPDIR/snapLinkOutside/child" ]] || exit 18
+
+    SNAPSHOT_DIR="$TEST_TMPDIR/snapLinkTarget"
+    ln -s "$TEST_TMPDIR/snapLinkOutside/keep.txt" "$SNAPSHOT_DIR/users.json"
+    if printf '{}' | snapshot_atomic_install users >/dev/null 2>&1; then exit 13; fi
+    [[ -L "$SNAPSHOT_DIR/users.json" ]] || exit 14
+    [[ "$(cat "$TEST_TMPDIR/snapLinkOutside/keep.txt")" == outside ]] || exit 15
+    [[ "$(snapshot_freshness_json users | jq -r '.present')" == false ]] || exit 16
+    printf 'ok'
+)" || symlink_res='failed'
+if [[ "$symlink_res" == ok ]]; then
+    test_pass
+else test_fail "符号链接路径未被拒绝: $symlink_res"; fi
+
+test_start "atomic_install：TERM 中断后清理临时文件"
+signal_res="$(
+    set -Eeuo pipefail
+    SNAPSHOT_DIR="$TEST_TMPDIR/snapSignal"
+    mkdir -p "$SNAPSHOT_DIR"
+    mkfifo "$TEST_TMPDIR/snapshot-input"
+    sleep 20 >"$TEST_TMPDIR/snapshot-input" &
+    writer_pid=$!
+    setsid bash -c '
+        source "$1"
+        SNAPSHOT_DIR="$2"
+        snapshot_atomic_install users <"$3" >/dev/null 2>&1
+    ' _ "$SNAP_LIB" "$SNAPSHOT_DIR" "$TEST_TMPDIR/snapshot-input" &
+    install_pid=$!
+    for _ in {1..100}; do
+        [[ -n "$(find "$SNAPSHOT_DIR" -maxdepth 1 -name '.*.json.*' -print -quit)" ]] && break
+        sleep 0.02
+    done
+    [[ -n "$(find "$SNAPSHOT_DIR" -maxdepth 1 -name '.*.json.*' -print -quit)" ]] || exit 20
+    [[ "$(ps -o pgid= -p "$install_pid" | tr -d ' ')" == "$install_pid" ]] || exit 22
+    kill -TERM -- "-$install_pid"
+    wait "$install_pid" 2>/dev/null && exit 21 || true
+    kill "$writer_pid" 2>/dev/null || true
+    wait "$writer_pid" 2>/dev/null || true
+    find "$SNAPSHOT_DIR" -maxdepth 1 -name '.*.json.*' -print -quit
+)" || signal_res='failed'
+if [[ "$signal_res" == '' ]]; then
+    test_pass
+else test_fail "TERM 后仍遗留临时文件: $signal_res"; fi
 
 test_start "atomic_install 拒绝路径穿越类型名"
 if ! (
@@ -145,7 +385,8 @@ fresh_res="$(
         "$(jq -r '[.present,.fresh] | @csv' <<<"$f2")" \
         "$(jq -r '[.present,.fresh] | @csv' <<<"$f3")"
 )" || fresh_res=''
-if [[ "$fresh_res" == 'true,true,true;true,false;false,false' ]]; then test_pass
+if [[ "$fresh_res" == 'true,true,true;true,false;false,false' ]]; then
+    test_pass
 else test_fail "freshness 异常: $fresh_res"; fi
 
 test_start "manifest 聚合元数据且 overall 计算正确"
@@ -159,7 +400,8 @@ manifest_res="$(
     jq -r '"\(.overall),\(.snapshots|length),\(.snapshots[0].kind)"' "$SNAPSHOT_DIR/manifest.json"
 )" || manifest_res=''
 total_kinds="$(snapshot_all_kinds | wc -l | tr -d ' ')"
-if [[ "$manifest_res" == "fresh,${total_kinds},users" ]]; then test_pass
+if [[ "$manifest_res" == "fresh,${total_kinds},users" ]]; then
+    test_pass
 else test_fail "manifest 异常: $manifest_res (期望 total=${total_kinds})"; fi
 
 # ---- 端到端采集器（新进程，独立 source） ----
@@ -174,7 +416,8 @@ for k in users quota resources smb hosts gpu system audit-summary manifest; do
 done
 dir_mode="$(stat -c '%a' "$TEST_TMPDIR/snapE2E" 2>/dev/null || echo 000)"
 tmp_left="$(find "$TEST_TMPDIR/snapE2E" -maxdepth 1 -name '.*.json.*' 2>/dev/null | wc -l)"
-if ((e2e_rc == 0 && e2e_ok == 1 && dir_mode == 750 && tmp_left == 0)); then test_pass
+if ((e2e_rc == 0 && e2e_ok == 1 && dir_mode == 750 && tmp_left == 0)); then
+    test_pass
 else test_fail "e2e 异常 rc=$e2e_rc ok=$e2e_ok mode=$dir_mode tmp=$tmp_left"; fi
 
 test_start "采集器输出全部通过 schema 校验且不含明文私钥"
@@ -190,14 +433,16 @@ for k in users quota resources smb hosts gpu system audit-summary; do
     fi
     if grep -qE '-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----' "$f" 2>/dev/null; then secret_leak=1; fi
 done
-if ((all_valid == 1 && secret_leak == 0)); then test_pass
+if ((all_valid == 1 && secret_leak == 0)); then
+    test_pass
 else test_fail "快照校验/secret 异常 valid=$all_valid leak=$secret_leak"; fi
 
 test_start "采集器：未知类型返回退出码 2，不产出文件"
 unknown_rc=0
 env USER_MANAGER_DATA_BASE="$TEST_TMPDIR/data" bash "$SNAP_GEN" \
     --out "$TEST_TMPDIR/snapBad" firewall >/dev/null 2>&1 || unknown_rc=$?
-if ((unknown_rc == 2)) && [[ ! -e "$TEST_TMPDIR/snapBad/firewall.json" ]]; then test_pass
+if ((unknown_rc == 2)) && [[ ! -e "$TEST_TMPDIR/snapBad/firewall.json" ]]; then
+    test_pass
 else test_fail "未知类型未按预期拒绝 rc=$unknown_rc"; fi
 
 test_start "采集器：--dry-run 打印信封且不落盘"
@@ -230,7 +475,8 @@ boundary_ok=1
 bash "$remote_entry" host.probe >/dev/null 2>&1 || boundary_ok=0
 if bash "$remote_entry" users.create >/dev/null 2>&1; then boundary_ok=0; fi
 if bash "$remote_entry" 'host.probe;id' >/dev/null 2>&1; then boundary_ok=0; fi
-if ((boundary_ok == 1)); then test_pass
+if ((boundary_ok == 1)); then
+    test_pass
 else test_fail "REMOTE_HOSTS 白名单边界被破坏"; fi
 
 cleanup_test_env

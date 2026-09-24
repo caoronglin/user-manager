@@ -10,5 +10,6 @@ pub mod reports_api;
 pub mod response;
 pub mod routes;
 pub mod tokens_api;
+pub mod wecom_api;
 
 pub use routes::build_router;

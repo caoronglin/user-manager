@@ -18,6 +18,42 @@ DATA_DIR="$SCRIPT_DIR/data"
 LOG_DIR="$SCRIPT_DIR/logs"
 REPORT_DIR="$DATA_DIR/report"
 
+# Parse numeric environment overrides before their values can reach Bash arithmetic.
+# Compare decimal strings by length and then byte order so even oversized inputs
+# are never evaluated as arithmetic expressions.
+_um_config_decimal_lt() {
+    local left="$1" right="$2"
+    if ((${#left} != ${#right})); then
+        ((${#left} < ${#right}))
+    else
+        [[ "$left" < "$right" ]]
+    fi
+}
+
+_um_config_uint() {
+    local name="$1" value="$2" default="$3" min="$4" max="$5"
+    local invalid=false
+    local LC_ALL=C
+
+    if [[ ! "$value" =~ ^[0-9]{1,20}$ ]]; then
+        invalid=true
+    else
+        while [[ ${#value} -gt 1 && "${value:0:1}" == 0 ]]; do
+            value="${value#0}"
+        done
+        if _um_config_decimal_lt "$value" "$min" || _um_config_decimal_lt "$max" "$value"; then
+            invalid=true
+        fi
+    fi
+
+    if [[ "$invalid" == true ]]; then
+        printf '配置 %s 无效；应为 %s 到 %s 的十进制整数，使用默认值 %s\n' \
+            "$name" "$min" "$max" "$default" >&2
+        value="$default"
+    fi
+    printf '%s' "$value"
+}
+
 DATA_BASE="${USER_MANAGER_DATA_BASE:-/mnt}"
 BACKUP_ROOT="${USER_MANAGER_BACKUP_ROOT:-/mnt/backup/rsnapshot}"
 MANUAL_BACKUP="${USER_MANAGER_MANUAL_BACKUP:-$BACKUP_ROOT/manual}"
@@ -28,7 +64,7 @@ USER_PORT_MAP_FILE="${USER_MANAGER_USER_PORT_MAP_FILE:-$DATA_DIR/user_port_map.t
 # 密码池目录（每次执行生成带时间戳的新池）
 PASSWORD_POOL_DIR="${USER_MANAGER_PASSWORD_POOL_DIR:-$DATA_DIR/password_pools}"
 PASSWORD_POOL_FILE="${USER_MANAGER_PASSWORD_POOL_FILE:-$PASSWORD_POOL_DIR/password_pool.txt}"
-PASSWORD_POOL_KEEP="${USER_MANAGER_PASSWORD_POOL_KEEP:-5}" # 保留最近 N 个密码池
+PASSWORD_POOL_KEEP="$(_um_config_uint USER_MANAGER_PASSWORD_POOL_KEEP "${USER_MANAGER_PASSWORD_POOL_KEEP:-5}" 5 0 1000)" # 保留最近 N 个密码池
 USER_CONFIG_FILE="${USER_MANAGER_USER_CONFIG_FILE:-$DATA_DIR/user_config.json}"
 EMAIL_CONFIG_FILE="${USER_MANAGER_EMAIL_CONFIG_FILE:-$DATA_DIR/email_config.json}"
 DNS_CONFIG_FILE="${USER_MANAGER_DNS_CONFIG_FILE:-$DATA_DIR/dns_whitelist.txt}"
@@ -43,22 +79,22 @@ ALL_DISKS=(1 2 3 4 5 6 7)
 # === 资源配额配置 ===
 DEFAULT_CPU_QUOTA="${USER_MANAGER_DEFAULT_CPU_QUOTA:-50%}"
 DEFAULT_MEMORY_LIMIT="${USER_MANAGER_DEFAULT_MEMORY_LIMIT:-8G}"
-QUOTA_DEFAULT="${USER_MANAGER_QUOTA_DEFAULT:-$((500 * 1024 ** 3))}" # 500GB
+QUOTA_DEFAULT="$(_um_config_uint USER_MANAGER_QUOTA_DEFAULT "${USER_MANAGER_QUOTA_DEFAULT:-$((500 * 1024 ** 3))}" "$((500 * 1024 ** 3))" 0 9223372036854775807)" # 500GB
 
 # === systemd 配置 ===
 RESOURCE_LIMIT_FILENAME="${USER_MANAGER_RESOURCE_LIMIT_FILENAME:-90-user-manager-limits.conf}"
 
 # === 备份配置 ===
 BACKUP_AUTO_VERIFY="${USER_MANAGER_BACKUP_AUTO_VERIFY:-true}"
-BACKUP_MIN_KEEP="${USER_MANAGER_BACKUP_MIN_KEEP:-3}"
-BACKUP_RETENTION_DAYS="${USER_MANAGER_BACKUP_RETENTION_DAYS:-7}"
+BACKUP_MIN_KEEP="$(_um_config_uint USER_MANAGER_BACKUP_MIN_KEEP "${USER_MANAGER_BACKUP_MIN_KEEP:-3}" 3 0 1000)"
+BACKUP_RETENTION_DAYS="$(_um_config_uint USER_MANAGER_BACKUP_RETENTION_DAYS "${USER_MANAGER_BACKUP_RETENTION_DAYS:-7}" 7 0 36500)"
 BACKUP_CHECKSUM_DIR="${BACKUP_ROOT}/.checksums"
 
 # === 磁盘使用率阈值 ===
-DISK_WARNING_THRESHOLD="${USER_MANAGER_DISK_WARNING_THRESHOLD:-90}"
+DISK_WARNING_THRESHOLD="$(_um_config_uint USER_MANAGER_DISK_WARNING_THRESHOLD "${USER_MANAGER_DISK_WARNING_THRESHOLD:-90}" 90 0 100)"
 
 # === 密码轮换配置 ===
-PASSWORD_ROTATE_INTERVAL_DAYS="${USER_MANAGER_PASSWORD_ROTATE_INTERVAL_DAYS:-90}"
+PASSWORD_ROTATE_INTERVAL_DAYS="$(_um_config_uint USER_MANAGER_PASSWORD_ROTATE_INTERVAL_DAYS "${USER_MANAGER_PASSWORD_ROTATE_INTERVAL_DAYS:-90}" 90 1 36500)"
 
 # === Miniforge 配置 ===
 MINIFORGE_INSTALLER="${USER_MANAGER_MINIFORGE_INSTALLER:-$SCRIPT_DIR/Miniforge.sh}"

@@ -90,6 +90,62 @@ else
     test_fail "不存在目录不应清理成功"
 fi
 
+test_start "_safe_cleanup_backups: 拒绝非法及超范围的 retention_days"
+numeric_cleanup_dir="$BACKUP_ROOT/numeric_validation"
+mkdir -p "$numeric_cleanup_dir/full_old"
+touch -d '10 days ago' "$numeric_cleanup_dir/full_old"
+invalid_retention_values=("" "-1" "1x" "999999999999999999999999999999999999")
+retention_rejected=true
+for invalid_value in "${invalid_retention_values[@]}"; do
+    if _safe_cleanup_backups "$numeric_cleanup_dir" "$invalid_value" 0 >/dev/null 2>&1; then
+        retention_rejected=false
+        break
+    fi
+done
+if [[ "$retention_rejected" == true && -d "$numeric_cleanup_dir/full_old" ]]; then
+    test_pass
+else
+    test_fail "非法 retention_days 未被拒绝或触发了清理"
+fi
+
+test_start "_safe_cleanup_backups: 拒绝 min_keep 注入且不执行命令"
+cleanup_marker="$TEST_TMPDIR/backup_cleanup_injected"
+injected_min_keep='1[$(touch '"$cleanup_marker"')]'
+if ! _safe_cleanup_backups "$numeric_cleanup_dir" 0 "$injected_min_keep" >/dev/null 2>&1 &&
+    [[ ! -e "$cleanup_marker" && -d "$numeric_cleanup_dir/full_old" ]]; then
+    test_pass
+else
+    test_fail "非法 min_keep 未被拒绝、执行了命令或清理了备份"
+fi
+
+test_start "_safe_cleanup_backups: 拒绝空值、格式错误及超范围 min_keep"
+invalid_min_keep_values=("" "-1" "1x" "1001" "999999999999999999999999999999999999")
+min_keep_rejected=true
+for invalid_value in "${invalid_min_keep_values[@]}"; do
+    if _safe_cleanup_backups "$numeric_cleanup_dir" 0 "$invalid_value" >/dev/null 2>&1; then
+        min_keep_rejected=false
+        break
+    fi
+done
+if [[ "$min_keep_rejected" == true && -d "$numeric_cleanup_dir/full_old" ]]; then
+    test_pass
+else
+    test_fail "非法 min_keep 未被拒绝或触发了清理"
+fi
+
+test_start "_safe_cleanup_backups: 有效参数仍按保留数量清理"
+mkdir -p "$numeric_cleanup_dir/inc_old_1" "$numeric_cleanup_dir/inc_old_2" "$numeric_cleanup_dir/auto_recent"
+touch -d '10 days ago' "$numeric_cleanup_dir/inc_old_1" "$numeric_cleanup_dir/inc_old_2"
+if _safe_cleanup_backups "$numeric_cleanup_dir" 0001 0001 >/dev/null 2>&1 &&
+    [[ ! -d "$numeric_cleanup_dir/full_old" &&
+        ! -d "$numeric_cleanup_dir/inc_old_1" &&
+        ! -d "$numeric_cleanup_dir/inc_old_2" &&
+        -d "$numeric_cleanup_dir/auto_recent" ]]; then
+    test_pass
+else
+    test_fail "有效参数未按 retention_days 和 min_keep 清理"
+fi
+
 test_start "update_backup_index: 缺少参数返回失败"
 if ! update_backup_index "" "full" "$BACKUP_ROOT/alice/full_20260502_120000" >/dev/null 2>&1; then
     test_pass
