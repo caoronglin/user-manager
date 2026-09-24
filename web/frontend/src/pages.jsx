@@ -67,8 +67,8 @@ export function DashboardPage({ capabilities }) {
   return (
     <>
       <PageHeader title={text('系统概览', 'System overview')} description={text('只读快照 · 系统数据与采集状态', 'Read-only snapshots · system data and collection status')} freshness={latest} />
-      {accessibleResources.length === 0 && <Alert showIcon type="warning" message={text('当前账号没有概览读取权限', 'Dashboard access is not enabled for this account')} />}
-      {errorCount > 0 && <Alert showIcon type="warning" className="dashboard-error-note" message={text(`${errorCount} 个数据源暂不可用`, `${errorCount} data source(s) unavailable`)} description={text('其他已读取数据仍可查看；请在对应页面重试。', 'Other available data remains visible. Retry from its page.')} />}
+      {accessibleResources.length === 0 && <Alert showIcon type="warning" title={text('当前账号没有概览读取权限', 'Dashboard access is not enabled for this account')} />}
+      {errorCount > 0 && <Alert showIcon type="warning" className="dashboard-error-note" title={text(`${errorCount} 个数据源暂不可用`, `${errorCount} data source(s) unavailable`)} description={text('其他已读取数据仍可查看；请在对应页面重试。', 'Other available data remains visible. Retry from its page.')} />}
       {accessibleResources.some((item) => item.loading) && <div className="dashboard-loading"><div /><div /><div /></div>}
       <div className="dashboard-metrics">
         {capabilities.has('users.read') && !users.loading && !users.error && <Metric title={text('受管用户', 'Managed users')} value={users.data?.count ?? userRows.length} note={users.freshness ? formatTime(users.freshness.generated_at, language) : ''} />}
@@ -327,7 +327,7 @@ export function LogsPage() {
         <Input.Search value={input} onChange={(event) => setInput(event.target.value)} onSearch={setSearch} allowClear placeholder={text('按关键词过滤', 'Filter by keyword')} enterButton={text('搜索', 'Search')} />
       </div>
       <DataState loading={logs.loading} error={logs.error} onRetry={logs.refresh} empty={!logs.loading && !logs.error && lines.length === 0} emptyTitle={text('此来源暂无日志', 'No log lines for this source')}>
-        {logs.data?.truncated && <Alert showIcon type="info" message={text('显示最近的 500 行。', 'Showing the most recent 500 lines.')} className="log-truncated" />}
+        {logs.data?.truncated && <Alert showIcon type="info" title={text('显示最近的 500 行。', 'Showing the most recent 500 lines.')} className="log-truncated" />}
         <pre className="log-output">{lines.map((line, index) => <span className="log-line" key={`${index}-${line}`}><span className="log-index">{String(index + 1).padStart(3, '0')}</span>{line}</span>)}</pre>
       </DataState>
     </ContentCard>
@@ -530,7 +530,7 @@ export function WeComSettingsPage() {
     <PageHeader title={text('企业微信设置', 'WeCom settings')} description={text('配置告警投递与事件订阅。Webhook 仅写入密文，读取时只返回脱敏状态。', 'Configure alert delivery and event subscriptions. The webhook is encrypted at rest and masked on read.')} />
     <DataState loading={settings.loading} error={settings.error} onRetry={reloadAll} empty={!settings.loading && !settings.error && !settings.data} emptyTitle={text('无法读取 WeCom 设置', 'WeCom settings unavailable')}>
       {settings.data && <>
-        {notice && <Alert showIcon className="settings-notice" type={notice.type} message={notice.text} action={conflict ? <Button size="small" onClick={reloadAll}>{text('重新载入', 'Reload')}</Button> : undefined} />}
+        {notice && <Alert showIcon className="settings-notice" type={notice.type} title={notice.text} action={conflict ? <Button size="small" onClick={reloadAll}>{text('重新载入', 'Reload')}</Button> : undefined} />}
         <div className="dashboard-grid settings-grid">
           <ContentCard title={text('投递配置', 'Delivery configuration')} className="settings-main-card">
             <Form form={form} layout="vertical" initialValues={{ enabled: Boolean(data.enabled), dry_run: Boolean(data.dry_run), events: getArray(data, 'events'), webhook: '' }}>

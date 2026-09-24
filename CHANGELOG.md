@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Replace deprecated Ant Design `Alert.message` and `Card.bordered` props with their current equivalents.
+
 ## 0.2.0 — 2026-09-24
 
 - Add the React/Vite Web console with MFA login, capability-aware pages, system snapshots, audit/log/report views, and WeCom settings/history.

@@ -89,8 +89,8 @@ export function SnapshotStatus({ freshness, language = 'zh', compact = false }) 
 export function FreshnessAlert({ freshness }) {
   const { text } = useLanguage();
   if (!freshness) return null;
-  if (!freshness.present) return <Alert showIcon type="warning" className="snapshot-alert" message={text('暂无快照', 'No snapshot available')} description={text('采集器尚未生成此类数据，或快照文件暂不可用。', 'The collector has not produced this data yet, or the snapshot is unavailable.')} />;
-  if (freshness.stale) return <Alert showIcon type="warning" className="snapshot-alert" message={text('显示的是过期快照', 'Showing a stale snapshot')} description={text('以下内容可能未反映系统当前状态。', 'The values below may not reflect the current system state.')} />;
+  if (!freshness.present) return <Alert showIcon type="warning" className="snapshot-alert" title={text('暂无快照', 'No snapshot available')} description={text('采集器尚未生成此类数据，或快照文件暂不可用。', 'The collector has not produced this data yet, or the snapshot is unavailable.')} />;
+  if (freshness.stale) return <Alert showIcon type="warning" className="snapshot-alert" title={text('显示的是过期快照', 'Showing a stale snapshot')} description={text('以下内容可能未反映系统当前状态。', 'The values below may not reflect the current system state.')} />;
   return null;
 }
 
@@ -106,7 +106,7 @@ export function DataState({ loading, error, onRetry, children, empty, emptyTitle
       type={error.status === 403 ? 'warning' : 'error'}
       showIcon
       className="data-error"
-      message={error.status === 403 ? text('没有访问权限', 'Access denied') : text('暂时无法读取数据', 'Data is temporarily unavailable')}
+      title={error.status === 403 ? text('没有访问权限', 'Access denied') : text('暂时无法读取数据', 'Data is temporarily unavailable')}
       description={error.message || text('请稍后重试。', 'Please try again later.')}
       action={onRetry ? <Button size="small" onClick={onRetry}>{text('重试', 'Retry')}</Button> : null}
     />;
@@ -186,11 +186,11 @@ export function LoginPage({ language, setLanguage, onSubmit, mfaPending, notice,
           <Paragraph>{zh ? '安全查看用户、资源与主机快照。' : 'A secure view of user, resource and host snapshots.'}</Paragraph>
           <div className="login-boundary"><span className="boundary-icon"><Icon name="audit" size={20} /></span><span>{zh ? '只读观测 · 权限由服务端校验' : 'Read-only observation · access enforced by the server'}</span></div>
         </section>
-        <Card className="login-card" bordered={false}>
+        <Card className="login-card" variant="borderless">
           <Title level={3}>{mfaPending ? (zh ? '双重验证' : 'Two-factor verification') : (zh ? '登录控制台' : 'Sign in')}</Title>
           <Paragraph className="login-form-hint">{mfaPending ? (zh ? '输入身份验证器中的 6 位验证码。' : 'Enter the 6-digit code from your authenticator.') : (zh ? '使用你的 Web 控制台账号继续。' : 'Continue with your web console account.')}</Paragraph>
-          {notice && <Alert showIcon type="error" message={notice} className="login-alert" />}
-          {unavailable && <Alert showIcon type="warning" message={zh ? '服务暂不可用' : 'Service unavailable'} description={zh ? '确认后端服务已启动后重试。' : 'Confirm the backend service is running, then retry.'} className="login-alert" action={<Button size="small" onClick={onRetry}>{zh ? '重试' : 'Retry'}</Button>} />}
+          {notice && <Alert showIcon type="error" title={notice} className="login-alert" />}
+          {unavailable && <Alert showIcon type="warning" title={zh ? '服务暂不可用' : 'Service unavailable'} description={zh ? '确认后端服务已启动后重试。' : 'Confirm the backend service is running, then retry.'} className="login-alert" action={<Button size="small" onClick={onRetry}>{zh ? '重试' : 'Retry'}</Button>} />}
           <Form form={form} layout="vertical" onFinish={submit} requiredMark={false}>
             {mfaPending ? (
               <Form.Item name="code" label={zh ? '验证码' : 'Verification code'} rules={[{ required: true, message: zh ? '请输入验证码' : 'Enter the verification code' }, { pattern: /^\d{6}$/, message: zh ? '验证码为 6 位数字' : 'Use the 6-digit code' }]}>
