@@ -9,6 +9,7 @@ pub mod http;
 pub mod state;
 pub mod store;
 pub mod telemetry;
+pub mod web_event_delivery;
 
 use std::net::SocketAddr;
 
@@ -31,6 +32,18 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let outbound_gate = state.wecom_test_gate.clone();
     tokio::spawn(async move {
         event_spool::run(spool_db, spool_key, outbound_gate).await;
+    });
+
+    // Ensure the independent outbox schema exists before accepting requests.
+    // Existing inbox rows are never scanned or replayed by this worker.
+    if let Err(error) = crate::web_event_delivery::initialize(&state.db) {
+        tracing::warn!(error = %error, "native Web event delivery initialization failed");
+    }
+    let native_db = state.db.clone();
+    let native_key = state.master_key;
+    let native_outbound_gate = state.wecom_test_gate.clone();
+    tokio::spawn(async move {
+        crate::web_event_delivery::run(native_db, native_key, native_outbound_gate).await;
     });
 
     // The snapshot observer reads the validated manifest and persists only
