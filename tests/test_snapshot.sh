@@ -407,18 +407,30 @@ else test_fail "manifest 异常: $manifest_res (期望 total=${total_kinds})"; f
 # ---- 端到端采集器（新进程，独立 source） ----
 test_start "采集器端到端：生成全部快照、目录 0750、无残留临时文件"
 e2e_rc=0
+e2e_stdout="$TEST_TMPDIR/snapshot-e2e.stdout"
+e2e_stderr="$TEST_TMPDIR/snapshot-e2e.stderr"
 env USER_MANAGER_DATA_BASE="$TEST_TMPDIR/data" bash "$SNAP_GEN" \
-    --out "$TEST_TMPDIR/snapE2E" >/dev/null 2>&1 || e2e_rc=$?
+    --out "$TEST_TMPDIR/snapE2E" >"$e2e_stdout" 2>"$e2e_stderr" || e2e_rc=$?
 e2e_ok=1
+e2e_missing=()
+e2e_invalid=()
 for k in users quota resources smb hosts gpu system audit-summary manifest; do
-    [[ -s "$TEST_TMPDIR/snapE2E/${k}.json" ]] || e2e_ok=0
-    jq -e . "$TEST_TMPDIR/snapE2E/${k}.json" >/dev/null 2>&1 || e2e_ok=0
+    if [[ ! -s "$TEST_TMPDIR/snapE2E/${k}.json" ]]; then
+        e2e_ok=0
+        e2e_missing+=("$k")
+    elif ! jq -e . "$TEST_TMPDIR/snapE2E/${k}.json" >/dev/null 2>&1; then
+        e2e_ok=0
+        e2e_invalid+=("$k")
+    fi
 done
 dir_mode="$(stat -c '%a' "$TEST_TMPDIR/snapE2E" 2>/dev/null || echo 000)"
 tmp_left="$(find "$TEST_TMPDIR/snapE2E" -maxdepth 1 -name '.*.json.*' 2>/dev/null | wc -l)"
 if ((e2e_rc == 0 && e2e_ok == 1 && dir_mode == 750 && tmp_left == 0)); then
     test_pass
-else test_fail "e2e 异常 rc=$e2e_rc ok=$e2e_ok mode=$dir_mode tmp=$tmp_left"; fi
+else
+    e2e_error="$(head -n 8 "$e2e_stderr" 2>/dev/null | tr '\n' ' ')"
+    test_fail "e2e 异常 rc=$e2e_rc ok=$e2e_ok mode=$dir_mode tmp=$tmp_left missing=${e2e_missing[*]:-none} invalid=${e2e_invalid[*]:-none} stderr=${e2e_error:-none}"
+fi
 
 test_start "采集器输出全部通过 schema 校验且不含明文私钥"
 all_valid=1

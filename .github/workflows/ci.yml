@@ -13,16 +13,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
       - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@v2
-        with:
-          ignore_paths: >-
-            Miniforge.sh
-            data/
-            logs/
-            templates/
-          ignore_names: ""
-          severity: error
+        shell: bash
+        run: |
+          set -euo pipefail
+          checked=0
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              Miniforge.sh|data/*|logs/*|templates/*) continue ;;
+            esac
+            shellcheck --severity=error "$file"
+            checked=$((checked + 1))
+          done < <(git ls-files -z -- '*.sh')
+          echo "ShellCheck scanned $checked script(s)."
 
   test:
     name: Run Tests
