@@ -155,7 +155,13 @@ async fn wecom_secret_is_encrypted_masked_and_updates_are_optimistic() {
     );
     assert_eq!(
         value["data"]["event_catalog"],
-        serde_json::json!(["user.created", "user.disabled"])
+        serde_json::json!([
+            "user.created",
+            "user.disabled",
+            "security.login_failed",
+            "security.token_revoked",
+            "snapshot.freshness_changed"
+        ])
     );
     assert_eq!(value["data"]["version"], 1);
 
@@ -220,10 +226,16 @@ async fn wecom_secret_is_encrypted_masked_and_updates_are_optimistic() {
 }
 
 #[tokio::test]
-async fn event_catalog_matches_worker_dispatcher_and_hides_undeliverable_legacy_events() {
+async fn event_catalog_matches_workers_and_hides_unsupported_legacy_events() {
     let app = make_app().await;
     let (cookie, csrf) = login(&app.router, "admin_user", "adminpass").await;
-    let expected_catalog = serde_json::json!(["user.created", "user.disabled"]);
+    let expected_catalog = serde_json::json!([
+        "user.created",
+        "user.disabled",
+        "security.login_failed",
+        "security.token_revoked",
+        "snapshot.freshness_changed"
+    ]);
 
     let (status, body, _) = send(
         app.router.clone(),
@@ -238,11 +250,11 @@ async fn event_catalog_matches_worker_dispatcher_and_hides_undeliverable_legacy_
     let initial: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(initial["data"]["event_catalog"], expected_catalog);
 
-    // These event classes are not accepted by the current spool dispatcher,
-    // and the manual fixed-template test is not a subscription event.
+    // Snapshot source event names are normalized to one fixed subscription;
+    // arbitrary event types and the manual test-send template are not events.
     for unsupported in [
-        "security.login_failed",
         "snapshot.stale",
+        "snapshot.recovered",
         "host.offline",
         "notification.test",
     ] {
@@ -265,8 +277,7 @@ async fn event_catalog_matches_worker_dispatcher_and_hides_undeliverable_legacy_
         assert_eq!(status, StatusCode::BAD_REQUEST, "{unsupported}: {response}");
     }
 
-    let supported =
-        r#"{"enabled":false,"dry_run":true,"events":["user.created","user.disabled"],"version":0}"#;
+    let supported = r#"{"enabled":false,"dry_run":true,"events":["user.created","user.disabled","security.login_failed","security.token_revoked","snapshot.freshness_changed"],"version":0}"#;
     let (status, body, _) = send(
         app.router.clone(),
         Method::PUT,
@@ -278,8 +289,8 @@ async fn event_catalog_matches_worker_dispatcher_and_hides_undeliverable_legacy_
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
-    // Older settings may contain catalog entries from a previous, wider UI.
-    // Keep them out of the API response so the frontend cannot resubmit them.
+    // Older settings may contain unsupported catalog entries. Keep those out
+    // of the API response so the frontend cannot resubmit them.
     let conn = Connection::open(&app.db_path).unwrap();
     conn.execute(
         "UPDATE wecom_settings SET events_json = ?1 WHERE id = 1",
@@ -299,7 +310,10 @@ async fn event_catalog_matches_worker_dispatcher_and_hides_undeliverable_legacy_
     assert_eq!(status, StatusCode::OK, "{body}");
     let settings: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(settings["data"]["event_catalog"], expected_catalog);
-    assert_eq!(settings["data"]["events"], serde_json::json!([]));
+    assert_eq!(
+        settings["data"]["events"],
+        serde_json::json!(["security.login_failed"])
+    );
 }
 
 #[tokio::test]
