@@ -19,9 +19,8 @@ use url::Url;
 use crate::auth::guard::authenticate;
 use crate::error::ApiError;
 use crate::state::SharedState;
-use crate::store::wecom::{self, Delivery, Settings};
+use crate::store::wecom::{self, Delivery, Settings, EVENT_CATALOG};
 
-const EVENT_CATALOG: &[&str] = &["user.created", "user.disabled"];
 const MAX_WEBHOOK_BYTES: usize = 512;
 const MAX_RESPONSE_BYTES: usize = 16 * 1024;
 const MAX_ATTEMPTS: i64 = 3;
