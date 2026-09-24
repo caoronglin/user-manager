@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0 — 2026-09-25
+
 - Add a separate WeCom outbox worker for fixed-template `security.login_failed`, `security.token_revoked`, and `snapshot.freshness_changed` alerts; payloads exclude personal and notification details.
 - Improve keyboard access for navigation, account menus, audit/log filters, quota details, and narrow-screen data tables; add skip-to-main and loading/error/empty announcements.
 - Add Rust formatting, Clippy, backend test, frontend production build, and high-severity npm audit jobs to GitHub Actions.
@@ -13,6 +15,14 @@
 - Replace deprecated Ant Design `Alert.message` and `Card.bordered` props with their current equivalents.
 - Replace deprecated Drawer `width` props and keep the Chinese sign-in button's accessible name aligned with its visible text.
 - Fix the execution-plan regression fixture host keys; the full shell regression now passes (41 suites, one optional performance suite skipped).
+
+### Validation
+
+- Rust formatting, Clippy, and all 65 backend tests pass.
+- All seven GitHub Actions jobs pass, including ShellCheck, shell regressions, Rust, frontend build and audit, security scanning, documentation, and shfmt.
+- Security-hardening shell tests pass (24 passed; one optional SQLite/jq test skipped because those tools are absent locally).
+- Temporary browser checks cover password plus TOTP sign-in, key flows, permissions, keyboard navigation, and narrow tables; full WCAG/screen-reader review remains outstanding.
+- No target host or live WeCom credential was available, and no external message was sent. Validate host permissions/service behavior and live delivery before deployment.
 
 ## 0.2.0 — 2026-09-24
 

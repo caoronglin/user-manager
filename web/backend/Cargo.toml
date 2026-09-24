@@ -1,6 +1,6 @@
 [package]
 name = "umweb"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "User Manager Web console — non-privileged observation & app-management control plane"
 license = "MIT"

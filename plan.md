@@ -2277,7 +2277,7 @@ sensitive file scan
 | P4 Web 自身身份与通知 | [PARTIAL] | CLI spool 投递 `user.created`/`user.disabled`；独立 Web outbox/worker 投递固定模板的 `security.login_failed`、`security.token_revoked`、`snapshot.freshness_changed`。真实目标机、真实 webhook 验收仍待完成；worker 假定单实例使用数据库。 |
 | P5 Ant Design 前端 | [PARTIAL] | React/Vite/Ant Design 页面已生产构建并在临时后端/browser 环境验证：密码+TOTP、主要数据页权限/交互、键盘导航与窄屏表格滚动通过。完整 WCAG/读屏器审计仍待验收，工程也未采用计划中的 Umi/ProComponents。 |
 | P6 Ubuntu Ops / 多主机观测 | [DONE] | system/filesystem/inode/systemd/APT/reboot/AppArmor 只读采集器已接入快照和回归；不可用能力按状态降级。实际主机采集结果依部署环境而异。 |
-| P7 Hardening / 回归 / 发布 | [PARTIAL] | Rust 65 项测试、前端构建、浏览器主要路径、聚焦安全测试和 Shell 回归通过；CI 增加后端/前端门禁。`v0.2.0` 仍是最新发布，当前开发更新尚未打新版本；目标机部署与完整 WCAG/读屏器审计未完成。 |
+| P7 Hardening / 回归 / 发布 | [PARTIAL] | Rust 65 项测试、前端构建、浏览器主要路径、聚焦安全测试和 Shell 回归通过；CI 增加后端/前端门禁。`v0.2.0` 是当前已发布版本，`v0.3.0` 候选版已准备并等待版本提交 CI；目标机部署与完整 WCAG/读屏器审计未完成。 |
 
 复核记录见 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
 

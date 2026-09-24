@@ -38,7 +38,7 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 | P4 Web 身份与通知 | [PARTIAL] | CLI spool 投递 `user.created`/`user.disabled`；独立 Web outbox/worker 投递固定模板的 `security.login_failed`、`security.token_revoked`、`snapshot.freshness_changed`。真实目标机和 webhook 验收仍待完成；worker 假定单实例使用数据库。 |
 | P5 前端 | [PARTIAL] | 临时后端/browser 环境通过密码+TOTP、主要数据页权限/交互、键盘导航和窄屏表格滚动验证；完整 WCAG/读屏器审计仍待完成。当前栈与 Umi/ProComponents 规划不同。 |
 | P6 Ubuntu Ops/多主机只读观测 | [DONE] | 本机 Ops 采集器覆盖系统、CPU/内存/压力、文件系统/inode、systemd、APT/reboot、AppArmor，并有分节降级处理和测试。目标环境的数据可用性仍需实机确认。 |
-| P7 Hardening/回归/发布 | [PARTIAL] | `v0.2.0` 是当前最新发布；Rust、前端构建和主要浏览器路径已验证，Shell 回归 41 个套件通过、0 个失败、1 个可选性能项跳过。新版本、完整 WCAG/读屏器审计和目标机验收仍待完成。 |
+| P7 Hardening/回归/发布 | [PARTIAL] | `v0.2.0` 是当前已发布版本；`v0.3.0` 候选版已准备，等待版本变更后的 CI。完整 WCAG/读屏器审计和目标机验收仍待完成。 |
 
 ## 本轮修复与新增实现
 
@@ -76,4 +76,4 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 2. 完整 WCAG/读屏器审计仍待完成；浏览器 mock 验证不代替目标环境验收。工程使用 Vite/Ant Design，未迁移到 Umi/ProComponents。
 3. 在目标 Ubuntu 主机验证 `umweb` 的组成员、sudoers、capability、systemd 属性、数据库/密钥属主权限、只读快照权限和 timer 运行状态。
 4. 已完成：在一次性 ext4 clone 和私有临时目录重跑完整回归；修复执行计划测试 fixture 中带空格的主机键，41 个套件通过、0 个失败，生产代码的安全父路径校验保持不变。
-5. `v0.2.0` 是当前最新发布；本轮开发改动尚未收入 release。已验证的 GitHub `main` 包含 `7aae4668`；不要把工作区差异表述为已发布功能。
+5. `v0.2.0` 是当前已发布版本；`v0.3.0` 候选版提交包含完整 P4/P5/CI 改动，正式发布需等待版本提交的 Actions 核验。已验证的功能主提交为 `3b9e3f0`。
