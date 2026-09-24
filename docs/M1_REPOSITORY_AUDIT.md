@@ -38,7 +38,7 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 | P4 Web 身份与通知 | [PARTIAL] | root event spool 消费 CLI 的 `user.created`/`user.disabled`，幂等写入 inbox 并按配置投递 WeCom，同类同用户五分钟抑制；真实密码失败通知按全局时间桶合并，Token 首次成功撤销和 manifest fresh/stale 状态转换也会写入 inbox。WeCom 只开放 dispatcher 支持的用户生命周期事件；Web 原生通知的 WeCom 通路和真实 webhook 仍待完成。 |
 | P5 前端 | [PARTIAL] | 生产构建通过；已在浏览器检查桌面登录页、语言切换和密码显隐。因未运行后端，认证/MFA 端到端、响应式与键盘/无障碍验收仍未完成；当前栈与 Umi/ProComponents 规划不同。 |
 | P6 Ubuntu Ops/多主机只读观测 | [DONE] | 本机 Ops 采集器覆盖系统、CPU/内存/压力、文件系统/inode、systemd、APT/reboot、AppArmor，并有分节降级处理和测试。目标环境的数据可用性仍需实机确认。 |
-| P7 Hardening/回归/发布 | [PARTIAL] | `v0.2.0` 已推送并发布；全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过。浏览器完整流程和目标机验收仍未完成。 |
+| P7 Hardening/回归/发布 | [PARTIAL] | `v0.2.0` 仍是最新发布；本轮 P4 通知更新已推送到 `main`，但尚未发布新版本。全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过。浏览器完整流程和目标机验收仍未完成。 |
 
 ## 本轮修复与新增实现
 
@@ -74,4 +74,4 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 2. 继续使用浏览器验证登录/MFA、权限隐藏、WeCom 保存/测试、主要页面数据状态、响应式与键盘/无障碍；当前仅完成登录页桌面渲染、语言和密码显隐检查，且 Vite/Ant Design 栈尚未迁移到 Umi/ProComponents。
 3. 在目标 Ubuntu 主机验证 `umweb` 的组成员、sudoers、capability、systemd 属性、数据库/密钥属主权限、只读快照权限和 timer 运行状态。
 4. 已完成：在一次性 ext4 clone 和私有临时目录重跑完整回归；修复执行计划测试 fixture 中带空格的主机键，41 个套件通过、0 个失败，生产代码的安全父路径校验保持不变。
-5. `v0.2.0` 已推送到 `main`，标签与 GitHub Release 均已验证；GitHub 发布页为 https://github.com/caoronglin/user-manager/releases/tag/v0.2.0。旧版 `v0.1.0` 不包含本轮更改。
+5. `v0.2.0` 已推送到 `main`，标签与 GitHub Release 均已验证；本轮 P4 通知更新另已推送至 `main` 提交 `35dc834`，尚未收入版本发布。GitHub 发布页为 https://github.com/caoronglin/user-manager/releases/tag/v0.2.0。旧版 `v0.1.0` 不包含本轮更改。

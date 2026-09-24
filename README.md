@@ -100,7 +100,7 @@ Rust 后端提供 Web 用户/MFA/会话/token 管理、只读系统 API、审计
 
 CLI 用户创建/禁用事件由 root event spool 只读送入 inbox，并按配置投递企业微信；相同事件类型与用户五分钟内只投递一次。Web 仅在已存在账户的密码明确校验失败时写入 `security.login_failed` inbox 通知，同一五分钟时间桶全局合并，通知不含用户名、IP 或密码。首次成功撤销 API Token 写入 `security.token_revoked`；Web 每 30 秒观察经校验的 manifest，只在 fresh/stale 转换时写入 `snapshot.stale` 或 `snapshot.recovered`。缺失、无效、partial 或 unavailable 状态不触发误报。当前 WeCom 订阅目录只开放实际支持投递的 `user.created` 与 `user.disabled`；Web 原生通知尚未接入 WeCom 投递。
 
-`v0.2.0` 已推送到 GitHub 并发布。全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过；Web 后端本轮全套 59 项测试、严格 Clippy 与格式检查通过。浏览器已检查桌面登录页、语言切换和密码显隐；认证/MFA 端到端、响应式/无障碍及目标机服务与文件权限验证仍待完成。代码已发布但尚未部署；阶段详情和验证记录见 [`plan.md`](plan.md) 与 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
+GitHub 最新发布仍为 `v0.2.0`；本轮通知改动已推送到 `main`，尚未收入新的版本发布。全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过；Web 后端本轮全套 59 项测试、严格 Clippy 与格式检查通过。浏览器已检查桌面登录页、语言切换和密码显隐；认证/MFA 端到端、响应式/无障碍及目标机服务与文件权限验证仍待完成。`v0.2.0` 尚未部署；阶段详情和验证记录见 [`plan.md`](plan.md) 与 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
 
 ```bash
 # 手动生成全部快照到默认目录（部署时由 root + systemd timer 运行）

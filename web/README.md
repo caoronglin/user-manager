@@ -68,7 +68,7 @@ web/frontend/        React/Vite/Ant Design 前端
 - [x] P5 前端页面：登录/MFA、Dashboard、用户/配额/资源、SMB、主机/GPU、系统状态、日志、审计/报表、WeCom 设置/投递历史；能力控制、快照新鲜度提示、主题和中英文切换
 - [ ] P5 视觉验收：已检查桌面登录页、语言切换和密码显隐；完整认证/MFA/权限/主要数据页交互、响应式断点、键盘与无障碍检查仍待完成。当前工程使用 React/Vite/Ant Design，没有采用计划中的 Umi/ProComponents
 - [x] P6 Ubuntu Ops 快照：系统与 CPU/内存/PSI、文件系统/inode、systemd、APT/reboot、AppArmor；单节不可用时降级，新增回归 7/7 通过
-- [x] P7 版本发布：`v0.2.0` 已推送并发布；全仓 Shell 回归 41 个套件通过、1 个可选性能项跳过；浏览器完整流程/无障碍与目标机验收仍待完成
+- [x] P7 已发布 `v0.2.0`；本轮通知改动已推送到 `main` 但尚未打新版本标签；全仓 Shell 回归 41 个套件通过、1 个可选性能项跳过；浏览器完整流程/无障碍与目标机验收仍待完成
 
 ## 本地运行（需 Rust）
 
