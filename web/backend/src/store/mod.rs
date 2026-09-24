@@ -6,6 +6,7 @@ use rusqlite::Connection;
 pub mod event_spool;
 pub mod notification;
 pub mod snapshot;
+pub mod snapshot_observer;
 pub mod token;
 pub mod user;
 pub mod wecom;

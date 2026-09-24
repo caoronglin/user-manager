@@ -150,9 +150,8 @@ async fn tokens_revoke(
 ) -> Result<Response, ApiError> {
     let auth = authenticate(&state, &headers)?;
     auth.require("tokens.manage")?;
-    let conn = state.db.lock().unwrap();
-    crate::store::token::revoke_token(&conn, &id).map_err(|_| internal())?;
-    drop(conn);
+    let mut conn = state.db.lock().unwrap();
+    crate::store::token::revoke_token(&mut conn, &id).map_err(|_| internal())?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 

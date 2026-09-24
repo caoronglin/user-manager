@@ -134,7 +134,7 @@ async fn wecom_secret_is_encrypted_masked_and_updates_are_optimistic() {
     let (cookie, csrf) = login(&app.router, "admin_user", "adminpass").await;
     let secret_url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret_key_123";
     let put = format!(
-        r#"{{"enabled":true,"dry_run":true,"webhook":"{secret_url}","events":["security.login_failed","host.offline"],"version":0}}"#
+        r#"{{"enabled":true,"dry_run":true,"webhook":"{secret_url}","events":["user.created"],"version":0}}"#
     );
     let (status, body, _) = send(
         app.router.clone(),
@@ -153,11 +153,10 @@ async fn wecom_secret_is_encrypted_masked_and_updates_are_optimistic() {
         value["data"]["webhook_masked"],
         "https://qyapi.weixin.qq.com/...key=***"
     );
-    assert!(value["data"]["event_catalog"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|event| event == "notification.test"));
+    assert_eq!(
+        value["data"]["event_catalog"],
+        serde_json::json!(["user.created", "user.disabled"])
+    );
     assert_eq!(value["data"]["version"], 1);
 
     let conn = Connection::open(&app.db_path).unwrap();
@@ -188,7 +187,7 @@ async fn wecom_secret_is_encrypted_masked_and_updates_are_optimistic() {
     assert!(!get_body.contains("secret_key_123"));
 
     // Omitted webhook retains ciphertext; stale version gets a 409.
-    let update = r#"{"enabled":true,"dry_run":true,"events":["host.offline"],"version":1}"#;
+    let update = r#"{"enabled":true,"dry_run":true,"events":["user.disabled"],"version":1}"#;
     let (status_update, update_body, _) = send(
         app.router.clone(),
         Method::PUT,
@@ -221,10 +220,93 @@ async fn wecom_secret_is_encrypted_masked_and_updates_are_optimistic() {
 }
 
 #[tokio::test]
+async fn event_catalog_matches_worker_dispatcher_and_hides_undeliverable_legacy_events() {
+    let app = make_app().await;
+    let (cookie, csrf) = login(&app.router, "admin_user", "adminpass").await;
+    let expected_catalog = serde_json::json!(["user.created", "user.disabled"]);
+
+    let (status, body, _) = send(
+        app.router.clone(),
+        Method::GET,
+        "/api/settings/wecom",
+        None,
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let initial: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(initial["data"]["event_catalog"], expected_catalog);
+
+    // These event classes are not accepted by the current spool dispatcher,
+    // and the manual fixed-template test is not a subscription event.
+    for unsupported in [
+        "security.login_failed",
+        "snapshot.stale",
+        "host.offline",
+        "notification.test",
+    ] {
+        let body = serde_json::json!({
+            "enabled": false,
+            "dry_run": true,
+            "events": [unsupported],
+            "version": 0,
+        })
+        .to_string();
+        let (status, response, _) = send(
+            app.router.clone(),
+            Method::PUT,
+            "/api/settings/wecom",
+            Some(&body),
+            Some(&cookie),
+            Some(&csrf),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{unsupported}: {response}");
+    }
+
+    let supported =
+        r#"{"enabled":false,"dry_run":true,"events":["user.created","user.disabled"],"version":0}"#;
+    let (status, body, _) = send(
+        app.router.clone(),
+        Method::PUT,
+        "/api/settings/wecom",
+        Some(supported),
+        Some(&cookie),
+        Some(&csrf),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // Older settings may contain catalog entries from a previous, wider UI.
+    // Keep them out of the API response so the frontend cannot resubmit them.
+    let conn = Connection::open(&app.db_path).unwrap();
+    conn.execute(
+        "UPDATE wecom_settings SET events_json = ?1 WHERE id = 1",
+        [r#"["security.login_failed","host.offline"]"#],
+    )
+    .unwrap();
+    drop(conn);
+    let (status, body, _) = send(
+        app.router.clone(),
+        Method::GET,
+        "/api/settings/wecom",
+        None,
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let settings: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(settings["data"]["event_catalog"], expected_catalog);
+    assert_eq!(settings["data"]["events"], serde_json::json!([]));
+}
+
+#[tokio::test]
 async fn dry_run_test_uses_fixed_message_and_records_bounded_history_without_network() {
     let app = make_app().await;
     let (cookie, csrf) = login(&app.router, "admin_user", "adminpass").await;
-    let put = r#"{"enabled":true,"dry_run":true,"events":["notification.test"],"version":0}"#;
+    let put = r#"{"enabled":true,"dry_run":true,"events":[],"version":0}"#;
     let (status, body, _) = send(
         app.router.clone(),
         Method::PUT,
@@ -271,7 +353,7 @@ async fn dry_run_test_uses_fixed_message_and_records_bounded_history_without_net
 async fn wecom_test_send_is_rate_limited_and_single_flight() {
     let app = make_app().await;
     let (cookie, csrf) = login(&app.router, "admin_user", "adminpass").await;
-    let put = r#"{"enabled":true,"dry_run":true,"events":["notification.test"],"version":0}"#;
+    let put = r#"{"enabled":true,"dry_run":true,"events":[],"version":0}"#;
     let (status, body, _) = send(
         app.router.clone(),
         Method::PUT,

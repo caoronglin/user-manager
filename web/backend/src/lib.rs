@@ -33,6 +33,15 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         event_spool::run(spool_db, spool_key, outbound_gate).await;
     });
 
+    // The snapshot observer reads the validated manifest and persists only
+    // freshness transitions in Web's database; it never writes snapshots.
+    let snapshot_db = state.db.clone();
+    let observer_snapshots =
+        crate::store::snapshot::SnapshotStore::new(state.snapshots.dir().to_path_buf());
+    tokio::spawn(async move {
+        crate::store::snapshot_observer::run(snapshot_db, observer_snapshots).await;
+    });
+
     let app = http::build_router(state);
 
     let addr = SocketAddr::new(

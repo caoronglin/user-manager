@@ -1637,9 +1637,8 @@ HTTP client：
   "dry_run": false,
   "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...",
   "events": [
-    "security.login_failed",
-    "snapshot.stale",
-    "host.offline"
+    "user.created",
+    "user.disabled"
   ]
 }
 ```
@@ -1660,7 +1659,7 @@ HTTP client：
   "dry_run": false,
   "webhook_configured": true,
   "webhook_masked": "https://qyapi.weixin.qq.com/...key=***",
-  "events": ["security.login_failed", "snapshot.stale", "host.offline"],
+  "events": ["user.created", "user.disabled"],
   "updated_at": "...",
   "version": 4
 }
@@ -1670,7 +1669,7 @@ HTTP client：
 
 事件名使用稳定的 namespaced ID，不把中文标题当事件 ID。
 
-首期：
+计划事件类别（并非都已开放为 WeCom 订阅项）：
 
 ```text
 security.login_failed
@@ -1682,7 +1681,6 @@ host.offline
 host.recovered
 gpu.unavailable
 quota.warning
-notification.test
 ```
 
 其中：
@@ -1690,6 +1688,8 @@ notification.test
 - `quota.warning` 来源于快照规则判断，不由 Web 修改 quota；
 - `host.*` 来源于采集结果；
 - `security.*` 来源于 Web 自身认证系统。
+- 当前 WeCom API 目录仅开放 `user.created`、`user.disabled`，因为现有 delivery worker 只实现这两种事件；`security.login_failed`、`security.token_revoked`、`snapshot.*` 当前只进入站内 inbox。
+- `notification.test` 是固定模板手工测试投递，不是可订阅事件。
 
 CLI/TUI 的 `user.created`、`user.disabled` 等事件如需进入 Web 通知，应通过**只读事件快照/事件 spool**对接，而不是让 Web 调用特权 Action。
 
@@ -2274,14 +2274,14 @@ sensitive file scan
 | P1 Rust 非特权后端骨架 | [DONE] | Axum、认证、会话、RBAC、CSRF、限流和 SQLite 已实现；Rust 门禁通过。 |
 | P2 只读系统 API | [DONE] | users/quota/resources/SMB/hosts/GPU/system-summary 已由快照 API 提供。 |
 | P3 Logs / Audit / Reports | [DONE] | 只读日志、审计分页/导出和报告索引 API 已实现。 |
-| P4 Web 自身身份与通知 | [PARTIAL] | root event spool 已将 `user.created`/`user.disabled` 幂等写入 inbox，并按配置投递 WeCom；同类同用户五分钟抑制。安全登录和快照事件尚无生产者，真实目标机 webhook 验收待做。 |
+| P4 Web 自身身份与通知 | [PARTIAL] | root event spool 将 `user.created`/`user.disabled` 幂等写入 inbox 并按配置投递 WeCom；真实密码失败按全局 5 分钟桶合并、首次成功撤销 Token 和 manifest freshness 转换也会写入 Web inbox。WeCom 当前只开放实际支持的用户生命周期事件；Web 原生事件的 WeCom 投递和真实目标机验收仍待完成。 |
 | P5 Ant Design 前端 | [PARTIAL] | React/Vite/Ant Design 前端页面与 WeCom 设置页已实现，生产构建通过；已检查桌面登录页、语言切换与密码显隐，认证/MFA 端到端、响应式/无障碍验收仍未完成，技术栈也未采用计划中的 Umi/ProComponents。 |
 | P6 Ubuntu Ops / 多主机观测 | [DONE] | system/filesystem/inode/systemd/APT/reboot/AppArmor 只读采集器已接入快照和回归；不可用能力按状态降级。实际主机采集结果依部署环境而异。 |
 | P7 Hardening / 回归 / 发布 | [PARTIAL] | `v0.2.0` 已推送并发布；Rust、前端构建、聚焦安全测试均通过。全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过；浏览器完整流程及目标机权限/服务验证仍待完成。 |
 
 复核记录见 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
 
-本轮验证：Rust `cargo fmt --all -- --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过（51 个后端测试）；前端 `npm ci --offline`、`npm run build` 通过（npm audit 0 个漏洞，构建有 bundle/Ant Design 提示）。浏览器检查桌面登录页、语言切换和密码显隐；因后端未启动，API 返回 404，未验证认证/MFA 端到端流程，响应式/无障碍仍待验收。聚焦 Shell 回归：安全加固 25/25、快照 25/25、Ops 7/7、事件 spool 11/11、systemd 边界 9/9、独立脚本 19/19、改密权限包装 19/19、远程 CLI 9/9 均通过。全仓 `tests/run_regression.sh --level all` 在一次性 ext4 clone 与私有 TMPDIR 下为 41 个通过、0 个失败、1 个可选性能套件跳过；P0 ShellCheck 使用本机 Mamba 包缓存中的可执行文件。GitHub `main` 与 `v0.2.0` 已推送并发布；目标机验收未完成。
+本轮验证：Rust `cargo fmt --all -- --check`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo test --locked` 通过（59 个后端测试）；前端 `npm ci --offline`、`npm run build` 通过（npm audit 0 个漏洞，构建有 bundle/Ant Design 提示）。浏览器检查桌面登录页、语言切换和密码显隐；因后端未启动，API 返回 404，未验证认证/MFA 端到端流程，响应式/无障碍仍待验收。聚焦 Shell 回归：安全加固 25/25、快照 25/25、Ops 7/7、事件 spool 11/11、systemd 边界 9/9、独立脚本 19/19、改密权限包装 19/19、远程 CLI 9/9 均通过。全仓 `tests/run_regression.sh --level all` 在一次性 ext4 clone 与私有 TMPDIR 下为 41 个通过、0 个失败、1 个可选性能套件跳过；P0 ShellCheck 使用本机 Mamba 包缓存中的可执行文件。GitHub `main` 与 `v0.2.0` 已推送并发布；目标机验收未完成。
 
 ## P0 — 安全边界与 Snapshot 契约
 
@@ -2396,9 +2396,9 @@ system summary
 - notification inbox；
 - event dedup；
 
-已实现 root→Web 固定 spool 消费，当前 CLI 生产者覆盖用户创建与禁用；Web 幂等写入 inbox，并可依配置投递 WeCom，持久化五分钟同类/同用户抑制状态。仍待实现/验收：
+已实现 root→Web 固定 spool 消费，CLI 生产者覆盖用户创建与禁用；Web 幂等写入 inbox，并可依配置投递 WeCom，持久化五分钟同类/同用户抑制状态。账号密码明确校验失败时写固定脱敏 `security.login_failed` 通知，使用全局五分钟桶去重，unknown user、限流与内部错误不产生事件。Token 首次成功撤销会在同一 SQLite 事务中写入固定脱敏的 `security.token_revoked` 通知。后台观察器每 30 秒读取同一份已校验 manifest 与 freshness，仅在 fresh↔stale 转换时原子更新状态并写 inbox；missing/invalid/partial/unavailable 不产生事件。WeCom 目录仅开放实际 dispatcher 支持的 `user.created`、`user.disabled`。仍待实现/验收：
 
-- 为目录中的登录安全、快照 stale/recovered 等事件接入受信任生产者；
+- 为 Web 原生 `security.*` / `snapshot.*` inbox 事件增加独立且受限的 WeCom 投递通路后，再开放对应订阅选项；
 - 在目标 Ubuntu 主机验证目录属主/权限、服务启动和故障恢复；
 - 配置真实机器人后完成实际外部投递验收（测试环境覆盖逻辑、dry-run 和错误分类，不证明生产机器人已配置）。
 

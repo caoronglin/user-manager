@@ -35,7 +35,7 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 | P1 Rust 后端基础 | [DONE] | Axum、服务端认证与会话、能力默认拒绝、CSRF、限流和 SQLite 已实现。 |
 | P2 只读系统 API | [DONE] | users/quota/resources/SMB/hosts/GPU/system summary 均从固定快照读取。 |
 | P3 Logs/Audit/Reports | [DONE] | 固定来源日志、审计过滤/分页/导出上限及报表索引已实现。 |
-| P4 Web 身份与通知 | [PARTIAL] | root event spool 已消费 CLI 的 `user.created`/`user.disabled`，幂等写入 inbox 并按配置投递 WeCom，同类同用户五分钟抑制；登录安全与快照事件尚无生产者，真实 webhook 仍待目标机验收。 |
+| P4 Web 身份与通知 | [PARTIAL] | root event spool 消费 CLI 的 `user.created`/`user.disabled`，幂等写入 inbox 并按配置投递 WeCom，同类同用户五分钟抑制；真实密码失败通知按全局时间桶合并，Token 首次成功撤销和 manifest fresh/stale 状态转换也会写入 inbox。WeCom 只开放 dispatcher 支持的用户生命周期事件；Web 原生通知的 WeCom 通路和真实 webhook 仍待完成。 |
 | P5 前端 | [PARTIAL] | 生产构建通过；已在浏览器检查桌面登录页、语言切换和密码显隐。因未运行后端，认证/MFA 端到端、响应式与键盘/无障碍验收仍未完成；当前栈与 Umi/ProComponents 规划不同。 |
 | P6 Ubuntu Ops/多主机只读观测 | [DONE] | 本机 Ops 采集器覆盖系统、CPU/内存/压力、文件系统/inode、systemd、APT/reboot、AppArmor，并有分节降级处理和测试。目标环境的数据可用性仍需实机确认。 |
 | P7 Hardening/回归/发布 | [PARTIAL] | `v0.2.0` 已推送并发布；全仓 Shell 回归现为 41 个套件通过、0 个失败、1 个可选性能项跳过。浏览器完整流程和目标机验收仍未完成。 |
@@ -56,7 +56,7 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | 通过 | Web backend。 |
 | `cargo clippy --locked --all-targets -- -D warnings` | 通过 | Web backend。 |
-| `cargo test --locked` | 通过，51 个测试 | 当前 backend 单元与集成测试；不覆盖目标机部署。 |
+| `cargo test --locked` | 通过，59 个测试 | 当前 backend 单元与集成测试；包含登录失败去重、Token 撤销通知、快照 freshness observer 和 WeCom 目录一致性；不覆盖目标机部署。 |
 | `npm ci --offline` + `npm run build` | 通过 | 前端生产构建；npm audit 报告 0 个漏洞。构建有 Ant Design `use client` 提示和约 1.12 MB 主 JS bundle 提示。浏览器已检查桌面登录页渲染、语言切换和密码显隐；由于后端未启动，API 显示 404，认证/MFA 流程未验证；响应式和无障碍仍未验收。 |
 | `tests/test_snapshot_ops.sh` | 通过，7/7 | Ops collector 测试；当前容器/主机工具缺失时会验证降级状态。 |
 | `tests/test_backup_core.sh` | 通过，16/16 | 备份保留与参数校验。 |
@@ -66,11 +66,11 @@ Web 仍不得获得 root/sudo/capability、特权 socket 或任意命令执行�
 | 脚本入口 / 改密包装 / Remote CLI | 通过，19/19、19/19、9/9 | 在 ext4 Git 副本中验证入口执行位和只读协议。 |
 | 全仓 `tests/run_regression.sh --level all` | 41 个通过、0 个失败、1 个跳过 | 在一次性 ext4 clone 与私有临时目录中运行；Host/SSH 用例通过，执行计划测试 fixture 键修正后通过。可选性能套件按默认规则跳过，生产安全校验未放宽。 |
 
-此前审计记录的 shell 数值注入、子 shell FD 路径、Snapshot 错误处理、WeCom 缺失和 P5/P6 缺失已在当前工作树有对应实现。P4 event spool 目前覆盖用户创建/禁用；其他事件生产者、浏览器和目标机验收仍在下列未完成项中。
+此前审计记录的 shell 数值注入、子 shell FD 路径、Snapshot 错误处理、WeCom 缺失和 P5/P6 缺失已在当前工作树有对应实现。P4 当前有 CLI 用户生命周期、Web 密码失败/Token 撤销与快照 fresh/stale 转换 inbox 事件；WeCom 仅投递 CLI 用户生命周期事件。
 
 ## 未完成项与发布边界
 
-1. 为目录中的 `security.*`、`snapshot.*` 类型添加可信事件生产者，并在真实机器人配置下验证投递。
+1. Web 原生 `security.*` / `snapshot.*` inbox 事件尚未接入 WeCom dispatcher，保持不可订阅；目标 Ubuntu 主机与真实机器人验收仍待完成。
 2. 继续使用浏览器验证登录/MFA、权限隐藏、WeCom 保存/测试、主要页面数据状态、响应式与键盘/无障碍；当前仅完成登录页桌面渲染、语言和密码显隐检查，且 Vite/Ant Design 栈尚未迁移到 Umi/ProComponents。
 3. 在目标 Ubuntu 主机验证 `umweb` 的组成员、sudoers、capability、systemd 属性、数据库/密钥属主权限、只读快照权限和 timer 运行状态。
 4. 已完成：在一次性 ext4 clone 和私有临时目录重跑完整回归；修复执行计划测试 fixture 中带空格的主机键，41 个套件通过、0 个失败，生产代码的安全父路径校验保持不变。

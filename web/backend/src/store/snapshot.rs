@@ -66,6 +66,19 @@ pub struct Freshness {
     pub threshold_seconds: u64,
 }
 
+impl Freshness {
+    fn absent(threshold_seconds: u64) -> Self {
+        Self {
+            present: false,
+            fresh: false,
+            stale: false,
+            age_seconds: None,
+            generated_at: None,
+            threshold_seconds,
+        }
+    }
+}
+
 pub struct SnapshotStore {
     dir: PathBuf,
 }
@@ -129,32 +142,30 @@ impl SnapshotStore {
     /// 计算 freshness。now 为 Unix 秒。
     pub fn freshness(&self, kind: &str, now: i64) -> Freshness {
         let threshold = default_threshold(kind);
-        match self.read(kind) {
-            Some(env) => {
-                // Small clock skew is tolerated; a far-future timestamp is
-                // explicitly stale rather than clamped into a falsely fresh age.
-                let gen = parse_rfc3339(&env.generated_at).unwrap_or(now);
-                let raw_age = now - gen;
-                let age = raw_age.max(0);
-                let fresh = raw_age >= -300 && raw_age <= env.threshold_seconds as i64;
-                Freshness {
-                    present: true,
-                    fresh,
-                    stale: !fresh,
-                    age_seconds: Some(age),
-                    generated_at: Some(env.generated_at.clone()),
-                    threshold_seconds: env.threshold_seconds,
-                }
-            }
-            None => Freshness {
-                present: false,
-                fresh: false,
-                stale: false,
-                age_seconds: None,
-                generated_at: None,
-                threshold_seconds: threshold,
-            },
-        }
+        self.read_with_freshness(kind, now)
+            .map(|(_, freshness)| freshness)
+            .unwrap_or_else(|| Freshness::absent(threshold))
+    }
+
+    /// Read a validated snapshot and derive freshness from that same file
+    /// version, avoiding two reads that could straddle an atomic replacement.
+    pub fn read_with_freshness(&self, kind: &str, now: i64) -> Option<(Envelope, Freshness)> {
+        let env = self.read(kind)?;
+        let generated_at = parse_rfc3339(&env.generated_at)?;
+        // Small clock skew is tolerated; a far-future timestamp is explicitly
+        // stale rather than clamped into a falsely fresh age.
+        let raw_age = now - generated_at;
+        let age = raw_age.max(0);
+        let fresh = raw_age >= -300 && raw_age <= env.threshold_seconds as i64;
+        let freshness = Freshness {
+            present: true,
+            fresh,
+            stale: !fresh,
+            age_seconds: Some(age),
+            generated_at: Some(env.generated_at.clone()),
+            threshold_seconds: env.threshold_seconds,
+        };
+        Some((env, freshness))
     }
 
     pub fn dir(&self) -> &Path {

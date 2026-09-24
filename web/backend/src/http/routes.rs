@@ -7,6 +7,7 @@
 //! POST /api/hosts/:id/exec、POST /api/system/*、POST /api/snapshots/refresh 等。
 //! 也不提供任意 shell / command / SSH / file-path / log-path / URL-fetch 路由。
 
+use argon2::password_hash::{PasswordHash, PasswordVerifier};
 use axum::extract::State;
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
@@ -54,6 +55,18 @@ fn client_ip(state: &SharedState, headers: &axum::http::HeaderMap) -> String {
     "unknown".to_string()
 }
 
+fn verify_login_password(
+    password_plain: &str,
+    password_hash: &str,
+) -> Result<bool, argon2::password_hash::Error> {
+    let parsed = PasswordHash::new(password_hash)?;
+    match password::Argon2Params::argon2().verify_password(password_plain.as_bytes(), &parsed) {
+        Ok(()) => Ok(true),
+        Err(argon2::password_hash::Error::Password) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 /// 登录：校验 Argon2id，建立服务端会话，下发 HttpOnly/Secure/SameSite=Strict Cookie。
 async fn login(
     State(state): State<SharedState>,
@@ -72,7 +85,7 @@ async fn login(
     let rkey = format!("login|{ip}|{username}");
     if let Err(wait) = state.rate_limiter.hit(&rkey) {
         tracing::info!(
-            event = "security.login_failed",
+            event = "security.login_throttled",
             reason = "rate_limited",
             wait,
             "login throttled"
@@ -80,23 +93,57 @@ async fn login(
         return Err(crate::error::ApiError::RateLimited);
     }
 
-    let conn = state.db.lock().expect("db lock");
-    let user = crate::store::user::get_by_username(&conn, &username);
-    let ok = match &user {
-        Some(u) => password::verify_password(password_plain, &u.password_hash).unwrap_or(false),
-        None => false,
+    let user_result = {
+        let conn = state.db.lock().expect("db lock");
+        conn.query_row(
+            "SELECT id, username, role, password_hash, mfa_enabled FROM web_users WHERE username = ?1",
+            rusqlite::params![username],
+            |row| {
+                Ok(crate::store::user::WebUser {
+                    id: row.get(0)?,
+                    username: row.get(1)?,
+                    role: row.get(2)?,
+                    password_hash: row.get(3)?,
+                    mfa_enabled: row.get::<_, i64>(4)? != 0,
+                })
+            },
+        )
     };
-    drop(conn);
 
-    let user = match (ok, user) {
-        (true, Some(u)) => u,
-        _ => {
-            tracing::info!(
-                event = "security.login_failed",
-                reason = "bad_credentials",
-                "login failed"
+    let (user, verified_bad_password) = match user_result {
+        Ok(user) => match verify_login_password(password_plain, &user.password_hash) {
+            Ok(true) => (Some(user), false),
+            Ok(false) => (None, true),
+            Err(_) => {
+                tracing::warn!(
+                    event = "security.login_verification_error",
+                    "login verification failed internally"
+                );
+                (None, false)
+            }
+        },
+        Err(rusqlite::Error::QueryReturnedNoRows) => (None, false),
+        Err(_) => {
+            tracing::warn!(
+                event = "security.login_lookup_error",
+                "login user lookup failed internally"
             );
-            // 统一返回未认证，避免用户枚举差异。
+            (None, false)
+        }
+    };
+
+    let user = match user {
+        Some(user) => user,
+        None => {
+            if verified_bad_password {
+                tracing::info!(
+                    event = "security.login_failed",
+                    reason = "bad_credentials",
+                    "login failed"
+                );
+                record_login_failed_notification(&state);
+            }
+            // 统一返回未认证，避免用户枚举差异；查询/校验错误也不生成失败通知。
             return Err(crate::error::ApiError::Unauthorized);
         }
     };
@@ -138,6 +185,27 @@ async fn login(
         resp.headers_mut().append(header::SET_COOKIE, v);
     }
     Ok(resp)
+}
+
+/// Persist one fixed, globally deduplicated inbox event for a verified bad password.
+/// The five-minute bucket ID contains no request or account data.
+fn record_login_failed_notification(state: &SharedState) {
+    let bucket = now_unix().div_euclid(300);
+    let notification = crate::store::notification::NotificationIn {
+        id: uuid::Uuid::new_v4().to_string(),
+        event_type: "security.login_failed".to_string(),
+        severity: "info".to_string(),
+        title: "Login failed".to_string(),
+        summary: "A login credential verification failed.".to_string(),
+        target: None,
+        source: Some("web".to_string()),
+        event_id: Some(format!("security.login_failed:{bucket}")),
+    };
+    if let Ok(conn) = state.db.lock() {
+        if let Err(error) = crate::store::notification::insert(&conn, &notification) {
+            tracing::warn!(event = "security.login_notification_error", %error, "could not persist login failure notification");
+        }
+    }
 }
 
 /// 注销：revoke 会话并清除 Cookie。

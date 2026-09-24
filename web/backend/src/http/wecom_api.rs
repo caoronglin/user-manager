@@ -21,20 +21,7 @@ use crate::error::ApiError;
 use crate::state::SharedState;
 use crate::store::wecom::{self, Delivery, Settings};
 
-const EVENT_CATALOG: &[&str] = &[
-    "user.created",
-    "user.disabled",
-    "security.login_failed",
-    "security.account_locked",
-    "security.token_revoked",
-    "snapshot.stale",
-    "snapshot.recovered",
-    "host.offline",
-    "host.recovered",
-    "gpu.unavailable",
-    "quota.warning",
-    "notification.test",
-];
+const EVENT_CATALOG: &[&str] = &["user.created", "user.disabled"];
 const MAX_WEBHOOK_BYTES: usize = 512;
 const MAX_RESPONSE_BYTES: usize = 16 * 1024;
 const MAX_ATTEMPTS: i64 = 3;
@@ -102,7 +89,11 @@ fn read_settings(state: &SharedState) -> Result<Option<Settings>, ApiError> {
 }
 
 fn events_from_json(raw: &str) -> Vec<String> {
-    serde_json::from_str::<Vec<String>>(raw).unwrap_or_default()
+    serde_json::from_str::<Vec<String>>(raw)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|event| EVENT_CATALOG.contains(&event.as_str()))
+        .collect()
 }
 
 fn settings_response(settings: Option<Settings>) -> Value {

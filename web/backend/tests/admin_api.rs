@@ -2,6 +2,7 @@
 
 use axum::body::Body;
 use axum::http::{header, HeaderMap, Method, Request, StatusCode};
+use rusqlite::Connection;
 use serde_json::Value;
 use tower::ServiceExt;
 
@@ -12,11 +13,15 @@ use umweb::state::AppState;
 use umweb::store::user;
 
 async fn make_app() -> axum::Router {
+    make_app_with_db().await.0
+}
+
+async fn make_app_with_db() -> (axum::Router, std::path::PathBuf) {
     let uniq = uuid::Uuid::new_v4();
     let snap = std::env::temp_dir().join(format!("umweb-p4a-snap-{uniq}"));
     std::fs::create_dir_all(&snap).unwrap();
     let db = std::env::temp_dir().join(format!("umweb-p4a-{uniq}.db"));
-    let config = Config::for_tests(db, snap);
+    let config = Config::for_tests(db.clone(), snap);
     let state = AppState::init(config).await.expect("state");
     {
         let conn = state.db.lock().unwrap();
@@ -37,7 +42,7 @@ async fn make_app() -> axum::Router {
         )
         .unwrap();
     }
-    build_router(state)
+    (build_router(state), db)
 }
 
 async fn send(
@@ -93,6 +98,207 @@ fn csrf_cookie_from(headers: &HeaderMap) -> String {
                 .to_string()
         })
         .unwrap_or_default()
+}
+
+fn login_failure_count(db: &std::path::Path) -> i64 {
+    let conn = Connection::open(db).unwrap();
+    conn.query_row(
+        "SELECT COUNT(*) FROM notifications WHERE event_type = 'security.login_failed'",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn login_failure_notification_is_redacted_and_globally_deduplicated() {
+    // Keep both credential failures inside one fixed five-minute bucket.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let remaining = 300 - now % 300;
+    if remaining <= 2 {
+        tokio::time::sleep(std::time::Duration::from_secs(remaining + 1)).await;
+    }
+
+    let (app, db) = make_app_with_db().await;
+    for (username, password) in [
+        ("admin_user", "admin-super-secret"),
+        ("view_user", "view-super-secret"),
+    ] {
+        let body = serde_json::json!({ "username": username, "password": password }).to_string();
+        let (status, _body, _headers) = send(
+            app.clone(),
+            Method::POST,
+            "/api/auth/login",
+            Some(&body),
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    // Simulate a process restart: reopen the same SQLite DB with a fresh limiter/session store.
+    drop(app);
+    let config = Config::for_tests(db.clone(), db.with_extension("snapshots"));
+    let restarted = build_router(AppState::init(config).await.unwrap());
+    let (status, _body, _) = send(
+        restarted,
+        Method::POST,
+        "/api/auth/login",
+        Some(r#"{"username":"admin_user","password":"restart-secret"}"#),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let conn = Connection::open(&db).unwrap();
+    let notification: (
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+    ) = conn
+        .query_row(
+            "SELECT event_type, severity, title, target, source, event_id
+             FROM notifications WHERE event_type = 'security.login_failed'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )
+        .unwrap();
+    let summary: String = conn
+        .query_row(
+            "SELECT summary FROM notifications WHERE event_type = 'security.login_failed'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(notification.0, "security.login_failed");
+    assert_eq!(notification.1, "info");
+    assert_eq!(notification.2, "Login failed");
+    assert_eq!(summary, "A login credential verification failed.");
+    assert_eq!(notification.3, None, "do not retain a username or target");
+    assert_eq!(notification.4.as_deref(), Some("web"));
+    assert!(notification.5.starts_with("security.login_failed:"));
+    assert!(!summary.contains("admin_user"));
+    assert!(!summary.contains("view_user"));
+    assert!(!summary.contains("super-secret"));
+    assert_eq!(login_failure_count(&db), 1, "same event bucket is global");
+}
+
+#[tokio::test]
+async fn login_rate_limit_and_internal_verification_errors_do_not_notify() {
+    let (app, db) = make_app_with_db().await;
+    let (unknown_status, _body, _) = send(
+        app.clone(),
+        Method::POST,
+        "/api/auth/login",
+        Some(r#"{"username":"unknown_user","password":"attempt-secret"}"#),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(unknown_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        login_failure_count(&db),
+        0,
+        "a missing account has no verifier result"
+    );
+
+    for _ in 0..5 {
+        let (status, _body, _headers) = send(
+            app.clone(),
+            Method::POST,
+            "/api/auth/login",
+            Some(r#"{"username":"admin_user","password":"adminpass"}"#),
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, body, _) = send(
+        app.clone(),
+        Method::POST,
+        "/api/auth/login",
+        Some(r#"{"username":"admin_user","password":"adminpass"}"#),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+    assert_eq!(
+        login_failure_count(&db),
+        0,
+        "rate limiting is not a credential failure"
+    );
+
+    let (app, db) = make_app_with_db().await;
+    {
+        let conn = Connection::open(&db).unwrap();
+        conn.execute(
+            "UPDATE web_users SET password_hash = 'not-a-valid-phc' WHERE username = 'view_user'",
+            [],
+        )
+        .unwrap();
+    }
+    let (status, _body, _) = send(
+        app.clone(),
+        Method::POST,
+        "/api/auth/login",
+        Some(r#"{"username":"view_user","password":"attempt-secret"}"#),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "existing response is preserved"
+    );
+    assert_eq!(
+        login_failure_count(&db),
+        0,
+        "malformed verifier is an internal error"
+    );
+
+    {
+        let conn = Connection::open(&db).unwrap();
+        conn.execute("DROP TABLE web_users", []).unwrap();
+    }
+    let (status, _body, _) = send(
+        app,
+        Method::POST,
+        "/api/auth/login",
+        Some(r#"{"username":"admin_user","password":"attempt-secret"}"#),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "lookup error response is preserved"
+    );
+    assert_eq!(
+        login_failure_count(&db),
+        0,
+        "database lookup errors are not credential failures"
+    );
 }
 
 #[tokio::test]
@@ -355,4 +561,17 @@ async fn mfa_setup_verify_then_login_challenge() {
     )
     .await;
     assert_eq!(s_after, StatusCode::OK, "after MFA, session usable");
+
+    let (s_notifications, notifications_body, _) = send(
+        app,
+        Method::GET,
+        "/api/notifications?type=security.login_failed",
+        None,
+        Some(&vc2),
+        None,
+    )
+    .await;
+    assert_eq!(s_notifications, StatusCode::OK);
+    let notifications: Value = serde_json::from_str(&notifications_body).unwrap();
+    assert_eq!(notifications["data"]["items"], serde_json::json!([]));
 }

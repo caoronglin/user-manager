@@ -63,11 +63,12 @@ web/frontend/        React/Vite/Ant Design 前端
 - [x] P4c 通知 inbox API：读取/未读计数、事件类型过滤、限量游标分页、标记已读/全部已读、event_id 幂等去重；权限由 notifications.read/manage 控制
 - [x] P4d WeCom 管理 API：事件目录、加密 Webhook、脱敏设置、版本冲突保护、固定模板测试投递与有界投递历史；重试限定网络/超时/429/5xx 并有上限
 - [x] P4e root event spool：安全读取固定 root-owned 目录，`user.created`/`user.disabled` 幂等进入 inbox；按配置投递 WeCom，五分钟按事件类型/用户去重，限制并发和重试
-- [ ] P4 后续：为登录安全、快照变化等目录事件接入受信任生产者，并在目标机验证实际 webhook 投递
+- [x] P4f Web inbox 事件：密码校验失败按五分钟全局桶合并，Token 首次成功撤销与经校验 manifest 的 fresh/stale 转换写固定脱敏通知；未知/缺失状态不误报；WeCom 目录只列出 worker 当前可投递的用户生命周期事件
+- [ ] P4 后续：为 Web 原生事件建设独立 WeCom 投递通路，并在目标机验证真实 webhook
 - [x] P5 前端页面：登录/MFA、Dashboard、用户/配额/资源、SMB、主机/GPU、系统状态、日志、审计/报表、WeCom 设置/投递历史；能力控制、快照新鲜度提示、主题和中英文切换
 - [ ] P5 视觉验收：已检查桌面登录页、语言切换和密码显隐；完整认证/MFA/权限/主要数据页交互、响应式断点、键盘与无障碍检查仍待完成。当前工程使用 React/Vite/Ant Design，没有采用计划中的 Umi/ProComponents
 - [x] P6 Ubuntu Ops 快照：系统与 CPU/内存/PSI、文件系统/inode、systemd、APT/reboot、AppArmor；单节不可用时降级，新增回归 7/7 通过
-- [x] P7 版本发布：`v0.2.0` 已推送并发布；Shell 回归已全通过，浏览器完整流程/无障碍与目标机验收仍待完成
+- [x] P7 版本发布：`v0.2.0` 已推送并发布；全仓 Shell 回归 41 个套件通过、1 个可选性能项跳过；浏览器完整流程/无障碍与目标机验收仍待完成
 
 ## 本地运行（需 Rust）
 
