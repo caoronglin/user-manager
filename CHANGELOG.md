@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a separate WeCom outbox worker for fixed-template `security.login_failed`, `security.token_revoked`, and `snapshot.freshness_changed` alerts; payloads exclude personal and notification details.
+- Improve keyboard access for navigation, account menus, audit/log filters, quota details, and narrow-screen data tables; add skip-to-main and loading/error/empty announcements.
+- Add Rust formatting, Clippy, backend test, frontend production build, and high-severity npm audit jobs to GitHub Actions.
+- Route locked frontend package downloads through the public npm registry so GitHub runners do not depend on a regional mirror.
 - Emit a fixed, deduplicated inbox notification in the same database transaction as the first successful API token revocation.
 - Emit a fixed `security.login_failed` inbox event only for verified bad passwords, globally deduplicated in five-minute buckets without retaining username, IP or password.
 - Observe validated snapshot-manifest freshness transitions and notify only on fresh/stale changes; missing, invalid and indeterminate manifests do not alert.
