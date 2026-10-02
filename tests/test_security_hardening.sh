@@ -196,6 +196,15 @@ fi
 # 邮件队列/异步任务公共 API 的输入校验
 export DATA_DIR="$TEST_TMPDIR/security_data"
 mkdir -p "$DATA_DIR"
+# lib/config.sh assigns LOG_DIR unconditionally to <repo>/logs, and
+# lib/rl_mail_audit.sh binds EMAIL_LOG_FILE once at source time (reached via
+# lib/email_core.sh, sourced above). Left alone, every P1 run appends a line to
+# <repo>/logs/email.log -- a shared cross-suite write point that grows the
+# working tree without bound. Both must be redirected after config.sh is sourced;
+# overriding EMAIL_LOG_FILE alone is what actually moves the writer.
+export LOG_DIR="$TEST_TMPDIR/security_logs"
+export EMAIL_LOG_FILE="$LOG_DIR/email.log"
+mkdir -p "$LOG_DIR"
 export EMAIL_QUEUE_DB="$DATA_DIR/security_mail_queue.db"
 # shellcheck source=lib/rl_mail_queue.sh
 source "$PROJECT_ROOT/lib/rl_mail_queue.sh"
