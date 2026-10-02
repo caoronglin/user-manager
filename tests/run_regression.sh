@@ -18,6 +18,7 @@ P1_SCRIPTS=(
     test_backup_core.sh
     test_bootstrap_integration.sh
     test_env_core.sh
+    test_event_spool.sh
     test_gpu_core.sh
     test_host_inventory.sh
     test_host_provider.sh
@@ -43,6 +44,7 @@ P1_SCRIPTS=(
     test_shell_config_core.sh
     test_smb_core.sh
     test_snapshot.sh
+    test_snapshot_ops.sh
     test_systemd_timer_core.sh
     test_tui_core.sh
     test_tui_logs_view.sh

@@ -12,18 +12,21 @@ hosts_cli="$PROJECT_ROOT/scripts/rl-hosts.sh"
 remote_entry="$PROJECT_ROOT/scripts/rl-remote-entry.sh"
 
 test_start "主机 CLI 与远端入口存在且可执行"
-if [[ -x "$hosts_cli" && -x "$remote_entry" ]]; then test_pass
+if [[ -x "$hosts_cli" && -x "$remote_entry" ]]; then
+    test_pass
 else test_fail "缺少可执行主机入口"; fi
 
 test_start "两个入口 --help 均成功"
-if bash "$hosts_cli" --help >/dev/null 2>&1 && bash "$remote_entry" --help >/dev/null 2>&1; then test_pass
+if bash "$hosts_cli" --help >/dev/null 2>&1 && bash "$remote_entry" --help >/dev/null 2>&1; then
+    test_pass
 else test_fail "入口 help 失败"; fi
 
 test_start "远端入口 host.probe 输出版本化只读协议"
 probe_output="$(bash "$remote_entry" host.probe 2>/dev/null || true)"
 if [[ "$probe_output" == *"protocol=user-manager-readonly-v1"* ]] &&
     [[ "$probe_output" == *"action=host.probe"* ]] && [[ "$probe_output" == *"status=success"* ]] &&
-    [[ "$probe_output" == *"end=1"* ]]; then test_pass
+    [[ "$probe_output" == *"end=1"* ]]; then
+    test_pass
 else test_fail "远端 host.probe 输出异常: $probe_output"; fi
 
 test_start "远端入口拒绝写 action、多余参数和注入形态"
@@ -53,7 +56,8 @@ else test_fail "默认本机清单输出异常: $list_output"; fi
 test_start "主机 CLI dry-run 仅生成本地计划"
 dry_output="$(USER_MANAGER_DATA_BASE="$TEST_TMPDIR/data" bash "$hosts_cli" probe local --dry-run 2>/dev/null || true)"
 if [[ "$dry_output" == *"plan.action=host.probe"* ]] && [[ "$dry_output" == *"plan.mode=dry-run"* ]] &&
-    [[ "$dry_output" == *"summary.not_executed=1"* ]]; then test_pass
+    [[ "$dry_output" == *"summary.not_executed=1"* ]]; then
+    test_pass
 else test_fail "CLI dry-run 输出异常: $dry_output"; fi
 
 test_start "主机 CLI 显式不存在 Inventory 返回非零"

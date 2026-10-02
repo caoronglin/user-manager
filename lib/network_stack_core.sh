@@ -133,8 +133,8 @@ if [[ -z "${USER_MANAGER_NETWORK_STACK_LOADED:-}" ]]; then
         /DNS Servers:/ {
             line = $0
             sub(/^.*DNS Servers:[[:space:]]*/, "", line)
-            split(line, parts, /[[:space:]]+/)
-            for (i in parts) {
+            count = split(line, parts, /[[:space:]]+/)
+            for (i = 1; i <= count; i++) {
                 if (parts[i] ~ /[0-9a-fA-F:.]+/) {
                     print parts[i]
                 }
@@ -145,8 +145,8 @@ if [[ -z "${USER_MANAGER_NETWORK_STACK_LOADED:-}" ]]; then
         /IP[46]\.DNS\[[0-9]+\]:/ {
             line = $0
             sub(/^.*IP[46]\.DNS\[[0-9]+\]:[[:space:]]*/, "", line)
-            split(line, parts, /[[:space:]]+/)
-            for (i in parts) {
+            count = split(line, parts, /[[:space:]]+/)
+            for (i = 1; i <= count; i++) {
                 if (parts[i] ~ /[0-9a-fA-F:.]+/) {
                     print parts[i]
                 }

@@ -329,6 +329,159 @@ get_email_config() {
 # 用户事件记录
 # ============================================================
 
+# 映射到 Web 通知的 CLI 事件仅包含明确允许的用户生命周期动作。
+# 调用方的详情字段可能包含原因、路径等敏感内容，绝不进入 spool。
+_um_cli_user_event_type_for_action() {
+    case "${1:-}" in
+    create) printf 'user.created\n' ;;
+    disable) printf 'user.disabled\n' ;;
+    *) return 1 ;;
+    esac
+}
+
+_um_event_spool_username_is_valid() {
+    local username="${1:-}"
+    # Use the canonical lowercase Linux account-name subset accepted by the
+    # Web consumer: ASCII lowercase/underscore first, then lowercase/digit/_/-.
+    [[ ${#username} -le 32 && "$username" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]
+}
+
+_um_event_spool_path_has_no_symlinks() {
+    local path="${1:-}" rest component current="/"
+    [[ "$path" == /* && "$path" != *$'\n'* && "$path" != *$'\r'* ]] || return 1
+    [[ "$path" != *//* && "$path" != */ ]] || return 1
+
+    rest="${path#/}"
+    while [[ -n "$rest" ]]; do
+        if [[ "$rest" == */* ]]; then
+            component="${rest%%/*}"
+            rest="${rest#*/}"
+        else
+            component="$rest"
+            rest=""
+        fi
+        [[ -n "$component" && "$component" != . && "$component" != .. ]] || return 1
+        current="${current%/}/$component"
+        [[ ! -L "$current" ]] || return 1
+    done
+    return 0
+}
+
+_um_event_spool_new_uuid() {
+    [[ -r /proc/sys/kernel/random/uuid ]] || return 1
+    local event_id
+    event_id=$(</proc/sys/kernel/random/uuid) || return 1
+    [[ "$event_id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
+    printf '%s\n' "$event_id"
+}
+
+# Internal path-parameterized publisher for isolated tests. Production callers
+# must use _um_publish_cli_user_event_spool, which fixes the destination and
+# ownership and requires EUID 0.
+_um_publish_cli_user_event_spool_at() {
+    local spool_dir="${1:-}" username="${2:-}" event_type="${3:-}"
+    local owner="${4:-root}" group="${5:-umweb}"
+    local owner_uid group_gid event_id created_at summary severity target tmp old_umask old_event
+
+    _um_event_spool_username_is_valid "$username" || return 1
+    case "$event_type" in
+    user.created)
+        summary='User account created.'
+        severity='info'
+        ;;
+    user.disabled)
+        summary='User account disabled.'
+        severity='warning'
+        ;;
+    *) return 1 ;;
+    esac
+    [[ "$owner" =~ ^[a-z_][a-zA-Z0-9_-]*$ && "$group" =~ ^[a-z_][a-zA-Z0-9_-]*$ ]] || return 1
+    _um_event_spool_path_has_no_symlinks "$spool_dir" || return 1
+    [[ "$spool_dir" != / && -d "${spool_dir%/*}" ]] || return 1
+    [[ ! -L "$spool_dir" ]] || return 1
+
+    owner_uid=$(id -u "$owner" 2>/dev/null) || return 1
+    group_gid=$(getent group "$group" 2>/dev/null | cut -d: -f3)
+    [[ "$group_gid" =~ ^[0-9]+$ ]] || return 1
+
+    if [[ -e "$spool_dir" ]]; then
+        [[ -d "$spool_dir" && ! -L "$spool_dir" ]] || return 1
+    else
+        mkdir -- "$spool_dir" 2>/dev/null || return 1
+    fi
+    chown -- "$owner:$group" "$spool_dir" 2>/dev/null || return 1
+    chmod 0750 -- "$spool_dir" 2>/dev/null || return 1
+    [[ "$(stat -c '%u:%g:%a' -- "$spool_dir" 2>/dev/null)" == "$owner_uid:$group_gid:750" ]] || return 1
+
+    event_id=$(_um_event_spool_new_uuid) || return 1
+    created_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null) || return 1
+    [[ "$created_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || return 1
+    target="$spool_dir/$event_id.json"
+    # A collision or symlink must never replace an existing event.
+    [[ ! -e "$target" && ! -L "$target" ]] || return 1
+
+    old_umask=$(umask)
+    umask 077
+    tmp=$(mktemp -- "$spool_dir/.event.XXXXXXXXXX") || {
+        umask "$old_umask"
+        return 1
+    }
+    if ! jq -n \
+        --arg event_id "$event_id" \
+        --arg event_type "$event_type" \
+        --arg created_at "$created_at" \
+        --arg severity "$severity" \
+        --arg summary "$summary" \
+        --arg username "$username" \
+        '{schema_version:1,event_id:$event_id,event_type:$event_type,created_at:$created_at,source:"cli",severity:$severity,summary:$summary,data:{username:$username}}' \
+        >"$tmp" 2>/dev/null; then
+        rm -f -- "$tmp" 2>/dev/null || true
+        umask "$old_umask"
+        return 1
+    fi
+    chown -- "$owner:$group" "$tmp" 2>/dev/null || {
+        rm -f -- "$tmp" 2>/dev/null || true
+        umask "$old_umask"
+        return 1
+    }
+    chmod 0640 -- "$tmp" 2>/dev/null || {
+        rm -f -- "$tmp" 2>/dev/null || true
+        umask "$old_umask"
+        return 1
+    }
+    [[ "$(stat -c '%u:%g:%a' -- "$tmp" 2>/dev/null)" == "$owner_uid:$group_gid:640" ]] || {
+        rm -f -- "$tmp" 2>/dev/null || true
+        umask "$old_umask"
+        return 1
+    }
+
+    # GNU mv uses no-clobber semantics; checking the source afterwards detects
+    # both a destination collision and any failed rename.
+    if ! mv -Tn -- "$tmp" "$target" 2>/dev/null || [[ -e "$tmp" || -L "$tmp" ]]; then
+        rm -f -- "$tmp" 2>/dev/null || true
+        umask "$old_umask"
+        return 1
+    fi
+    umask "$old_umask"
+    [[ -f "$target" && ! -L "$target" ]] || return 1
+
+    # Remove at most 16 regular JSON files older than 30 days per publish, so
+    # cleanup work remains bounded even when the spool accumulates many files.
+    while IFS= read -r -d '' old_event; do
+        [[ -f "$old_event" && ! -L "$old_event" ]] && rm -f -- "$old_event" 2>/dev/null || true
+    done < <(find -P "$spool_dir" -mindepth 1 -maxdepth 1 -type f -name '*.json' -mtime +30 -print0 2>/dev/null | head -z -n 16)
+    return 0
+}
+
+_um_publish_cli_user_event_spool() {
+    local username="${1:-}" action="${2:-}" event_type
+    ((EUID == 0)) || return 0
+    event_type=$(_um_cli_user_event_type_for_action "$action") || return 0
+    _um_publish_cli_user_event_spool_at \
+        '/var/lib/user-manager-web/events' "$username" "$event_type" root umweb >/dev/null 2>&1 || true
+    return 0
+}
+
 # 记录用户事件（CSV 格式）
 # 格式: timestamp,username,action,user_type,mountpoint,home,quota_gb
 record_user_event() {
@@ -346,9 +499,15 @@ record_user_event() {
         quota_gb=$(bytes_to_gb "$quota_bytes")
     fi
 
+    local csv_status=0
     printf '%s,%s,%s,%s,%s,%s,%s\n' \
         "$timestamp" "$username" "$action" "$user_type" "$mountpoint" "$home" "$quota_gb" \
-        >>"$USER_CREATION_LOG"
+        >>"$USER_CREATION_LOG" || csv_status=$?
+
+    # Web event delivery is best-effort and cannot change the established CSV
+    # logging result or fail the user-management operation.
+    _um_publish_cli_user_event_spool "$username" "$action" || true
+    return "$csv_status"
 }
 
 # ============================================================

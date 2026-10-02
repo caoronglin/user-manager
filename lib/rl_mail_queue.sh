@@ -31,6 +31,76 @@ rl_mail_secret_token() {
     fi
 }
 
+_rl_mail_secret_path_has_no_symlinks() {
+    local path="$1" current='/' component physical_pwd
+    local -a components
+    [[ -n "$path" ]] || return 1
+    if [[ "$path" != /* ]]; then
+        physical_pwd="$(pwd -P)" || return 1
+        path="${physical_pwd%/}/$path"
+    fi
+    IFS='/' read -r -a components <<<"$path"
+    for component in "${components[@]}"; do
+        case "$component" in
+        '' | .) continue ;;
+        ..) return 1 ;;
+        *)
+            current="${current%/}/$component"
+            [[ ! -L "$current" ]] || return 1
+            ;;
+        esac
+    done
+}
+
+_rl_mail_secret_ensure_private_dir() {
+    local dir="$1" owner mode file_type
+    [[ -n "$dir" && "$dir" != / ]] || return 1
+    _rl_mail_secret_path_has_no_symlinks "$dir" || return 1
+    if [[ ! -e "$dir" ]]; then
+        mkdir -p -- "$dir" 2>/dev/null || return 1
+    fi
+    [[ -d "$dir" && ! -L "$dir" ]] || return 1
+    read -r owner mode file_type < <(stat -c '%u %a %F' -- "$dir" 2>/dev/null) || return 1
+    [[ "$owner" == "${EUID:-$(id -u)}" && "$file_type" == directory ]] || return 1
+    chmod 700 -- "$dir" 2>/dev/null || return 1
+    read -r owner mode file_type < <(stat -c '%u %a %F' -- "$dir" 2>/dev/null) || return 1
+    [[ "$owner" == "${EUID:-$(id -u)}" && "$mode" == 700 && "$file_type" == directory ]]
+}
+
+_rl_mail_secret_validate_file() {
+    local path="$1" owner mode links file_type
+    [[ -f "$path" && ! -L "$path" ]] || return 1
+    read -r owner mode links file_type < <(stat -c '%u %a %h %F' -- "$path" 2>/dev/null) || return 1
+    [[ "$owner" == "${EUID:-$(id -u)}" && "$links" == 1 && "$file_type" == 'regular file' ]] || return 1
+    chmod 600 -- "$path" 2>/dev/null || return 1
+    read -r owner mode links file_type < <(stat -c '%u %a %h %F' -- "$path" 2>/dev/null) || return 1
+    [[ "$owner" == "${EUID:-$(id -u)}" && "$mode" == 600 && "$links" == 1 && "$file_type" == 'regular file' ]]
+}
+
+_rl_mail_secret_valid_token() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9_-]{1,128}$ ]]
+}
+
+_rl_mail_secret_write_new_file() {
+    local path="$1" content="$2" dir="${1%/*}" tmp
+    [[ "$dir" != "$path" ]] || dir=.
+    _rl_mail_secret_ensure_private_dir "$dir" || return 1
+    [[ ! -e "$path" && ! -L "$path" ]] || return 1
+    tmp="$(mktemp -- "$dir/.secret.XXXXXX" 2>/dev/null)" || return 1
+    if ! (
+        umask 077
+        printf '%s' "$content" >"$tmp"
+    ) ||
+        ! chmod 600 -- "$tmp" 2>/dev/null ||
+        ! _rl_mail_secret_validate_file "$tmp" ||
+        ! ln -- "$tmp" "$path" 2>/dev/null; then
+        rm -f -- "$tmp" 2>/dev/null || true
+        return 1
+    fi
+    rm -f -- "$tmp" 2>/dev/null || return 1
+    _rl_mail_secret_validate_file "$path"
+}
+
 # ---------------------------------------------------------------------------
 # 邮件队列 secret 文件加密与密钥管理
 # ---------------------------------------------------------------------------
@@ -41,31 +111,32 @@ rl_mail_secret_token() {
 #   * EMAIL_QUEUE_KEY_FILE 默认 $DATA_DIR/secrets/.key：由父密钥派生或自动生成，
 #     0600 权限保存（32 字节 hex 数据加密密钥）；
 #   * MAC 密钥由数据加密密钥经 SHA256(dek || "mac") 派生，与加密密钥分离；
-#   * 每个 secret 使用独立随机 IV（16 字节），密文格式（点号分隔的 base64）：
-#       v1:<b64 iv>:<b64 ciphertext>:<b64 mac>
+#   * 每个 secret 使用独立随机 IV（16 字节），v2 格式为：
+#       v2:<hex iv>:<b64 ciphertext>:<hex mac>
+#     v2 的 HMAC 覆盖版本标记、IV 和原始密文。读取时兼容 v1；迁移会将
+#     明文或有效 v1 secret 原子升级为 v2。
 # 无 openssl 时退化为原明文 + 0600 文件（旧行为兼容）。
 
-# 判断一个 secret 内容是否为加密格式（v1: 前缀）。
+# 判断内容是否使用版本化加密格式；未知版本也按密文处理并拒绝明文回退。
 rl_mail_secret_is_encrypted() {
-    [[ "${1:-}" == v1:* ]]
+    [[ "${1:-}" =~ ^v[0-9]+: ]]
 }
 
 # 读取数据加密密钥（DEK，32 字节 hex）。不存在时派生/生成并写入密钥文件。
 # 输出：32 字节 hex DEK；失败返回 1。
 rl_mail_secret_key() {
-    local rl_key rl_parent="${EMAIL_QUEUE_MASTER_KEY:-}"
-    mkdir -p "$EMAIL_QUEUE_SECRET_DIR" 2>/dev/null || return 1
-    chmod 700 "$EMAIL_QUEUE_SECRET_DIR" 2>/dev/null || true
+    local rl_key rl_parent="${EMAIL_QUEUE_MASTER_KEY:-}" rl_key_dir="${EMAIL_QUEUE_KEY_FILE%/*}"
+    [[ "$rl_key_dir" != "$EMAIL_QUEUE_KEY_FILE" ]] || rl_key_dir=.
+    _rl_mail_secret_ensure_private_dir "$rl_key_dir" || return 1
+    _rl_mail_secret_path_has_no_symlinks "$EMAIL_QUEUE_KEY_FILE" || return 1
 
-    if [[ -f "$EMAIL_QUEUE_KEY_FILE" ]] && [[ -s "$EMAIL_QUEUE_KEY_FILE" ]]; then
-        rl_key=$(tr -d '[:space:]' <"$EMAIL_QUEUE_KEY_FILE" 2>/dev/null)
-        if [[ "$rl_key" =~ ^[0-9a-fA-F]{64}$ ]]; then
-            chmod 600 "$EMAIL_QUEUE_KEY_FILE" 2>/dev/null || true
-            printf '%s' "$rl_key"
-            return 0
-        fi
-        # 密钥文件内容非法：忽略并重新生成。
-        rl_key=""
+    if [[ -e "$EMAIL_QUEUE_KEY_FILE" || -L "$EMAIL_QUEUE_KEY_FILE" ]]; then
+        _rl_mail_secret_validate_file "$EMAIL_QUEUE_KEY_FILE" || return 1
+        [[ -s "$EMAIL_QUEUE_KEY_FILE" ]] || return 1
+        rl_key=$(tr -d '[:space:]' <"$EMAIL_QUEUE_KEY_FILE" 2>/dev/null) || return 1
+        [[ "$rl_key" =~ ^[0-9a-fA-F]{64}$ ]] || return 1
+        printf '%s' "$rl_key"
+        return 0
     fi
 
     if [[ -n "$rl_parent" ]]; then
@@ -82,9 +153,14 @@ rl_mail_secret_key() {
     fi
     [[ "$rl_key" =~ ^[0-9a-f]{64}$ ]] || return 1
 
-    umask 077
-    printf '%s\n' "$rl_key" >"$EMAIL_QUEUE_KEY_FILE" 2>/dev/null || return 1
-    chmod 600 "$EMAIL_QUEUE_KEY_FILE" 2>/dev/null || true
+    if ! _rl_mail_secret_write_new_file "$EMAIL_QUEUE_KEY_FILE" "$rl_key"$'\n'; then
+        # Another process may have created the key concurrently. Accept only a
+        # fully validated key; never replace an existing or unsafe file.
+        [[ -e "$EMAIL_QUEUE_KEY_FILE" || -L "$EMAIL_QUEUE_KEY_FILE" ]] || return 1
+        _rl_mail_secret_validate_file "$EMAIL_QUEUE_KEY_FILE" || return 1
+        rl_key=$(tr -d '[:space:]' <"$EMAIL_QUEUE_KEY_FILE" 2>/dev/null) || return 1
+        [[ "$rl_key" =~ ^[0-9a-fA-F]{64}$ ]] || return 1
+    fi
     printf '%s' "$rl_key"
 }
 
@@ -94,77 +170,112 @@ rl_mail_secret_mac_key() {
     printf '%s' "${rl_dek}mac" | openssl dgst -sha256 -r 2>/dev/null | awk '{print $1}'
 }
 
-# 加密明文：输出 "v1:<b64 iv>:<b64 ciphertext>:<b64 mac>"；失败返回 1（无输出）。
+# 加密明文：输出 "v2:<hex iv>:<b64 ciphertext>:<hex mac>"；失败返回 1（无输出）。
 rl_mail_secret_encrypt() {
-    local rl_plaintext="$1" rl_dek="$2" rl_iv_hex rl_iv_b64 rl_ct_b64 rl_mac_key rl_mac_hex rl_mac_b64 rl_tmp
+    local rl_plaintext="$1" rl_dek="$2" rl_iv_hex rl_ct_b64 rl_mac_key rl_mac_hex rl_tmp rl_auth_tmp
     command -v openssl >/dev/null 2>&1 || return 1
     rl_iv_hex=$(openssl rand -hex 16 2>/dev/null) || return 1
     rl_ct_b64=$(printf '%s' "$rl_plaintext" | openssl enc -aes-256-cbc -K "$rl_dek" -iv "$rl_iv_hex" -a -A 2>/dev/null) || return 1
     [[ -n "$rl_ct_b64" ]] || return 1
     rl_mac_key=$(rl_mail_secret_mac_key "$rl_dek") || return 1
     rl_tmp=$(mktemp 2>/dev/null) || return 1
-    printf '%s' "$rl_ct_b64" | openssl base64 -d -A >"$rl_tmp" 2>/dev/null
-    rl_mac_hex=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$rl_mac_key" "$rl_tmp" 2>/dev/null | awk '{print $NF}')
-    rm -f "$rl_tmp"
+    rl_auth_tmp=$(mktemp 2>/dev/null) || {
+        rm -f "$rl_tmp"
+        return 1
+    }
+    if ! printf '%s' "$rl_ct_b64" | openssl base64 -d -A >"$rl_tmp" 2>/dev/null ||
+        ! { printf 'v2:%s:' "$rl_iv_hex" >"$rl_auth_tmp" && cat "$rl_tmp" >>"$rl_auth_tmp"; }; then
+        rm -f "$rl_tmp" "$rl_auth_tmp"
+        return 1
+    fi
+    rl_mac_hex=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$rl_mac_key" "$rl_auth_tmp" 2>/dev/null | awk '{print $NF}')
+    rm -f "$rl_tmp" "$rl_auth_tmp"
     [[ -n "$rl_mac_hex" ]] || return 1
-    rl_iv_b64=$(printf '%s' "$rl_iv_hex" | xxd -r -p 2>/dev/null | openssl base64 -A 2>/dev/null)
-    rl_mac_b64=$(printf '%s' "$rl_mac_hex" | xxd -r -p 2>/dev/null | openssl base64 -A 2>/dev/null)
-    printf 'v1:%s:%s:%s' "$rl_iv_b64" "$rl_ct_b64" "$rl_mac_b64"
+    [[ "$rl_iv_hex" =~ ^[0-9a-fA-F]{32}$ && "$rl_mac_hex" =~ ^[0-9a-fA-F]{64}$ ]] || return 1
+    printf 'v2:%s:%s:%s' "$rl_iv_hex" "$rl_ct_b64" "$rl_mac_hex"
 }
 
-# 解密 "v1:<b64 iv>:<b64 ciphertext>:<b64 mac>" 格式密文；失败返回 1（无输出）。
+# 解密 v2 或旧版 v1 密文；失败返回 1（无输出）。
 rl_mail_secret_decrypt() {
-    local rl_ciphertext="$1" rl_dek="$2" rl_iv_b64 rl_ct_b64 rl_mac_b64 rl_mac_key
-    local rl_mac_calc rl_ct_raw rl_iv_hex rl_mac_raw
-    [[ "$rl_ciphertext" == v1:* ]] || return 1
-    IFS=':' read -r _ rl_iv_b64 rl_ct_b64 rl_mac_b64 <<<"$rl_ciphertext"
-    [[ -n "$rl_iv_b64" && -n "$rl_ct_b64" && -n "$rl_mac_b64" ]] || return 1
+    local rl_ciphertext="$1" rl_dek="$2" rl_version rl_iv_field rl_ct_b64 rl_mac_field rl_mac_key
+    [[ "$rl_ciphertext" == v1:* || "$rl_ciphertext" == v2:* ]] || return 1
+    IFS=':' read -r rl_version rl_iv_field rl_ct_b64 rl_mac_field <<<"$rl_ciphertext"
+    [[ -n "$rl_iv_field" && -n "$rl_ct_b64" && -n "$rl_mac_field" ]] || return 1
     rl_mac_key=$(rl_mail_secret_mac_key "$rl_dek") || return 1
-    rl_ct_raw=$(printf '%s' "$rl_ct_b64" | openssl base64 -d -A 2>/dev/null)
-    rl_mac_raw=$(printf '%s' "$rl_mac_b64" | openssl base64 -d -A 2>/dev/null)
-    # 校验 HMAC，防篡改。
-    rl_mac_calc=$(printf '%s' "$rl_ct_raw" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$rl_mac_key" 2>/dev/null | awk '{print $NF}')
-    [[ -n "$rl_mac_calc" ]] || return 1
-    rl_mac_calc_raw=$(printf '%s' "$rl_mac_calc" | xxd -r -p 2>/dev/null)
-    [[ "$rl_mac_calc_raw" == "$rl_mac_raw" ]] || return 1
-    rl_iv_hex=$(printf '%s' "$rl_iv_b64" | openssl base64 -d -A 2>/dev/null | xxd -p -c 256 2>/dev/null)
-    printf '%s' "$rl_ct_raw" | openssl enc -d -aes-256-cbc -K "$rl_dek" -iv "$rl_iv_hex" 2>/dev/null
+    command -v openssl >/dev/null 2>&1 || return 1
+
+    # Keep decoded binary data in private files: Bash variables discard NUL bytes,
+    # which corrupts ciphertext and MAC values during command substitution.
+    (
+        umask 077
+        local rl_tmp_dir rl_iv_hex rl_mac_calc rl_mac_expected
+        rl_tmp_dir=$(mktemp -d 2>/dev/null) || exit 1
+        trap 'rm -rf "$rl_tmp_dir"' EXIT
+
+        printf '%s' "$rl_ct_b64" | openssl base64 -d -A >"$rl_tmp_dir/ciphertext" 2>/dev/null || exit 1
+        [[ $(wc -c <"$rl_tmp_dir/ciphertext" 2>/dev/null) -gt 0 ]] || exit 1
+
+        if [[ "$rl_version" == v2 ]]; then
+            [[ "$rl_iv_field" =~ ^[0-9a-fA-F]{32}$ && "$rl_mac_field" =~ ^[0-9a-fA-F]{64}$ ]] || exit 1
+            rl_iv_hex="$rl_iv_field"
+            rl_mac_expected="$rl_mac_field"
+            printf 'v2:%s:' "$rl_iv_hex" >"$rl_tmp_dir/authenticated" || exit 1
+            cat "$rl_tmp_dir/ciphertext" >>"$rl_tmp_dir/authenticated" || exit 1
+        elif [[ "$rl_iv_field" =~ ^[0-9a-fA-F]{32}$ && "$rl_mac_field" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            # v1 produced by the intermediate hex-field implementation.
+            rl_iv_hex="$rl_iv_field"
+            rl_mac_expected="$rl_mac_field"
+            cat "$rl_tmp_dir/ciphertext" >"$rl_tmp_dir/authenticated" || exit 1
+        else
+            # Original v1 representation stored both binary fields as base64.
+            printf '%s' "$rl_mac_field" | openssl base64 -d -A >"$rl_tmp_dir/mac" 2>/dev/null || exit 1
+            printf '%s' "$rl_iv_field" | openssl base64 -d -A >"$rl_tmp_dir/iv" 2>/dev/null || exit 1
+            [[ $(wc -c <"$rl_tmp_dir/mac" 2>/dev/null) -eq 32 ]] || exit 1
+            [[ $(wc -c <"$rl_tmp_dir/iv" 2>/dev/null) -eq 16 ]] || exit 1
+            rl_iv_hex=$(od -An -v -tx1 "$rl_tmp_dir/iv" 2>/dev/null | tr -d '[:space:]') || exit 1
+            rl_mac_expected=$(od -An -v -tx1 "$rl_tmp_dir/mac" 2>/dev/null | tr -d '[:space:]') || exit 1
+            cat "$rl_tmp_dir/ciphertext" >"$rl_tmp_dir/authenticated" || exit 1
+        fi
+
+        [[ "$rl_iv_hex" =~ ^[0-9a-fA-F]{32}$ && "$rl_mac_expected" =~ ^[0-9a-fA-F]{64}$ ]] || exit 1
+        rl_mac_calc=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$rl_mac_key" "$rl_tmp_dir/authenticated" 2>/dev/null | awk '{print $NF}')
+        [[ "$rl_mac_calc" =~ ^[0-9a-fA-F]{64}$ && "$rl_mac_expected" =~ ^[0-9a-fA-F]{64}$ ]] || exit 1
+        [[ "$rl_mac_calc" == "$rl_mac_expected" ]] || exit 1
+
+        # Authenticate the ciphertext before decrypting it, then only emit complete plaintext.
+        openssl enc -d -aes-256-cbc -K "$rl_dek" -iv "$rl_iv_hex" \
+            -in "$rl_tmp_dir/ciphertext" -out "$rl_tmp_dir/plaintext" 2>/dev/null || exit 1
+        cat "$rl_tmp_dir/plaintext"
+    )
 }
 
 rl_mail_queue_store_secret() {
     local rl_secret="$1"
     local rl_token rl_key rl_content
     rl_token=$(rl_mail_secret_token)
-    [[ -n "$rl_token" ]] || return 1
-    mkdir -p "$EMAIL_QUEUE_SECRET_DIR" 2>/dev/null || return 1
-    chmod 700 "$EMAIL_QUEUE_SECRET_DIR" 2>/dev/null || true
-    umask 077
+    _rl_mail_secret_valid_token "$rl_token" || return 1
+    _rl_mail_secret_ensure_private_dir "$EMAIL_QUEUE_SECRET_DIR" || return 1
 
-    # 优先 AES-256-CBC + HMAC 加密落盘；openssl 缺失或无密钥时退化为明文。
+    # If crypto is available, any key/encryption failure is fatal. Plaintext is
+    # retained only for installations that do not have OpenSSL at all.
     if command -v openssl >/dev/null 2>&1; then
-        rl_key=$(rl_mail_secret_key 2>/dev/null) || rl_key=""
-        if [[ -n "$rl_key" ]]; then
-            rl_content=$(rl_mail_secret_encrypt "$rl_secret" "$rl_key" 2>/dev/null)
-            if [[ -n "$rl_content" ]]; then
-                printf '%s' "$rl_content" >"$EMAIL_QUEUE_SECRET_DIR/$rl_token" 2>/dev/null || return 1
-                chmod 600 "$EMAIL_QUEUE_SECRET_DIR/$rl_token" 2>/dev/null || true
-                printf '%s' "$rl_token"
-                return 0
-            fi
-        fi
+        rl_key=$(rl_mail_secret_key 2>/dev/null) || return 1
+        rl_content=$(rl_mail_secret_encrypt "$rl_secret" "$rl_key" 2>/dev/null) || return 1
+        [[ "$rl_content" == v2:* ]] || return 1
+    else
+        rl_content="$rl_secret"
     fi
 
-    # 退化：明文 + 0600（与旧版本行为一致，用于无 openssl 环境）。
-    printf '%s' "$rl_secret" >"$EMAIL_QUEUE_SECRET_DIR/$rl_token" 2>/dev/null || return 1
-    chmod 600 "$EMAIL_QUEUE_SECRET_DIR/$rl_token" 2>/dev/null || true
+    _rl_mail_secret_write_new_file "$EMAIL_QUEUE_SECRET_DIR/$rl_token" "$rl_content" || return 1
     printf '%s' "$rl_token"
 }
 
 rl_mail_queue_read_secret() {
     local rl_token="$1" rl_path rl_content rl_key
-    [[ -n "$rl_token" ]] || return 1
+    _rl_mail_secret_valid_token "$rl_token" || return 1
+    _rl_mail_secret_ensure_private_dir "$EMAIL_QUEUE_SECRET_DIR" || return 1
     rl_path="$EMAIL_QUEUE_SECRET_DIR/$rl_token"
-    [[ -f "$rl_path" ]] || return 1
+    _rl_mail_secret_validate_file "$rl_path" || return 1
     rl_content=$(cat "$rl_path" 2>/dev/null) || return 1
     if rl_mail_secret_is_encrypted "$rl_content"; then
         rl_key=$(rl_mail_secret_key 2>/dev/null) || return 1
@@ -178,22 +289,49 @@ rl_mail_queue_read_secret() {
 # 将已存在的明文 secret 文件迁移为加密格式（就地重写）。
 rl_mail_queue_migrate_secret() {
     local rl_token="$1" rl_path rl_content rl_key rl_enc
-    [[ -n "$rl_token" ]] || return 1
+    _rl_mail_secret_valid_token "$rl_token" || return 1
+    _rl_mail_secret_ensure_private_dir "$EMAIL_QUEUE_SECRET_DIR" || return 1
     rl_path="$EMAIL_QUEUE_SECRET_DIR/$rl_token"
-    [[ -f "$rl_path" ]] || return 1
+    _rl_mail_secret_validate_file "$rl_path" || return 1
     command -v openssl >/dev/null 2>&1 || return 0
     rl_content=$(cat "$rl_path" 2>/dev/null) || return 1
-    rl_mail_secret_is_encrypted "$rl_content" && return 0  # 已加密，跳过。
+    if [[ "$rl_content" == v2:* ]]; then
+        rl_key=$(rl_mail_secret_key 2>/dev/null) || return 1
+        rl_mail_secret_decrypt "$rl_content" "$rl_key" >/dev/null || return 1
+        return 0 # 当前格式且认证有效，跳过。
+    fi
     rl_key=$(rl_mail_secret_key 2>/dev/null) || return 1
+    if [[ "$rl_content" == v1:* ]]; then
+        # 仅在旧版 v1 密文通过现有 HMAC 校验后升级。
+        rl_content=$(rl_mail_secret_decrypt "$rl_content" "$rl_key") || return 1
+    elif [[ "$rl_content" =~ ^v[0-9]+: ]]; then
+        # 不把未知或未来版本的密文重新解释为明文。
+        return 1
+    fi
     rl_enc=$(rl_mail_secret_encrypt "$rl_content" "$rl_key" 2>/dev/null) || return 1
-    umask 077
-    printf '%s' "$rl_enc" >"$rl_path" 2>/dev/null || return 1
-    chmod 600 "$rl_path" 2>/dev/null || true
+    local rl_tmp_path
+    rl_tmp_path=$(mktemp "$EMAIL_QUEUE_SECRET_DIR/.secret.XXXXXX" 2>/dev/null) || return 1
+    if ! (
+        umask 077
+        printf '%s' "$rl_enc" >"$rl_tmp_path"
+    ) ||
+        ! chmod 600 "$rl_tmp_path" 2>/dev/null ||
+        ! _rl_mail_secret_validate_file "$rl_tmp_path" ||
+        ! mv -fT -- "$rl_tmp_path" "$rl_path" 2>/dev/null; then
+        rm -f "$rl_tmp_path" 2>/dev/null || true
+        return 1
+    fi
+    _rl_mail_secret_validate_file "$rl_path"
 }
 
 rl_mail_queue_remove_secret() {
-    local rl_token="$1"
-    [[ -n "$rl_token" ]] && rm -f "$EMAIL_QUEUE_SECRET_DIR/$rl_token" 2>/dev/null || true
+    local rl_token="$1" rl_path
+    _rl_mail_secret_valid_token "$rl_token" || return 1
+    _rl_mail_secret_ensure_private_dir "$EMAIL_QUEUE_SECRET_DIR" || return 1
+    rl_path="$EMAIL_QUEUE_SECRET_DIR/$rl_token"
+    [[ -e "$rl_path" || -L "$rl_path" ]] || return 0
+    _rl_mail_secret_validate_file "$rl_path" || return 1
+    rm -f -- "$rl_path" 2>/dev/null
 }
 
 rl_mail_queue_init() {
@@ -295,8 +433,14 @@ rl_mail_queue_cleanup() {
     [[ -f "$EMAIL_QUEUE_DB" ]] || return 0
     sqlite3 "$EMAIL_QUEUE_DB" "DELETE FROM email_log WHERE created_at < datetime('now','-$rl_days days'); DELETE FROM email_queue WHERE status IN ('$EMAIL_QUEUE_SENT','$EMAIL_QUEUE_FAILED') AND created_at < datetime('now','-$rl_days days');"
     # 清理长时间未消费的密码 secret 临时文件。
-    if [[ -d "$EMAIL_QUEUE_SECRET_DIR" ]]; then
-        find "$EMAIL_QUEUE_SECRET_DIR" -type f -mtime +"$rl_days" -delete 2>/dev/null || true
+    if [[ -d "$EMAIL_QUEUE_SECRET_DIR" && ! -L "$EMAIL_QUEUE_SECRET_DIR" ]]; then
+        local rl_secret_path rl_secret_name
+        while IFS= read -r -d '' rl_secret_path; do
+            rl_secret_name="${rl_secret_path##*/}"
+            _rl_mail_secret_valid_token "$rl_secret_name" || continue
+            [[ -f "$rl_secret_path" && ! -L "$rl_secret_path" ]] || continue
+            find "$rl_secret_path" -maxdepth 0 -type f -mtime +"$rl_days" -delete 2>/dev/null || true
+        done < <(find "$EMAIL_QUEUE_SECRET_DIR" -mindepth 1 -maxdepth 1 -type f -print0 2>/dev/null)
     fi
 }
 

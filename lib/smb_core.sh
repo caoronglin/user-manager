@@ -260,7 +260,10 @@ smb_share_list() {
     local dropin="${SMB_SHARES_CONF:-/etc/samba/user-manager-shares.conf}"
     local merged
 
-    merged="$(_smb_parse_shares "$conf"; _smb_parse_shares "$dropin")"
+    merged="$(
+        _smb_parse_shares "$conf"
+        _smb_parse_shares "$dropin"
+    )"
     # 同名共享以 drop-in 覆盖主配置；保持稳定输出顺序
     printf '%s\n' "$merged" | awk -F'|' '!seen[$1]++'
 }

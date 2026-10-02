@@ -158,61 +158,181 @@ snapshot_validate_json() {
 # ============================================================
 # 目录与属主
 # ============================================================
-snapshot_apply_owner() {
-    local path="$1" grp="$SNAPSHOT_GROUP"
-    # 仅 root 且目标组存在时才改变属主；否则尽力而为（测试/非 root 环境跳过）。
-    [[ "${EUID:-$(id -u)}" == "0" ]] || return 0
-    if getent group "$grp" >/dev/null 2>&1; then
-        chown "${SNAPSHOT_OWNER}:${grp}" -- "$path" 2>/dev/null || true
-    else
-        chown "${SNAPSHOT_OWNER}" -- "$path" 2>/dev/null || true
+snapshot_resolve_safe_path() {
+    local path="$1" current='/' component physical_pwd
+    local -a components
+
+    [[ -n "$path" ]] || return 1
+    if [[ "$path" != /* ]]; then
+        physical_pwd="$(pwd -P)" || return 1
+        path="${physical_pwd%/}/$path"
     fi
-    return 0
+
+    IFS='/' read -r -a components <<<"$path"
+    for component in "${components[@]}"; do
+        case "$component" in
+        '' | .) continue ;;
+        ..)
+            current="${current%/*}"
+            [[ -n "$current" ]] || current='/'
+            ;;
+        *)
+            current="${current%/}/$component"
+            [[ -L "$current" ]] && return 1
+            ;;
+        esac
+    done
+
+    printf '%s\n' "$current"
 }
 
-snapshot_ensure_dir() {
-    local dir="$1"
-    [[ -d "$dir" ]] || mkdir -p -- "$dir" 2>/dev/null || return 1
-    chmod 0750 -- "$dir" 2>/dev/null || true
-    snapshot_apply_owner "$dir" || true
-    return 0
+snapshot_enter_safe_dir() {
+    local expected="$1" actual
+    cd -P -- "$expected" || return 1
+    actual="$(pwd -P)" || return 1
+    [[ "$actual" == "$expected" ]]
 }
+
+snapshot_apply_owner_for_uid() {
+    local path="$1" uid="$2" grp="$SNAPSHOT_GROUP"
+    # 非 root 的开发/测试调用不尝试改变 owner；root 必须确保契约的属主属组。
+    [[ "$uid" == "0" ]] || return 0
+    if ! getent group "$grp" >/dev/null 2>&1; then
+        printf 'snapshot: 目标组不存在，无法设置快照属主: %s\n' "$grp" >&2
+        return 1
+    fi
+    if ! chown "${SNAPSHOT_OWNER}:${grp}" -- "$path"; then
+        printf 'snapshot: 无法设置快照属主 %s:%s: %s\n' "$SNAPSHOT_OWNER" "$grp" "$path" >&2
+        return 1
+    fi
+}
+
+snapshot_apply_owner() {
+    local uid="${EUID:-}"
+    [[ -n "$uid" ]] || uid="$(id -u)" || return 1
+    snapshot_apply_owner_for_uid "$1" "$uid"
+}
+
+snapshot_ensure_dir() (
+    local dir="$1" safe_dir
+    if ! safe_dir="$(snapshot_resolve_safe_path "$dir")"; then
+        printf 'snapshot: 快照目录包含符号链接或路径无效: %s\n' "$dir" >&2
+        return 1
+    fi
+    if [[ "$safe_dir" == '/' ]]; then
+        printf 'snapshot: 拒绝将根目录用作快照目录\n' >&2
+        return 1
+    fi
+
+    if [[ ! -d "$safe_dir" ]] && ! mkdir -p -- "$safe_dir"; then
+        printf 'snapshot: 无法创建快照目录: %s\n' "$safe_dir" >&2
+        return 1
+    fi
+    # 进入目录后通过当前工作目录句柄操作，避免随后路径被替换为符号链接。
+    if ! snapshot_enter_safe_dir "$safe_dir"; then
+        printf 'snapshot: 快照目录不是安全目录: %s\n' "$safe_dir" >&2
+        return 1
+    fi
+    snapshot_apply_owner . || return 1
+    if ! chmod 0750 -- .; then
+        printf 'snapshot: 无法设置快照目录权限 0750: %s\n' "$safe_dir" >&2
+        return 1
+    fi
+)
 
 # ============================================================
 # 原子安装：$1=kind，信封 JSON 从 stdin 读入
-#   write temp -> chmod 0640 -> chown(root:umweb) -> fsync -> rename -> fsync dir
+#   write temp -> chown(root:umweb) -> chmod 0640 -> sync -> rename -> sync dir
 # ============================================================
-snapshot_atomic_install() {
-    local kind="$1" dir file tmp
+snapshot_atomic_install() (
+    local kind="$1" dir file tmp='' writer_pid=''
+
+    snapshot_cleanup_temp() {
+        if [[ -n "$writer_pid" ]]; then
+            kill "$writer_pid" 2>/dev/null || true
+            wait "$writer_pid" 2>/dev/null || true
+            writer_pid=''
+        fi
+        [[ -n "$tmp" ]] && rm -f -- "$tmp"
+    }
+    trap 'snapshot_cleanup_temp || true' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
     snapshot_is_filename_safe "$kind" || {
         printf 'snapshot: 非法快照类型名: %s\n' "$kind" >&2
-        return 2
+        exit 2
     }
-    dir="$SNAPSHOT_DIR"
+    if ! dir="$(snapshot_resolve_safe_path "$SNAPSHOT_DIR")"; then
+        printf 'snapshot: 快照目录包含符号链接或路径无效: %s\n' "$SNAPSHOT_DIR" >&2
+        exit 1
+    fi
+    [[ "$dir" != '/' ]] || {
+        printf 'snapshot: 拒绝将根目录用作快照目录\n' >&2
+        exit 1
+    }
     snapshot_ensure_dir "$dir" || {
         printf 'snapshot: 无法创建快照目录: %s\n' "$dir" >&2
-        return 1
+        exit 1
     }
-    file="$dir/${kind}.json"
-    tmp="$(mktemp -- "$dir/.${kind}.json.XXXXXX")" || return 1
-    if ! cat >"$tmp"; then
-        rm -f -- "$tmp"
-        return 1
+    # 保持工作目录 fd，后续目标/temp/sync 操作均使用相对路径，避免目录被替换后跟随链接。
+    if ! snapshot_enter_safe_dir "$dir"; then
+        printf 'snapshot: 快照目录在打开时已被替换: %s\n' "$dir" >&2
+        exit 1
     fi
-    chmod 0640 -- "$tmp" 2>/dev/null || true
-    snapshot_apply_owner "$tmp" || true
-    if command -v sync >/dev/null 2>&1; then
-        sync -- "$tmp" 2>/dev/null || true
+    snapshot_apply_owner . || exit 1
+    if ! chmod 0750 -- .; then
+        printf 'snapshot: 无法设置快照目录权限 0750: %s\n' "$dir" >&2
+        exit 1
     fi
-    if ! mv -f -- "$tmp" "$file"; then
-        rm -f -- "$tmp"
-        return 1
+    file="${kind}.json"
+    if [[ -L "$file" || (-e "$file" && ! -f "$file") ]]; then
+        printf 'snapshot: 拒绝替换符号链接或非普通快照文件: %s\n' "$file" >&2
+        exit 1
     fi
-    if command -v sync >/dev/null 2>&1; then
-        sync -- "$dir" 2>/dev/null || true
+    if ! command -v sync >/dev/null 2>&1; then
+        printf 'snapshot: 缺少 sync，无法保证快照持久化\n' >&2
+        exit 1
     fi
-    return 0
-}
+    tmp="$(mktemp -- "./.${kind}.json.XXXXXX")" || {
+        printf 'snapshot: 无法创建临时快照文件: %s\n' "$dir" >&2
+        exit 1
+    }
+    cat <&0 >"$tmp" &
+    writer_pid=$!
+    if wait "$writer_pid"; then
+        writer_pid=''
+    else
+        writer_pid=''
+        printf 'snapshot: 写入临时快照文件失败: %s\n' "$tmp" >&2
+        exit 1
+    fi
+    snapshot_apply_owner "$tmp" || exit 1
+    if ! chmod 0640 -- "$tmp"; then
+        printf 'snapshot: 无法设置快照文件权限 0640: %s\n' "$tmp" >&2
+        exit 1
+    fi
+    if ! sync -- "$tmp"; then
+        printf 'snapshot: 同步快照文件失败: %s\n' "$tmp" >&2
+        exit 1
+    fi
+    # 目标可能在写入期间被替换；绝不覆盖指向其他路径的符号链接。
+    if [[ -L "$file" || (-e "$file" && ! -f "$file") ]]; then
+        printf 'snapshot: 拒绝替换符号链接或非普通快照文件: %s\n' "$file" >&2
+        exit 1
+    fi
+    if ! mv -fT -- "$tmp" "$file"; then
+        printf 'snapshot: 原子安装快照失败: %s\n' "$file" >&2
+        exit 1
+    fi
+    tmp=''
+    if ! sync -- .; then
+        printf 'snapshot: 同步快照目录失败（文件已安装但持久化未确认）: %s\n' "$dir" >&2
+        exit 1
+    fi
+    exit 0
+)
 
 # 高级封装：构造 -> 校验 -> 原子安装。$1=kind $2=source $3=data_json
 snapshot_emit() {
@@ -235,11 +355,14 @@ snapshot_emit() {
 # age 由读取时刻计算，不在生成时固化，避免旧数据被伪装成实时。
 # ============================================================
 snapshot_freshness_json() {
-    local kind="$1" now="${2:-}" file="" gen=""
+    local kind="$1" now="${2:-}" file="" gen="" dir=""
     local threshold='' ge='' age='' fresh='' present="false"
     now="${now:-$(date -u +%s)}"
-    file="$SNAPSHOT_DIR/${kind}.json"
-    if [[ -r "$file" ]]; then
+    if snapshot_is_filename_safe "$kind" &&
+        dir="$(snapshot_resolve_safe_path "$SNAPSHOT_DIR" 2>/dev/null)"; then
+        file="$dir/${kind}.json"
+    fi
+    if [[ -f "$file" && ! -L "$file" && -r "$file" ]]; then
         gen="$(jq -r '.generated_at // empty' "$file" 2>/dev/null || true)"
         threshold="$(jq -r '.threshold_seconds // empty' "$file" 2>/dev/null || true)"
         [[ "$threshold" =~ ^[0-9]+$ ]] || threshold="$(snapshot_kind_threshold "$kind" 2>/dev/null || echo 0)"

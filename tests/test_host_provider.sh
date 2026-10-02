@@ -72,6 +72,59 @@ else
     test_fail "Provider 接口缺失"
 fi
 
+test_start "主机清单限制拒绝非十进制值并保留默认值"
+default_limits="$(env -u USER_MANAGER_HOSTS_MAX_BYTES -u USER_MANAGER_HOSTS_MAX_ROWS \
+    -u USER_MANAGER_HOST_TARGET_LIMIT bash -c '
+        source "$1"
+        printf "%s|%s|%s" "$HOST_INVENTORY_MAX_BYTES" "$HOST_INVENTORY_MAX_ROWS" "$HOST_INVENTORY_TARGET_LIMIT"
+    ' _ "$PROJECT_ROOT/lib/host_inventory.sh")"
+valid_limits="$(
+    USER_MANAGER_HOSTS_MAX_BYTES=0000064 USER_MANAGER_HOSTS_MAX_ROWS=0012 USER_MANAGER_HOST_TARGET_LIMIT=008 \
+        bash -c '
+            source "$1"
+            printf "%s|%s|%s" "$HOST_INVENTORY_MAX_BYTES" "$HOST_INVENTORY_MAX_ROWS" "$HOST_INVENTORY_TARGET_LIMIT"
+        ' _ "$PROJECT_ROOT/lib/host_inventory.sh"
+)"
+oversized_limits="$(
+    USER_MANAGER_HOSTS_MAX_BYTES=1048577 USER_MANAGER_HOSTS_MAX_ROWS=4097 USER_MANAGER_HOST_TARGET_LIMIT=257 \
+        bash -c '
+            source "$1"
+            printf "%s|%s|%s" "$HOST_INVENTORY_MAX_BYTES" "$HOST_INVENTORY_MAX_ROWS" "$HOST_INVENTORY_TARGET_LIMIT"
+        ' _ "$PROJECT_ROOT/lib/host_inventory.sh"
+)"
+bytes_marker="$TEST_TMPDIR/bytes-arithmetic-executed"
+rows_marker="$TEST_TMPDIR/rows-arithmetic-executed"
+targets_marker="$TEST_TMPDIR/targets-arithmetic-executed"
+malicious_limits="$(
+    USER_MANAGER_HOSTS_MAX_BYTES="UID[\$(touch $bytes_marker)]" \
+        USER_MANAGER_HOSTS_MAX_ROWS="UID[\$(touch $rows_marker)]" \
+        USER_MANAGER_HOST_TARGET_LIMIT="UID[\$(touch $targets_marker)]" \
+        bash -c '
+            source "$1"
+            ((1 <= HOST_INVENTORY_MAX_BYTES && 1 <= HOST_INVENTORY_MAX_ROWS && 1 <= HOST_INVENTORY_TARGET_LIMIT))
+            printf "%s|%s|%s" "$HOST_INVENTORY_MAX_BYTES" "$HOST_INVENTORY_MAX_ROWS" "$HOST_INVENTORY_TARGET_LIMIT"
+        ' _ "$PROJECT_ROOT/lib/host_inventory.sh"
+)"
+if [[ "$default_limits" == '65536|256|20' && "$valid_limits" == '64|12|8' &&
+    "$oversized_limits" == '65536|256|20' && "$malicious_limits" == '65536|256|20' &&
+    ! -e "$bytes_marker" && ! -e "$rows_marker" && ! -e "$targets_marker" ]]; then
+    test_pass
+else
+    test_fail "限制值未校验或默认值异常: defaults=$default_limits valid=$valid_limits oversized=$oversized_limits malicious=$malicious_limits"
+fi
+
+test_start "command substitution 中 known_hosts fd 校验正常"
+fd_validation="$(
+    # The sandbox maps root-owned /tmp to an unmapped uid; isolate this test from that mount-specific ancestor check.
+    _host_inventory_parent_chain_is_safe() { return 0; }
+    host_inventory_validate_trusted_file "$known_hosts_file" 1048576 >/dev/null 2>&1 && printf 'validated'
+)"
+if [[ "$fd_validation" == 'validated' ]]; then
+    test_pass
+else
+    test_fail "子 shell 未能通过已打开 known_hosts 描述符校验"
+fi
+
 test_start "LocalProvider 执行结构化 host.probe"
 local_output=""
 if declare -F host_provider_execute >/dev/null && local_output="$(host_provider_execute local host.probe 2>/dev/null)" &&
@@ -99,8 +152,8 @@ if declare -F host_provider_execute >/dev/null && ssh_output="$(host_provider_ex
         [[ "$argv_text" == *"HostKeyAlias=compute-01"* ]] &&
         [[ "$argv_text" == *"ProxyCommand=none"* ]] &&
         [[ "$argv_text" == *"PasswordAuthentication=no"* ]] &&
-        [[ "${ssh_args[argc-2]}" == "192.0.2.10" ]] &&
-        [[ "${ssh_args[argc-1]}" == "/opt/user-manager/scripts/rl-remote-entry.sh host.probe" ]] &&
+        [[ "${ssh_args[argc - 2]}" == "192.0.2.10" ]] &&
+        [[ "${ssh_args[argc - 1]}" == "/opt/user-manager/scripts/rl-remote-entry.sh host.probe" ]] &&
         [[ "$argv_text" != *"provider-display-injection"* ]]; then
         test_pass
     else

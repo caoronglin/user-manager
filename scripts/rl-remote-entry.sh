@@ -25,7 +25,10 @@ case "${1:-}" in
     exit 0
     ;;
 host.probe | gpu.summary)
-    (($# == 1)) || { rl_usage >&2; exit 2; }
+    (($# == 1)) || {
+        rl_usage >&2
+        exit 2
+    }
     ;;
 *)
     rl_usage >&2

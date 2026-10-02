@@ -26,9 +26,12 @@ else
 fi
 
 test_start "run.sh 在非交互不支持 TUI 的终端不启动经典菜单"
-launcher_stdout="$(mktemp)"; launcher_stderr="$(mktemp)"; launcher_rc=0
+launcher_stdout="$(mktemp)"
+launcher_stderr="$(mktemp)"
+launcher_rc=0
 TERM=dumb timeout 5 bash "$PROJECT_ROOT/run.sh" --tui </dev/null >"$launcher_stdout" 2>"$launcher_stderr" || launcher_rc=$?
-launcher_stdout_text="$(<"$launcher_stdout")"; launcher_stderr_text="$(<"$launcher_stderr")"
+launcher_stdout_text="$(<"$launcher_stdout")"
+launcher_stderr_text="$(<"$launcher_stderr")"
 rm -f -- "$launcher_stdout" "$launcher_stderr"
 if ((launcher_rc == 3)) && [[ "$launcher_stderr_text" == *"无法回退到经典 CLI"* ]] &&
     [[ "$launcher_stdout_text$launcher_stderr_text" != *$$'\033'* ]]; then
@@ -38,16 +41,20 @@ else
 fi
 
 test_start "run.sh 明确消费 --no-tui 和 --cli 兼容别名"
-launcher_dir="$(mktemp -d)"; mkdir -p "$launcher_dir/bin"
+launcher_dir="$(mktemp -d)"
+mkdir -p "$launcher_dir/bin"
 cat >"$launcher_dir/bin/bash" <<'STUB'
 #!/bin/bash
 printf '%s\n' "$@" >"$RUN_SH_CAPTURE_FILE"
 STUB
 chmod 700 "$launcher_dir/bin/bash"
-no_tui_capture="$launcher_dir/no-tui.args"; cli_capture="$launcher_dir/cli.args"
+no_tui_capture="$launcher_dir/no-tui.args"
+cli_capture="$launcher_dir/cli.args"
 RUN_SH_CAPTURE_FILE="$no_tui_capture" PATH="$launcher_dir/bin:$PATH" /bin/bash "$PROJECT_ROOT/run.sh" --no-tui --weekly-report
 RUN_SH_CAPTURE_FILE="$cli_capture" PATH="$launcher_dir/bin:$PATH" /bin/bash "$PROJECT_ROOT/run.sh" --cli --account-health-check
-no_tui_args="$(<"$no_tui_capture")"; cli_args="$(<"$cli_capture")"; rm -rf -- "$launcher_dir"
+no_tui_args="$(<"$no_tui_capture")"
+cli_args="$(<"$cli_capture")"
+rm -rf -- "$launcher_dir"
 if [[ "$no_tui_args" == $'user_manager.sh\n--weekly-report' ]] &&
     [[ "$cli_args" == $'user_manager.sh\n--account-health-check' ]]; then
     test_pass
@@ -56,9 +63,13 @@ else
 fi
 
 test_start "tui_manager --check-terminal 对 TERM=dumb 返回稳定诊断和退出码"
-terminal_stdout="$(mktemp)"; terminal_stderr="$(mktemp)"; terminal_rc=0
+terminal_stdout="$(mktemp)"
+terminal_stderr="$(mktemp)"
+terminal_rc=0
 TERM=dumb bash "$PROJECT_ROOT/tui_manager.sh" --check-terminal >"$terminal_stdout" 2>"$terminal_stderr" || terminal_rc=$?
-terminal_stdout_text="$(<"$terminal_stdout")"; terminal_stderr_text="$(<"$terminal_stderr")"; rm -f -- "$terminal_stdout" "$terminal_stderr"
+terminal_stdout_text="$(<"$terminal_stdout")"
+terminal_stderr_text="$(<"$terminal_stderr")"
+rm -f -- "$terminal_stdout" "$terminal_stderr"
 if ((terminal_rc == 3)) && [[ "$terminal_stderr_text" == *"tui.terminal=unsupported"* ]] &&
     [[ "$terminal_stderr_text" == *"reason=unsupported-term:dumb"* ]] && [[ -z "$terminal_stdout_text" ]] &&
     [[ "$terminal_stderr_text" != *$$'\033'* ]]; then

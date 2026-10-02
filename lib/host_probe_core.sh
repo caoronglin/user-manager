@@ -4,7 +4,9 @@
 _host_probe_safe_value() {
     local value="$1" output='' char i
     local LC_ALL=C
-    value="${value//$'\r'/ }"; value="${value//$'\n'/ }"; value="${value//$'\t'/ }"
+    value="${value//$'\r'/ }"
+    value="${value//$'\n'/ }"
+    value="${value//$'\t'/ }"
     for ((i = 0; i < ${#value} && i < 128; i++)); do
         char="${value:i:1}"
         case "$char" in [A-Za-z0-9._:+/@%,-]) output+="$char" ;; ' ') output+='_' ;; *) output+='_' ;; esac
@@ -14,7 +16,10 @@ _host_probe_safe_value() {
 
 _host_probe_os_release() {
     local wanted="$1" key value
-    [[ -r /etc/os-release ]] || { printf 'unknown\n'; return 0; }
+    [[ -r /etc/os-release ]] || {
+        printf 'unknown\n'
+        return 0
+    }
     while IFS='=' read -r key value; do
         [[ "$key" == "$wanted" ]] || continue
         if [[ "${value:0:1}" == '"' ]]; then value="${value:1}"; fi
@@ -26,8 +31,10 @@ _host_probe_os_release() {
 }
 
 _host_probe_systemd_state() {
-    if ! command -v systemctl >/dev/null 2>&1; then printf 'missing\n'
-    elif [[ -d /run/systemd/system ]]; then printf 'available\n'
+    if ! command -v systemctl >/dev/null 2>&1; then
+        printf 'missing\n'
+    elif [[ -d /run/systemd/system ]]; then
+        printf 'available\n'
     else printf 'not-running\n'; fi
 }
 
@@ -38,8 +45,10 @@ _host_probe_cgroup_version() {
 }
 
 _host_probe_gpu_backend() {
-    if declare -F gpu_have_nvidia_smi >/dev/null 2>&1 && gpu_have_nvidia_smi; then printf 'nvidia-smi\n'
-    elif declare -F gpu_have_lspci >/dev/null 2>&1 && gpu_have_lspci; then printf 'lspci\n'
+    if declare -F gpu_have_nvidia_smi >/dev/null 2>&1 && gpu_have_nvidia_smi; then
+        printf 'nvidia-smi\n'
+    elif declare -F gpu_have_lspci >/dev/null 2>&1 && gpu_have_lspci; then
+        printf 'lspci\n'
     else printf 'none\n'; fi
 }
 
