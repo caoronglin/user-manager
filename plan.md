@@ -1,8 +1,12 @@
-# Web 化实施规划：非特权 Rust 控制台 + Ant Design Pro 6.0
+# Web 化实施规划：非特权 Rust 控制台 + React/Vite/Ant Design 6 前端
 
 > 初始审计基线：`24066159e79514d42686a54eb50d01d35086f212`（2026-09-23）。2026-09-24 状态复核时，`main` 工作树 HEAD 为 `0f6bee5`，并含尚未提交的实现改动；当前改动是否已推送或发布未获验证。
 >
-> 目标：在不重写现有 Bash 业务核心、不扩大系统特权面的前提下，为「Linux 多用户运维管理系统」增加一套 Web 控制台（Rust API + Ant Design Pro 6.0）。
+> 目标：在不重写现有 Bash 业务核心、不扩大系统特权面的前提下，为「Linux 多用户运维管理系统」增加一套 Web 控制台（Rust API + React/Vite/Ant Design 6）。
+>
+> **技术选型变更（已定案，不是未完成项）：** 本规划最初的前端选型是 Umi 4 + Ant Design Pro 6.0 / ProComponents。实现阶段**主动降级**为 Vite + React 19 + Ant Design 6（工程中**没有** Umi、**没有** ProComponents、**没有** ProLayout），理由是依赖面更小、构建链更简单（单一 `vite build` 产物），且与 Rust 后端的静态资源交付更直接。
+> 本文中其余 Umi/ProComponents 记述保留为**原始设计意图**，不再代表实现现状；技术栈以本说明与第 4 节技术选型表为准。
+> 该变更**不影响** P5 的验收要求：键盘可达、WCAG/读屏器、窄屏表格导航等仍然有效，且尚未完成。
 >
 > **最高级硬约束：Web 面板永远不拥有、代理、继承或间接获得 root / sudo / Linux capability 等超级管理员权限。**
 > 所有需要超级管理员权限的系统变更，仅允许受信任管理员通过本机 CLI/TUI/受控运维通道执行。
@@ -464,10 +468,10 @@ Web **不实现**：
 | 认证 | 服务端 Session |
 | 密码哈希 | Argon2id |
 | MFA | TOTP |
-| API | REST + OpenAPI |
-| 实时通知 | SSE 优先，必要时 WebSocket |
-| 前端 | Ant Design Pro 6.0 + Umi 4 + antd 6 + TypeScript |
-| 反代 | Nginx / Caddy |
+| API | REST（**未实现 OpenAPI**：无 utoipa 依赖与文档路由，契约由 `tests/api_contract.rs` 覆盖） |
+| 实时通知 | **未实现** SSE / WebSocket；当前为按需拉取，事件经 outbox 轮询 |
+| 前端 | React 19 + Vite 8 + antd 6（实现已由 Umi 4 + Ant Design Pro 6.0 主动降级，见文首说明） |
+| 反代 | **仓库未提供** Nginx / Caddy 配置；部署形态由目标主机决定 |
 | 服务管理 | systemd |
 | 系统数据 | Snapshot Store |
 | 多主机数据 | CLI/Timer 采集 → Snapshot |
@@ -1016,7 +1020,7 @@ Token：
 
 # 9. 前端信息架构、界面设计与交互规范
 
-本节作为 Web 前端的**开发基线**。实现时优先使用 Ant Design Pro / `@umijs/max` 现成布局、权限、请求、国际化能力，避免自行再造一套后台框架。
+本节作为 Web 前端的**开发基线**。原设计意图是复用 Ant Design Pro / `@umijs/max` 的现成布局、权限、请求、国际化能力，避免自行再造一套后台框架；实际实现改为在 Vite + React + Ant Design 6 之上补一层等价的薄壳（应用壳布局、capability 门控、请求封装、国际化切换），组件一律以 antd 6 原生组件为准（见文首技术选型变更说明）。
 
 设计目标：**极简、稳定、信息密度适中、状态优先、只读边界可见**。Web 是观察与协作面板，不是“浏览器版 root 控制台”。
 
@@ -1469,22 +1473,22 @@ canManageWecom
 
 ## 9.15 组件优先级
 
-优先使用：
+原计划直接使用 ProLayout / ProComponents 组件族；实现降级后按下表取 antd 6 原生组件加一层自建薄壳（见文首技术选型变更说明）：
 
 ```text
-ProLayout / PageContainer
-ProCard / StatisticCard
-ProTable
-ProDescriptions
-Form / ProForm
-Tabs
-Drawer
-Alert
-Tag / Badge
-Progress
-Timeline
-List
-Result / Empty / Skeleton
+ProLayout / PageContainer  →  自建应用壳（Header + Sider + Content + Drawer 导航）
+ProCard / StatisticCard    →  Card / Statistic
+ProTable                   →  Table
+ProDescriptions            →  Descriptions
+Form / ProForm             →  Form
+Tabs                       →  Tabs
+Drawer                     →  Drawer
+Alert                      →  Alert
+Tag / Badge                →  Tag / Badge
+Progress                   →  Progress
+Timeline                   →  Timeline
+List                       →  List
+Result / Empty / Skeleton  →  Result / Empty / Skeleton
 ```
 
 避免：
@@ -2415,7 +2419,7 @@ system summary
 - Delivery History 能关联 `event_id`；
 - CLI/TUI 事件进入 Web 时不需要 Web 获得 sudo/root。
 
-## P5 — Ant Design Pro 前端与视觉验收
+## P5 — Web 前端（React/Vite/Ant Design 6）与视觉验收
 
 当前 `web/frontend` 使用 React、Vite 和 Ant Design，已有登录/MFA、只读数据页、系统状态页、通知/WeCom 设置与投递历史、主题和中英文切换。临时环境已走通管理员密码登录、TOTP 挑战和主要数据页，并验证键盘菜单/筛选和窄屏表格键盘滚动。完整 WCAG/读屏器审计仍待完成。工程目前不是 Umi/Ant Design ProComponents。
 

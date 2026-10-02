@@ -36,6 +36,10 @@
 
 该项目更接近一个 **面向 Linux 服务器管理员的本地运维控制台**，而不是单一脚本工具。
 
+2026-09 起，仓库在上述 Bash 本地控制台之外增加了 **Web 控制台**（`umweb`）。它是一个**非特权观察面**：提供认证、只读观测、审计查询、通知与非特权配置，但**不提供任何系统写操作**，因此不能替代 CLI/TUI 执行系统变更。Web 与 CLI/TUI 构成**双控制面**，二者之间不存在提权桥。边界定义见 [`docs/WEB_SECURITY_BOUNDARY.md`](WEB_SECURITY_BOUNDARY.md)。
+
+> 本文描述架构与能力边界。当前状态、实测数字与未完成项分别记录在 [`docs/STATUS.md`](STATUS.md) 与 [`docs/PROGRESS.md`](PROGRESS.md)，不在此重复。
+
 ---
 
 ## 2. 设计目标
@@ -69,11 +73,22 @@ CLI、TUI 和独立脚本入口尽量复用同一套 Core 业务模块，避免�
 - `ufw`
 - `fail2ban`
 
+### 2.5 双控制面职责分离
+
+系统写操作与只读观测分属两个控制面，职责不重叠：
+
+| 控制面 | 载体 | 运行身份 | 职责 |
+|---|---|---|---|
+| 特权管理面 | `run.sh`、`user_manager.sh`、`tui_manager.sh`、`scripts/rl-*.sh` | root 或受控 sudo 通道 | 一切需要特权的系统变更 |
+| 非特权观察面 | `web/backend`（服务进程 `umweb`）+ `web/frontend` | 普通系统用户 `umweb` | 认证、只读观测、审计查询、通知、非特权配置 |
+
+Web 不会因为某个操作“需要权限”而请求提权：这类操作在 Web 侧**不注册对应接口**，属于不存在的能力，而不是运行期被拒绝的分支。
+
 ---
 
 ## 3. 交互入口
 
-项目提供三类主要入口。
+项目提供四类主要入口。前三类是本机特权入口，第四类是非特权 Web 入口。
 
 | 入口类型 | 文件 | 说明 |
 |---|---|---|
@@ -81,6 +96,11 @@ CLI、TUI 和独立脚本入口尽量复用同一套 Core 业务模块，避免�
 | 经典 CLI 菜单 | `user_manager.sh` | noTUI/CLI 主菜单入口 |
 | 原生 Bash TUI | `tui_manager.sh` | 终端图形化菜单入口 |
 | 独立命令脚本 | `scripts/rl-*.sh` | 面向自动化、脚本化调用 |
+| Web 控制台 | `web/backend`、`web/frontend` | 非特权 HTTP 服务与单页应用；只读观测与非特权管理，不含系统写操作 |
+
+> Web 控制台不是第四个“等价入口”。它与前三个入口的权限模型不同：前三个在 root 或受控 sudo 通道下执行系统变更，Web 只能观察与配置自身数据。系统数据经只读快照进入 Web，详见 4.3。
+>
+> 部署单元为 `etc/systemd/system/umweb.service`（用户 `umweb`，`nologin`）、`um-snapshot.service` 与 `um-snapshot.timer`（root 运行的只读采集器），以及 `etc/tmpfiles.d/user-manager-web.conf`（root 拥有的事件 spool 目录）。`etc/sudoers.d/user-manager.example` 中的 `%useradm` 规则属于特权管理面的改密包装器，**与 `umweb` 无关**。
 
 > 注意：当前 `run.sh` 默认进入 `user_manager.sh`。只有传入 `--tui` 时，才进入 `tui_manager.sh`。
 >
@@ -128,6 +148,61 @@ Linux 系统命令与文件
 > **入口可以多样，业务能力应尽量统一。**
 
 因此，TUI、经典 CLI 和独立脚本不应各自实现一套业务逻辑，而应尽量通过 `action_registry.sh`、Controller 和 `*_core.sh` 复用相同能力。
+
+### 4.3 双控制面总体架构
+
+上述分层只描述特权管理面。仓库同时包含一个**非特权观察面**，两者通过只读快照层单向解耦：
+
+```text
+ 管理员 ──CLI / TUI──>  A. 特权管理面（root 或受控 sudo）
+                        run.sh · user_manager.sh · tui_manager.sh
+                        scripts/rl-*.sh · action_registry.sh · *_core.sh
+                                     │ 写入系统与业务状态
+                                     v
+                        Linux 系统状态（用户 · 配额 · Samba · systemd · 日志）
+                                     │ 只读查询
+                                     v
+                        可信采集器（root，oneshot + timer）
+                        scripts/rl-snapshot.sh
+                        lib/snapshot_core.sh（契约）
+                        lib/snapshot_ops.sh（Ubuntu/Ops 分节）
+                                     │ 版本化 + 脱敏 + 原子落盘
+                                     v
+                        Snapshot Store（只读，root:umweb 0640）
+                        /var/lib/user-manager-web/snapshots
+                                     │ 只读
+                                     v
+ 浏览器 ──HTTPS──>      B. 非特权观察面（umweb，普通用户）
+                        axum 路由 · capability RBAC · SQLite
+                        React / Vite / Ant Design 6 单页应用
+                                     │ 仅写自身 DB 与 secret
+                                     v
+                        /var/lib/user-manager-web
+```
+
+两个控制面之间只有两条数据通路，且方向固定：
+
+| 通路 | 方向 | 形态 | 约束 |
+|---|---|---|---|
+| 快照 | root 写 → `umweb` 读 | `snapshots/*.json` | `umweb` 只读，不触发采集，不写回 |
+| 事件 spool | root 写 → `umweb` 读 | `events/*.json` | 仅 `user.created` / `user.disabled`，`umweb` 只读消费 |
+
+不存在反向通路：Web 无法写入系统、无法触发采集器、无法调用 CLI/TUI 的特权动作。
+
+### 4.4 不可动摇的 Web 安全边界
+
+以下是硬约束，由 `scripts/check_web_security.sh` 对 `web/backend/src` 做阻断式扫描，并接入 CI 与 Shell 回归：
+
+- **永不提权**：`umweb` 不使用 root/sudo/setuid/capability，不接触特权 socket；`umweb.service` 显式设置 `NoNewPrivileges=yes`、`CapabilityBoundingSet=`、`AmbientCapabilities=`，并以 `InaccessiblePaths` 屏蔽 docker、containerd、podman、systemd private 与 dbus 控制面 socket。
+- **不执行系统写操作**：不调用 `action_run` / `priv_exec` / `useradd` / `setquota` / `pdbedit`（写）/ `systemctl`（写）等写路径。
+- **不派生进程**：不 fork shell、bash、任意命令或任意 SSH。
+- **危险接口根本不存在**：users / SMB / hosts / system 的写路由**不注册**，因此命中返回 **404/405 而不是 403**。为保住该语义，CSRF/Origin 校验只挂在已注册的变更路由上，不作为全局中间件。
+- **系统数据只经只读快照观测**：Web 从不主动触发采集，也不写回快照。
+- **能力默认拒绝**：角色只有 `viewer` / `operator` / `web_admin`，不存在 owner/root/superadmin；Web 角色**不映射** Linux ACL。
+- **Secret 不进入可观测面**：TOTP secret 与企业微信 webhook 用 Web 独立 master key 加密存储；GET、日志、审计与错误响应均不回显明文；API Token 只存 SHA-256 hash。
+- **无 sudo 授权**：`umweb` 不出现在任何 sudoers 规则中。
+
+完整定义、快照信封 schema 与验收映射见 [`docs/WEB_SECURITY_BOUNDARY.md`](WEB_SECURITY_BOUNDARY.md)。
 
 ---
 
@@ -224,6 +299,48 @@ host_probe_core.sh / gpu_core.sh   固定远端白名单入口
 ```
 
 该路径仅支持 `host.probe` 和 `gpu.summary`。Inventory 是非执行文本，Planner 先生成确定计划；`--dry-run` 不进行网络或能力探测。SSH Provider 使用专用 known_hosts、严格主机密钥校验、无用户 SSH config、连接/存活/动作三层超时和两个常量远端命令。详见 [`docs/REMOTE_HOSTS.md`](REMOTE_HOSTS.md)。
+
+### 5.5 只读快照采集与 Web 读取路径
+
+这是 Web 唯一的系统数据入口，与上面四条特权路径完全分离：
+
+```text
+um-snapshot.timer
+  ↓
+um-snapshot.service（User=root，Type=oneshot）
+  ↓
+scripts/rl-snapshot.sh
+  ↓
+lib/bootstrap.sh + lib/snapshot_core.sh（信封构造 · secret scrub · 原子安装）
+  ↓ lib/snapshot_ops.sh（Ubuntu/Ops 只读分节采集）
+只读 Core 查询结果
+  ↓
+/var/lib/user-manager-web/snapshots/<kind>.json + manifest.json（root:umweb 0640，目录 0750）
+  ↓
+umweb（store/snapshot.rs 只读解析与校验）
+  ↓
+/api/users · /api/users/:username/quota · /api/users/:username/resources
+/api/resources/summary · /api/smb/* · /api/hosts/* · /api/system-summary
+  ↓
+前端只读数据页（附 fresh / stale / 缺失标识）
+```
+
+采集器与 Web 服务是两个独立 systemd 单元，互不调用：`um-snapshot.service` 不启动 Web，`umweb.service` 不运行采集脚本。
+
+快照类型与新鲜度阈值（秒）由 `lib/snapshot_core.sh` 的 `snapshot_kind_threshold` 统一定义：
+
+| kind | 阈值 | 覆盖内容 |
+|---|---|---|
+| `system` | 60 | 系统、CPU/内存/PSI |
+| `resources` | 60 | 资源限制与占用 |
+| `logs` | 60 | 允许清单日志源（boot / failed-services / auth-failures） |
+| `hosts`、`gpu` | 120 | 主机清单与 GPU 摘要 |
+| `audit-summary` | 30 | 审计摘要 |
+| `users`、`quota`、`smb` | 300 | 用户、配额、Samba |
+| `reports` | 300 | 报告元数据索引 |
+| `manifest` | 120 | schema 版本、类型与清单 |
+
+Web 不触发刷新。快照超过阈值时，接口与界面显式标记为 stale 或缺失，不伪装实时；`manifest` 的校验负责把无效、partial、unavailable 等状态如实传给前端。
 
 ---
 
@@ -342,6 +459,100 @@ host_probe_core.sh / gpu_core.sh   固定远端白名单入口
 | `lib/shell_config.sh` | Shell 配置 |
 | `lib/miniforge_core.sh` | Miniforge 安装与配置 |
 | `lib/lock_core.sh` | 锁机制 |
+
+### 6.10 Web 控制台后端模块
+
+服务进程 `umweb`，crate 名 `umweb`，运行于 `web/backend`。
+
+| 模块 | 职责 |
+|---|---|
+| `web/backend/src/main.rs` | 二进制入口（薄封装，转 `lib::run`） |
+| `web/backend/src/lib.rs` | crate 根，组装监听、后台任务与中间件层序 |
+| `web/backend/src/config.rs` | 环境配置与角色→能力 allowlist（默认拒绝） |
+| `web/backend/src/state.rs` | `AppState`（DB、会话、限流、能力集合） |
+| `web/backend/src/error.rs` | 统一错误到 HTTP 的映射（脱敏） |
+| `web/backend/src/telemetry.rs` | 结构化日志与 secret redaction |
+| `web/backend/src/crypto.rs` | AES-256-GCM、HMAC、SHA-256 等加密原语 |
+| `web/backend/src/auth/password.rs` | Argon2id 密码哈希 |
+| `web/backend/src/auth/session.rs` | 服务端会话（hash-only、HttpOnly/Secure/SameSite=Strict Cookie） |
+| `web/backend/src/auth/mfa.rs` | TOTP 注册、启用、登录挑战、停用 |
+| `web/backend/src/auth/rbac.rs` | capability 判定（默认拒绝） |
+| `web/backend/src/auth/guard.rs` | 会话 / Bearer 认证入口 |
+| `web/backend/src/auth/csrf.rs` | 变更路由的 CSRF 与 Origin 校验 |
+| `web/backend/src/auth/rate_limit.rs` | IP + username 双维限流与指数退避 |
+| `web/backend/src/http/routes.rs` | 路由装配；只对已注册变更路由挂 CSRF 层 |
+| `web/backend/src/http/middleware.rs` | request-id 与安全响应头 |
+| `web/backend/src/http/read_api.rs` | 只读系统 API（users/quota/resources/smb/hosts/gpu/system-summary） |
+| `web/backend/src/http/audit_api.rs` | 审计查询、过滤、游标与有界导出 |
+| `web/backend/src/http/logs_api.rs` | 允许清单日志源读取与下载 |
+| `web/backend/src/http/reports_api.rs` | 报告元数据索引与导出 |
+| `web/backend/src/http/admin_api.rs` | Web 用户管理与 MFA 端点 |
+| `web/backend/src/http/tokens_api.rs` | API Token 签发、列举与撤销（仅限只读 capability） |
+| `web/backend/src/http/notifications_api.rs` | 通知 inbox 读取、未读计数、已读标记 |
+| `web/backend/src/http/wecom_api.rs` | 企业微信设置、测试投递与投递历史 |
+| `web/backend/tests/api_contract.rs` | 危险路由必须 404/405、capability 默认拒绝的契约测试 |
+
+### 6.11 Web 前端模块
+
+`web/frontend`，技术栈为 **React 19.3.0 + Vite 8.3.0 + Ant Design 6.6.4**，共 6 个源文件约 1628 行。
+
+| 文件 | 职责 |
+|---|---|
+| `web/frontend/src/main.jsx` | React 挂载入口 |
+| `web/frontend/src/App.jsx` | 应用壳：Header、Sider、导航、主题与国际化、快照新鲜度全局提示 |
+| `web/frontend/src/pages.jsx` | 各业务页面（登录/MFA、Dashboard、用户、配额、资源、SMB、主机/GPU、系统状态、日志、审计、报表、通知、设置等） |
+| `web/frontend/src/ui.jsx` | 自建薄壳组件：表格、描述列表、表单、结果态等 antd 6 封装 |
+| `web/frontend/src/api.js` | API 客户端与会话、CSRF 处理 |
+| `web/frontend/src/styles.css` | 样式与响应式规则 |
+
+前端**不使用** Umi、Ant Design ProComponents 或 ProLayout。应用壳布局、capability 门控、请求封装与国际化切换均为自建薄壳，组件一律使用 antd 6 原生组件。构建产物为单一 `dist` 目录，由反向代理交付。选择背景见根目录 [`plan.md`](../plan.md) 的技术选型变更说明，运行与目录说明见 [`web/README.md`](../web/README.md)。
+
+### 6.12 只读快照层与事件通道
+
+| 模块 | 职责 |
+|---|---|
+| `scripts/rl-snapshot.sh` | 可信采集器入口（root 运行），把只读 Core 查询收敛为 JSON 快照 |
+| `lib/snapshot_core.sh` | 快照契约：schema 版本、secret scrub、原子安装、文件名白名单、freshness 阈值 |
+| `lib/snapshot_ops.sh` | Ubuntu/Ops 只读分节采集；每节自带可用性，单节不可用不丢弃其余分节 |
+| `web/backend/src/store/snapshot.rs` | 快照只读解析与信封校验 |
+| `web/backend/src/store/snapshot_observer.rs` | 快照新鲜度状态观测 |
+| `web/backend/src/store/event_spool.rs` | root 事件 spool 的只读入库与幂等去重 |
+| `web/backend/src/event_spool.rs` | spool 消费循环：固定路径、`O_NOFOLLOW` 只读打开，不写回 spool |
+| `web/backend/src/store/notification.rs` | 通知 inbox 存储与去重 |
+| `web/backend/src/store/web_event_delivery.rs` | Web 原生事件 outbox、限流与投递历史 |
+| `web/backend/src/web_event_delivery.rs` | 原生事件投递循环（独立于 root spool） |
+| `web/backend/src/store/wecom.rs` | 企业微信加密设置、订阅与投递历史 |
+| `web/backend/src/store/web_audit.rs` | Web 侧操作审计 |
+
+Web 自身数据库只保存 Web 数据，不含系统数据、不含明文 secret，表集合为：`web_users`、`sessions`、`api_tokens`、`wecom_settings`、`wecom_deliveries`、`notifications`、`web_audit`、`web_event_delivery_queue`、`web_event_delivery_throttle`、`wecom_event_throttle`、`event_spool_records`、`snapshot_freshness_observer`。
+
+### 6.13 通知链路
+
+通知有两条彼此独立的链路，都不要求 Web 获得任何特权。
+
+**链路一：CLI root event spool → Web inbox → 企业微信**
+
+```text
+CLI/TUI 以 root 执行用户生命周期变更
+  ↓ 写 root 拥有的 spool
+/var/lib/user-manager-web/events/<id>.json（目录 root:umweb 0750）
+  ↓ umweb 只读消费（event_spool.rs，固定路径，不写回）
+user.created / user.disabled → 幂等入库 → Web 通知 inbox
+  ↓
+企业微信（按订阅设置、固定模板、按事件类型与用户五分钟去重）
+```
+
+**链路二：Web 原生事件 → 独立 outbox/worker → 企业微信**
+
+```text
+Web 自身行为：登录密码校验失败、Token 首次成功撤销、快照 fresh/stale 转换
+  ↓ inbox 与 outbox 在同一事务写入
+web_event_delivery_queue
+  ↓ 独立非特权 worker，固定消息模板，有界重试
+企业微信
+```
+
+两条链路的隔离性是刻意设计：worker 不读写 root spool，spool 只承载用户生命周期事件。原生事件的消息文本由事件类型枚举生成，不外发通知标题、摘要、目标、来源、用户名、IP、Token 标识或密码。重试只覆盖网络错误、超时、HTTP 429 与 5xx，且有次数上限；dry-run 只写本地投递历史，不产生外部请求。事件目录、模板与投递限制见 [`docs/wecom-native-events.md`](wecom-native-events.md)。
 
 ---
 
@@ -623,6 +834,43 @@ lib/gpu_core.sh
 scripts/rl-system-overview.sh
 ```
 
+### 7.10 Web 控制台功能
+
+只读观测：
+
+- Dashboard 核心指标、资源与主机摘要、事件概览
+- 用户列表与用户详情
+- 用户配额视图
+- 资源限制与占用视图
+- SMB 状态、SMB 账户与共享列表
+- 主机清单、主机详情与 GPU 摘要
+- 系统状态摘要（systemd、APT 与重启需求、AppArmor、文件系统与 inode、PSI）
+- 日志源查询与下载（限定允许清单源）
+- 审计查询、过滤、游标分页与有界导出
+- 报告索引与导出
+- 快照新鲜度（fresh / stale / 缺失）显式标识
+
+认证与 Web 自身管理：
+
+- 密码 + TOTP 两步登录
+- 会话列举与撤销
+- Web 用户管理（Web 身份，绝不触碰 Linux 账户）
+- API Token 签发、列举与撤销（仅允许只读 capability）
+- 主题切换与中英文切换
+
+通知：
+
+- 通知 inbox、未读计数、事件类型过滤、游标分页、标记已读
+- 企业微信设置、事件订阅、测试投递与投递历史
+
+Web 侧**不提供**下列能力，且对应接口未注册（命中返回 404/405）：
+
+- 创建、删除、禁用或修改 Linux 用户
+- 设置配额、修改 CPU/内存限制
+- 写入 SMB 账户或共享
+- 写入主机清单或触发远端动作
+- 任何系统配置写入、systemd 操作或 root 操作
+
 ---
 
 ## 8. 独立 CLI 脚本
@@ -642,6 +890,7 @@ scripts/rl-system-overview.sh
 | `scripts/rl-system-overview.sh` | glances 系统概览包装 |
 | `scripts/rl-hosts.sh` | Inventory 校验、本机/SSH 主机能力和 GPU 只读探测 |
 | `scripts/rl-remote-entry.sh` | 远端固定路径的 `host.probe` / `gpu.summary` 白名单入口 |
+| `scripts/rl-snapshot.sh` | 可信只读快照采集器（root 运行，写快照目录供 Web 只读消费） |
 | `scripts/verify_email_config.sh` | 验证邮箱配置 |
 | `scripts/check_sensitive_files.sh` | 敏感文件/密钥扫描 |
 | `scripts/normalize_echo_output.sh` | 输出规范化辅助脚本 |
@@ -769,11 +1018,78 @@ run.sh
 │   ├── tui_views_logs.sh
 │   └── action_registry.sh
 └── scripts/rl-*.sh
-    └── action_registry.sh
-        └── *_core.sh
+    ├── action_registry.sh
+    │   └── *_core.sh
+    └── rl-snapshot.sh
+        ├── snapshot_core.sh（契约：信封 / scrub / 原子安装）
+        └── snapshot_ops.sh（Ubuntu/Ops 只读分节）
 
 基础层：
 bootstrap.sh / common.sh / config.sh / privilege.sh / env_core.sh
+
+非特权观察面：
+web/backend（umweb）
+├── auth/        password · session · mfa · rbac · guard · csrf · rate_limit
+├── http/        routes · middleware · read · audit · logs · reports
+│                admin · tokens · notifications · wecom
+└── store/       Web 自身 SQLite（users · sessions · tokens · wecom
+                 notifications · audit · outbox · spool 记录）
+web/frontend（React 19 + Vite 8 + Ant Design 6）
+```
+
+### 10.2 双控制面架构图
+
+```mermaid
+flowchart TD
+    subgraph PRIV[特权管理面 - root / 受控 sudo]
+        R[run.sh / user_manager.sh / tui_manager.sh]
+        S[scripts/rl-*.sh 独立 CLI]
+        A[action_registry.sh]
+        C[*_core.sh 用户 · 配额 · 备份 · 邮件 · 审计]
+        R --> A
+        S --> A
+        A --> C
+    end
+
+    SYS[(Linux 系统状态<br/>用户 · 配额 · Samba · systemd · 日志)]
+    C -->|写| SYS
+
+    subgraph COL[可信采集器 - root, oneshot + timer]
+        T[um-snapshot.timer]
+        SV[um-snapshot.service]
+        SS[rl-snapshot.sh]
+        SC[snapshot_core.sh<br/>信封 · scrub · 原子安装]
+        SO[snapshot_ops.sh<br/>Ubuntu/Ops 分节]
+        T --> SV --> SS
+        SS --> SC
+        SS --> SO
+    end
+
+    SNAP[(Snapshot Store 只读<br/>snapshots/*.json<br/>root:umweb 0640)]
+    SPOOL[(Event Spool 只读<br/>events/*.json<br/>user.created / user.disabled)]
+
+    subgraph WEB[非特权观察面 - 用户 umweb, nologin]
+        API[umweb / axum 路由<br/>capability RBAC 默认拒绝]
+        SPA[React 19 + Vite 8 + Ant Design 6]
+        DB[(Web SQLite<br/>会话 · Token · 通知 · 审计)]
+        WC[Web 原生事件 outbox/worker]
+        API --> SPA
+        API <--> DB
+        API --> WC
+        DB --> WC
+    end
+
+    WECOM[企业微信]
+
+    SYS -->|只读查询| SS
+    SS -->|版本化 · 脱敏 · 原子落盘| SNAP
+    C -->|写事件| SPOOL
+    SNAP -->|只读| API
+    SPOOL -->|只读消费| API
+    WC -->|固定模板 · 有界重试| WECOM
+
+    DANGER[[危险写接口未注册<br/>命中 404/405 而非 403]]
+    API -.-> DANGER
 ```
 
 ---
@@ -788,6 +1104,9 @@ bootstrap.sh / common.sh / config.sh / privilege.sh / env_core.sh
 - **功能覆盖完整**：覆盖多用户服务器常见运维场景。
 - **适合自动化**：`scripts/rl-*.sh` 可以被 cron、CI、运维脚本直接调用。
 - **贴近系统能力**：直接封装 Linux 用户、磁盘、systemd、rsync、UFW、fail2ban 等能力。
+- **双控制面职责清晰**：特权变更集中在 CLI/TUI，Web 只做观察与非特权配置，两者通过只读快照单向解耦。
+- **Web 边界可验证**：提权与系统写路径由阻断式扫描约束，危险接口以“不存在”而非“被拒绝”表达。
+- **数据新鲜度如实可见**：快照带 schema 版本与阈值，过期显式标记为 stale，不伪装实时。
 
 ### 11.2 当前边界
 
@@ -796,6 +1115,10 @@ bootstrap.sh / common.sh / config.sh / privilege.sh / env_core.sh
 - TUI 与 CLI 共享部分业务能力，但仍需要保持入口层和业务层边界清晰，避免 UI 层直接承载核心逻辑。
 - 全屏 TUI 依赖交互终端与光标寻址；不可用时应使用经典 CLI，而不是强制进入 raw mode。
 - SSH 基础层仅覆盖受管理员预部署的只读探测；不包含远程写操作、密钥分发、远端自动部署、GPU 调度、并发批处理或跨主机回滚。
+- Web 控制台只能观察与非特权配置，任何系统变更仍须回到本机 CLI/TUI；这是设计取舍而非待补功能。
+- Web 数据新鲜度受采集节奏约束；Web 不主动刷新，也不为“看起来实时”而伪装状态。
+- Web 投递 worker 假定单个 `umweb` 实例独占其 SQLite 数据库，未使用跨进程租约；多实例共享同一数据库可能重复投递。
+- 企业微信不提供幂等键，远端已接收但响应丢失时，有界重试或重启可能产生重复消息。
 
 ---
 
@@ -803,10 +1126,11 @@ bootstrap.sh / common.sh / config.sh / privilege.sh / env_core.sh
 
 ### 12.1 文档优化
 
-- 将本文作为 `docs/ARCHITECTURE.md` 长期维护。
+- 将本文作为 `docs/ARCHITECTURE.md` 长期维护，并在双控制面变化时同步 4.3、4.4 与 10.2。
+- 保持职责分工：本文只写架构与边界，状态与实测数字写入 [`docs/STATUS.md`](STATUS.md)，完成度与未完成项写入 [`docs/PROGRESS.md`](PROGRESS.md)，避免同一数字在三处重复。
 - 为 `action_registry.sh` 补充 action ID 清单与调用示例。
 - 为 `scripts/rl-*.sh` 补充统一使用说明。
-- 在 README 中增加“架构文档”链接。
+- 为 Web 侧补充接口清单与 capability 对照表（可从 `web/backend/src/http/` 与 `config.rs` 导出生成）。
 
 ### 12.2 模块边界优化
 
@@ -827,3 +1151,7 @@ bootstrap.sh / common.sh / config.sh / privilege.sh / env_core.sh
 - 为自动化场景补充非交互模式约定。
 - 对系统命令调用增加更明确的失败处理和回滚策略。
 - 对备份、配额、资源限制等高风险操作增加 dry-run 能力。
+- 为快照采集补充按 kind 独立调度，使 `audit-summary` 的 30 秒阈值不必被全量采集节奏拖累。
+- 为 Web 投递 worker 增加跨进程租约或数据库级认领，使多实例部署成为受支持的形态。
+- 补齐目标机部署验收：systemd 单元、快照目录与事件 spool 权限、真实企业微信 webhook 的端到端投递。
+- 补齐 Web 前端的完整 WCAG 与读屏器审计；键盘可达与窄屏表格导航已具备，但不足以替代正式可访问性审计。

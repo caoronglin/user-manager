@@ -3,7 +3,7 @@
 非特权 Rust Web 控制台。定位：**认证、展示、查询、审计、通知、非特权配置与只读观测**。
 它**不是**浏览器版 root 运维终端，也**不**执行任何系统写操作。
 
-技术栈：Rust + axum + tokio + rusqlite + Argon2id + TOTP；前端为 React 19 + Vite 8 + Ant Design 6。当前前端尚未迁移到计划中的 Umi / Ant Design ProComponents。
+技术栈：Rust + axum + tokio + rusqlite + Argon2id + TOTP；前端为 React 19 + Vite 8 + Ant Design 6。前端由原规划的 Umi 4 + Ant Design Pro 6.0 **主动降级**为 Vite + React + antd 6（依赖更少、构建链更简单、静态资源交付更直接），属已定案的选型变更而非未完成项，详见 [`../plan.md`](../plan.md) 文首说明。
 
 > ## ✅ 验证状态
 > **2026-09-24 工作树验证：** Rust fmt、Clippy 通过，后端 65 个测试通过；前端离线依赖安装、生产构建通过，npm 报告 0 个依赖漏洞。Ops 快照 7/7、安全加固 25/25、事件 spool 11/11、systemd 边界 9/9 通过。完整 Shell 回归为 41 个套件通过、0 个失败、1 个可选性能套件跳过。
@@ -67,7 +67,7 @@ web/frontend/        React/Vite/Ant Design 前端
 - [x] P4g 原生事件投递：`security.login_failed`、`security.token_revoked`、`snapshot.freshness_changed` 使用独立 outbox/worker、固定消息模板和有界重试；不外发个人信息或通知详情
 - [ ] P4 后续验收：在目标机验证服务和真实 webhook；当前 worker 假定每个 SQLite 数据库只有一个 `umweb` 实例
 - [x] P5 前端页面：登录/MFA、Dashboard、用户/配额/资源、SMB、主机/GPU、系统状态、日志、审计/报表、WeCom 设置/投递历史；能力控制、快照新鲜度提示、主题和中英文切换
-- [ ] P5 验收：真实密码+TOTP 登录、主要数据页权限/交互、键盘菜单/筛选、窄屏表格导航已验证；完整 WCAG/读屏器审计仍待完成。当前工程使用 React/Vite/Ant Design，没有采用计划中的 Umi/ProComponents
+- [ ] P5 验收：真实密码+TOTP 登录、主要数据页权限/交互、键盘菜单/筛选、窄屏表格导航已验证；完整 WCAG/读屏器审计仍待完成。技术栈为已定案的主动降级（见文首），不计入未完成项
 - [x] P6 Ubuntu Ops 快照：系统与 CPU/内存/PSI、文件系统/inode、systemd、APT/reboot、AppArmor；单节不可用时降级，新增回归 7/7 通过
 - [ ] P7 `v0.2.0` 是当前已发布版本；`v0.3.0` 候选版已准备，版本提交 CI 通过后发布；目标机与真实 webhook 验收仍待完成
 
