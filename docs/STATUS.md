@@ -1,7 +1,7 @@
 # 项目现状（STATUS）
 
 > 核实时间：**2026-10-02**（CST）
-> 核实基线：`main` @ `abc6946`（完成 P0-1 修复的提交）；本文档同步于 `1317c44`
+> 核实基线：`main` @ `91706e1`；本轮修复提交 `87a74da`、`b5c469d`、`a4762a5`、`91706e1`
 > 对比基线：`0f6bee5`（2026-10-02 整理前的 `main`）
 > 核实环境：Linux 容器，工作目录 ext4，非 root（`uid=1001 T25ronglin`），无 Rust 工具链
 >
@@ -16,10 +16,10 @@
 | --- | --- |
 | 架构与安全边界 | 完整，静态门禁全部通过 |
 | Bash 业务内核 / 只读快照层 / Web 控制台 | 三部分代码齐备 |
-| **Git 工作树** | **已整理：97 项改动拆为 6 个提交落地，工作树干净** |
+| **Git 工作树** | **干净**；`main` 领先 `origin/main` 13 个提交，未推送 |
 | **发布状态** | **v0.2.0 已发布；v0.3.0 已提交到本地 `main`，尚未推送或打 tag** |
-| **Shell 回归（本机实测）** | **P0 1/1 通过；P1 40 套件中 39 通过、1 失败；P2 按规则跳过** |
-| 失败根因 | **已全部定位**，均非业务逻辑缺陷；P0-1 已修复（见第 5 节） |
+| **Shell 回归（本机实测）** | **P0 1/1 通过；P1 42 套件全绿；P2 按规则跳过** |
+| 已知缺陷 | **P0-1 / P0-2 / P0-3 均已修复**；CI 权限门禁已阻断化（见第 5 节） |
 | 静态门禁（bash -n / ShellCheck / Web 安全门禁 / 敏感文件扫描） | 全部通过 |
 | Rust 后端 / 前端构建 | **本环境无法验证**（见 4.2 节） |
 
@@ -139,37 +139,38 @@ Web 面板**永远不拥有、代理或间接获得** root / sudo / capability�
 
 ```text
 P0  verify_fixes   1/1 通过（内部检查 20/20）
-P1  40 套件        39 通过 / 1 失败
+P1  42 套件        42 通过 / 0 失败
 P2  性能套件       按默认规则跳过（需 --include-perf）
 
-运行器汇总（含 P0）：40 通过 / 1 失败 / 1 跳过
+运行器汇总（含 P0）：43 通过 / 0 失败 / 1 跳过
 ```
 
-唯一失败：`test_event_spool.sh`（7/11），根因为 P0-2，属环境相关的测试可移植性问题。
+P1 全绿。套件数由 40 增至 42 是因为 `test_rl_mail.sh` 与 `test_rl_wecom.sh`
+已纳入门禁（见 5.1）。
 
-> **计数口径**：`P1_SCRIPTS` 数组实际声明 **40** 个套件。运行器末尾的 `Passed/Failed/Skipped`
-> 汇总把 P0 也计入 `PASS_COUNT`，因此「41 个通过」是**全轮次总计**（1 个 P0 + 40 个 P1），
-> 而不是 P1 的套件数。仓库既有文档中的「41 个套件通过」沿用的是这个总计口径，
-> 容易被误读为 P1 有 41 个套件。`test_rl_mail.sh` 与 `test_rl_wecom.sh` **不在** `P1_SCRIPTS` 中，
-> 只能单独执行，即邮件与企业微信专项目前不在 P1 门禁覆盖范围内。
+> **计数口径**：`P1_SCRIPTS` 数组当前声明 **42** 个套件。运行器末尾的
+> `Passed/Failed/Skipped` 汇总把 P0 也计入 `PASS_COUNT`，因此「43 个通过」是
+> **全轮次总计**（1 个 P0 + 42 个 P1），不是 P1 的套件数。仓库既有文档中沿用的
+> 「41 个套件通过」是 2026-10-02 补入门禁前的口径（当时 P1 为 40），容易被误读为
+> P1 有 41 个套件。
 
-失败套件的子测试明细：
-
-| 套件 | 通过/总数 | 失败子测试 |
-| --- | --- | --- |
-| `test_event_spool.sh` | 7/11 | 4 —— 全部为 publisher 调用失败（P0-2） |
-| **合计** | **7/11** | **4** |
-
-修复 P0-1 之前的对照数据（`HEAD = 2563059`）：
+本轮无失败套件。历史对照数据（`HEAD = 2563059`，修复 P0-1 之前）：
 
 | 套件 | 通过/总数 | 失败子测试 |
 | --- | --- | --- |
 | `test_scripts.sh` | 7/19 | 12 —— 全部为「脚本不存在或不可执行」 |
-| `test_event_spool.sh` | 7/11 | 4 —— publisher 调用失败 |
+| `test_event_spool.sh` | 7/11 | 4 —— publisher 调用失败（P0-2） |
 | `test_snapshot.sh` | 24/25 | 1 —— 「采集器存在且可执行」 |
 | `test_rl_privilege.sh` | 18/19 | 1 —— wrapper 直接调用被拒 |
 | `test_remote_cli.sh` | 8/9 | 1 —— 「缺少可执行主机入口」 |
 | **合计** | **64/83** | **19** |
+
+### 4.1.1 本轮修复的两个真实缺陷
+
+| 缺陷 | 影响 | 提交 |
+| --- | --- | --- |
+| `user_core.sh` owner/group 误用 Linux 用户名规则 | 账户名大写开头时事件发布全失败，4 个子测试红 | `87a74da` |
+| `test_security_hardening.sh` 向仓库内 `logs/email.log` 追加 | 跨套件共享写入点，工作区无上限增长 | `b5c469d` |
 
 **静态门禁**（全部通过）：
 
@@ -179,6 +180,7 @@ P2  性能套件       按默认规则跳过（需 --include-perf）
 | ShellCheck error gate | `shellcheck --severity=error` | 通过 |
 | Web 安全门禁 | `bash scripts/check_web_security.sh web/backend/src` | `OK (no forbidden tokens)` |
 | 敏感文件扫描 | `bash scripts/check_sensitive_files.sh .` | `No sensitive tracked files detected` |
+| 入口可执行位 | CI `security` job（读 Git 索引 mode） | `checked=23, missing=0` |
 
 **P0-1 修复效果**：`abc6946` 恢复 `scripts/` 可执行位后，上述 4 个套件全部转绿（`test_scripts.sh` 19/19、`test_snapshot.sh` 25/25、`test_remote_cli.sh` 9/9、`test_rl_privilege.sh` 19/19，**72 个子测试**），P1 由 35/40 提升到 39/40。
 
@@ -220,10 +222,12 @@ P2  性能套件       按默认规则跳过（需 --include-perf）
 **修复（已提交 `abc6946`）**：`scripts/` 下 16 个入口恢复 100755，并补回 `lib/snapshot_core.sh`
 与 3 个测试文件（它们同时存在内容变更，未随 `74cdbc1` 一并恢复）。P1 由 35/40 提升到 39/40。
 
-**仍然遗留**：CI `security` job 的「Check file permissions」目前只输出 `Warning`，不阻断。
-同类问题仍可能再次静默发生，建议升级为阻断门禁。
+**后续加固（`a4762a5`）**：CI「Check file permissions」已由 Warning 收紧为阻断式，
+判据直接读 Git 索引 mode 而非 `[[ -x ]]`，并带 `checked -eq 0` 守卫防止门禁静默失效。
+为使其转绿，5 个根目录入口（`run.sh` / `user_manager.sh` / `tui_manager.sh` /
+`verify_fixes.sh` / `perf_test.sh`）的索引 mode 已补为 100755。
 
-### P0-2　`test_event_spool.sh` 依赖小写首字母的用户名
+### P0-2　`test_event_spool.sh` 依赖小写首字母的用户名 —— **已修复（`87a74da`）**
 
 **现象**：4 个子测试失败，publisher 一律返回非零。失败签名一致：正向用例因 publisher 返回非零而失败，反向用例因「publisher 恰好拒绝了所有输入」而通过。
 
@@ -233,12 +237,19 @@ P2  性能套件       按默认规则跳过（需 --include-perf）
 
 **为何 CI 不暴露**：GitHub Actions 以 `runner` 执行，全小写，故通过。只有本地账户名不满足该假设时才失败。
 
-**修复方向**（二选一）：
+**修复（已提交 `87a74da`）**：改产品侧。owner/group 是 POSIX 账户名而非本工具创建的
+Linux 用户名，POSIX 允许大写与点（`Users`、`staff.svc`），小写首字符约束过严。
+校验改为 `^[A-Za-z_][A-Za-z0-9_.-]*$`；真正要挡住的是会被 `chown`/`id`/`getent`
+误解析的输入——前导短横线、空白、shell 元字符、路径分隔符与 `..`，首字符限定为
+字母或下划线已全部覆盖。已用 28 个恶意输入与 12 个合法账户名逐一验证，无泄漏无误拒。
+测试同时新增前置条件断言：若账户名再次不满足规则，立即以明确信息失败，而不是产生
+4 个语义不明的 "publisher failed"。
 
-- 测试侧：改用固定的小写 owner/group，或在用例中按账户名跳过；
-- 产品侧：将 owner/group 校验放宽为 `^[A-Za-z_][A-Za-z0-9_.-]*$`。这两个值仅由 root 侧代码常量传入，放宽的实际安全收益有限，但能消除「测试结果依赖执行者用户名」这一隐患。
+> 未改动 `lib/smb_core.sh` 的 `_smb_valid_username`、`user_core.sh` 的
+> `_um_event_spool_username_is_valid` 与 `scripts/rl-chpasswd.sh` —— 它们校验的是
+> Linux 用户名，小写约束正确。
 
-### P0-3　`CHANGELOG.md` 把未发布的 v0.3.0 记为已发布
+### P0-3　`CHANGELOG.md` 把未发布的 v0.3.0 记为已发布 —— **已修复（`2563059`）**
 
 **现象**：`CHANGELOG.md` 顶部是空的 `## Unreleased`，其下直接是 `## 0.3.0 — 2026-09-25`，带完整变更条目与「Validation」段落，格式与已发布版本完全一致。
 
@@ -256,19 +267,40 @@ README 的表述（「GitHub 当前已发布版本仍为 `v0.2.0`；`v0.3.0` 候
 
 ### P1-1　文档时效性
 
-- `docs/ARCHITECTURE.md` 停留在 2026-08-31，未包含 Web 控制台。
 - `task_plan.md` 顶部标注「✅ 完成 | 最后更新: 2026-05-02」，正文却含 2026-05-07 起的进行中条目，状态自相矛盾。
 - `progress.md` 最新条目为 2026-07-21，落后于实际进度。
 - `.ai-memory/project_memory.md` 最新决策为 2026-08-31（SSH 只读基础），未覆盖 9 月的快照层与 Web 工作。
 - `plan.md` 标题与实际技术栈不符（见 3.1 节备注）。
 
-### P1-2　门禁覆盖缺口
+### P1-2　门禁覆盖缺口 —— **已修复（`a4762a5`）**
 
 `tests/test_rl_mail.sh` 与 `tests/test_rl_wecom.sh` **不在** `run_regression.sh` 的 `P1_SCRIPTS` 数组中，只能单独执行。而邮件队列（`lib/rl_mail_queue.sh`，本次改动 +217/−73，含认证加密与旧格式迁移）与企业微信投递正是本轮 v0.3.0 的改动重点。
 
-这意味着：**P1 全绿并不代表邮件与企业微信链路被门禁覆盖**。建议将这两个套件纳入 `P1_SCRIPTS`，或在 CI 中显式单独运行。
+**修复（已提交 `a4762a5`）**：两个套件已纳入 `P1_SCRIPTS`，P1 由 40 增至 42。两者均使用
+stub，不依赖外部网络或额外工具，并行执行下互不干扰（实测污染量为 0）。
 
-### P1-3　工作树卫生
+### P1-3　设计观察：`DATA_DIR` / `LOG_DIR` 无法通过环境覆盖
+
+`lib/config.sh:17-18` 对 `DATA_DIR`、`LOG_DIR` 是**无条件赋值**：
+
+```bash
+DATA_DIR="$SCRIPT_DIR/data"
+LOG_DIR="$SCRIPT_DIR/logs"
+```
+
+与 `lib/rl_mail_*.sh` 使用的 `${LOG_DIR:=...}` 回退写法不同。这意味着：
+
+- 任何通过环境变量重定向数据/日志目录的尝试都会被 `config.sh` 覆盖；
+- 库会把数据写进**源码树**，而不是安装位置或临时目录；
+- 逐套件隔离因此必须由测试自己显式覆盖变量，无法在 runner 层统一兜底
+  （`run_p1_one` 传的是 `USER_MANAGER_DATA_BASE`，与库读��� `DATA_DIR` 是两套不
+  互通的变量名）。
+
+本轮的 `test_security_hardening.sh` 泄漏正是这一设计放大的结果。**未擅自修改**：
+把无条件赋值改为 `${DATA_DIR:=...}` 会影响全部 42 个套件与生产部署路径，属于需要
+单独评估的契约变更。已用针对性修复（测试层重定向 `EMAIL_LOG_FILE`）解决当前问题。
+
+### P1-4　工作树卫生
 
 - 存在 15 个 `*.bak` 备份文件（含 `README.md.bak`、`tui_manager.sh.bak`、`lib/tui_core.sh.bak` 等）。`.gitignore:36` 已忽略 `*.bak`，均未跟踪，但持续干扰检索。
 - `data/` 含运行时产物（`created_users.txt`、`logs/`、`report/`、`secrets/`），已正确排除在版本控制外。
@@ -281,14 +313,18 @@ README 的表述（「GitHub 当前已发布版本仍为 `v0.2.0`；`v0.3.0` 候
 
 - 架构与安全边界完整，静态门禁全绿；
 - 双控制面 + 只读快照层实现齐备，静态检查无越权痕迹；
-- 29 个 Action 与 18 个独立 CLI 入口的功能面在 P1 回归中通过（39/40）；唯一失败为 P0-2，属环境相关的测试可移植性问题。
+- 29 个 Action 与 18 个独立 CLI 入口的功能面在 P1 回归中通过；P1 42 个套件全绿。
 
 ### 6.2 阻塞发布
 
-1. ~~**提交工作树**：落地 97 项改动并拆分提交。~~ **已完成**（6 个提交）；剩余动作是**推送到 origin 并打 `v0.3.0` tag**。
-2. ~~**修复 P0-1**：恢复 `scripts/*.sh` 可执行位。~~ **已完成（`abc6946`）**；剩余动作是把 CI 权限检查升级为阻断。
-3. ~~**修正 P0-3**：`CHANGELOG.md` 的版本状态表述。~~ **本次已完成**，剩余动作是提交后打 tag。
-4. **重新执行完整验证**：在干净克隆中跑通 `tests/run_regression.sh --level all`、Rust 门禁与前端构建，取得可发布的 CI 证据。
+1. ~~**提交工作树**：落地 97 项改动并拆分提交。~~ **已完成**；剩余动作是**推送到 origin 并打 `v0.3.0` tag**。
+2. ~~**修复 P0-1**：恢复入口可执行位。~~ **已完成**（`abc6946` + 根目录 5 个入口），CI 权限检查已阻断化（`a4762a5`）。
+3. ~~**修正 P0-2**：事件 spool 的 owner/group 校验。~~ **已完成（`87a74da`）**。
+4. ~~**修正 P0-3**：`CHANGELOG.md` 的版本状态表述。~~ **已完成（`2563059`）**。
+5. **重新执行完整验证**：本机 P1 已 42/42 全绿，但 Rust 门禁与前端构建本环境无法执行。推送后由 CI 取得可发布证据。
+
+**已解除的阻塞**：P0-1/P0-2/P0-3、门禁覆盖缺口、CI 权限门禁。剩余阻塞集中在环境相关的
+验收项（目标主机、真实 webhook、无障碍审计、Rust/前端工具链），见 6.3。
 
 ### 6.3 部署前必须完成（既有文档已记录，本次未验证）
 
