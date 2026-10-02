@@ -32,6 +32,22 @@ pub struct NotificationIn {
 
 /// 返回 true 表示插入，false 表示已处理过相同 event_id。
 pub fn insert(conn: &Connection, n: &NotificationIn) -> Result<bool, rusqlite::Error> {
+    let created_at = now_unix();
+    if conn.is_autocommit() {
+        let tx = conn.unchecked_transaction()?;
+        let inserted = insert_with_outbox(&tx, n, created_at)?;
+        tx.commit()?;
+        Ok(inserted)
+    } else {
+        insert_with_outbox(conn, n, created_at)
+    }
+}
+
+fn insert_with_outbox(
+    conn: &Connection,
+    n: &NotificationIn,
+    created_at: i64,
+) -> Result<bool, rusqlite::Error> {
     let inserted = conn.execute(
         "INSERT INTO notifications (id, event_type, severity, title, summary, target, source, event_id, read, created_at)\n         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9)\n         ON CONFLICT(event_id) WHERE event_id IS NOT NULL DO NOTHING",
         params![
@@ -43,9 +59,12 @@ pub fn insert(conn: &Connection, n: &NotificationIn) -> Result<bool, rusqlite::E
             n.target,
             n.source,
             n.event_id,
-            now_unix()
+            created_at
         ],
     )?;
+    if inserted > 0 {
+        super::web_event_delivery::enqueue_notification(conn, &n.event_type, &n.id, created_at)?;
+    }
     Ok(inserted > 0)
 }
 

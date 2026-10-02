@@ -3,10 +3,14 @@
 
 use rusqlite::Connection;
 
+pub mod event_spool;
 pub mod notification;
 pub mod snapshot;
+pub mod snapshot_observer;
 pub mod token;
 pub mod user;
+pub mod web_event_delivery;
+pub mod wecom;
 
 pub fn init_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
@@ -57,6 +61,21 @@ pub fn init_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
             version            INTEGER NOT NULL DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS wecom_deliveries (
+            id           TEXT PRIMARY KEY,
+            event_id     TEXT NOT NULL,
+            channel      TEXT NOT NULL DEFAULT 'wecom',
+            attempt      INTEGER NOT NULL,
+            started_at   INTEGER NOT NULL,
+            finished_at  INTEGER NOT NULL,
+            http_status  INTEGER,
+            remote_code  TEXT,
+            success      INTEGER NOT NULL DEFAULT 0,
+            error_class  TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_wecom_deliveries_started
+            ON wecom_deliveries(started_at DESC, id DESC);
+
         CREATE TABLE IF NOT EXISTS web_audit (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             request_id   TEXT,
@@ -92,5 +111,6 @@ pub fn init_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
             ON notifications(created_at DESC, id DESC) WHERE read = 0;
         "#,
     )?;
+    web_event_delivery::ensure_schema(conn)?;
     Ok(())
 }

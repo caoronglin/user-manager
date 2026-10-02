@@ -4,6 +4,8 @@
 
 use rusqlite::{params, Connection};
 
+use super::notification::{self, NotificationIn};
+
 #[derive(Clone, Debug)]
 pub struct TokenRow {
     pub id: String,
@@ -73,12 +75,29 @@ pub fn find_active_by_hash(conn: &Connection, token_hash: &str, now: i64) -> Opt
     .ok()
 }
 
-pub fn revoke_token(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
-    conn.execute(
-        "UPDATE api_tokens SET revoked = 1 WHERE id = ?1",
+pub fn revoke_token(conn: &mut Connection, id: &str) -> Result<bool, rusqlite::Error> {
+    let tx = conn.transaction()?;
+    let changed = tx.execute(
+        "UPDATE api_tokens SET revoked = 1 WHERE id = ?1 AND revoked = 0",
         params![id],
     )?;
-    Ok(())
+    if changed == 1 {
+        notification::insert(
+            &tx,
+            &NotificationIn {
+                id: uuid::Uuid::new_v4().to_string(),
+                event_type: "security.token_revoked".to_string(),
+                severity: "warning".to_string(),
+                title: "API token revoked".to_string(),
+                summary: "An API token was revoked.".to_string(),
+                target: None,
+                source: Some("web".to_string()),
+                event_id: Some(format!("security.token_revoked:{id}")),
+            },
+        )?;
+    }
+    tx.commit()?;
+    Ok(changed == 1)
 }
 
 fn now_unix() -> i64 {
