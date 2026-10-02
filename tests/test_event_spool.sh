@@ -35,6 +35,18 @@ test_dir="$TEST_TMPDIR/spool"
 test_owner="$(id -un)"
 test_group="$(id -gn)"
 
+# These cases need to chown the spool to the invoking account, so the producer
+# must accept the current user and primary group verbatim. If the validator ever
+# narrows again (it once required a lowercase first character, which broke on any
+# account such as "T25ronglin"), every positive case below would fail with an
+# opaque "publisher failed". Fail loudly on the precondition instead.
+if [[ ! "$test_owner" =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ || ! "$test_group" =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]]; then
+    printf '[FAIL] 测试前置条件：本账户名/组名不符合 producer 的 owner/group 规则\n' >&2
+    printf '        user=%q group=%q\n' "$test_owner" "$test_group" >&2
+    printf '        这不是业务缺陷，请检查 _um_publish_cli_user_event_spool_at 的校验规则\n' >&2
+    exit 1
+fi
+
 if _um_publish_cli_user_event_spool_at "$test_dir" alice user.created "$test_owner" "$test_group"; then
     event_file="$(find "$test_dir" -maxdepth 1 -type f -name '*.json' -print -quit)"
     if [[ -n "$event_file" ]] && jq -e --arg path "$event_file" '

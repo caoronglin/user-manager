@@ -395,7 +395,11 @@ _um_publish_cli_user_event_spool_at() {
         ;;
     *) return 1 ;;
     esac
-    [[ "$owner" =~ ^[a-z_][a-zA-Z0-9_-]*$ && "$group" =~ ^[a-z_][a-zA-Z0-9_-]*$ ]] || return 1
+    # owner/group 是 POSIX 账户名，不是本工具创建的 Linux 用户名：POSIX 允许
+    # 大写与点（如 Users、staff.svc），因此不能套用用户名的全小写规则。此处真正
+    # 要挡住的是会被 chown/id/getent 误解析的输入——前导短横线（选项注入）、
+    # 空白与 shell 元字符。首字符限定为字母或下划线即可覆盖上述全部。
+    [[ "$owner" =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ && "$group" =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]] || return 1
     _um_event_spool_path_has_no_symlinks "$spool_dir" || return 1
     [[ "$spool_dir" != / && -d "${spool_dir%/*}" ]] || return 1
     [[ ! -L "$spool_dir" ]] || return 1
