@@ -92,11 +92,15 @@ bash scripts/rl-hosts.sh probe group:gpu --dry-run
 bash run.sh
 ```
 
-## Web 只读快照层（P0）
+## Web 控制台与只读快照（P0–P7 实现状态）
 
-Web 控制台（规划中）不直接执行系统命令，而是由**可信采集器** `scripts/rl-snapshot.sh`
-生成脱敏、版本化、原子的只读 JSON 快照，供非特权 Web 服务 `umweb` 只读。Web 永不持有
-root/sudo/capability，也不执行任何系统写操作。
+Rust 后端提供 Web 用户/MFA/会话/token 管理、只读系统 API、审计/日志/报表、通知 inbox，以及企业微信配置、固定模板测试投递和投递历史。`web/frontend` 已有 React/Vite/Ant Design 页面，生产构建通过。系统状态快照还包含 Ubuntu、CPU/内存/压力、文件系统/inode、systemd、APT/reboot 和 AppArmor 的只读摘要。
+
+可信采集器 `scripts/rl-snapshot.sh` 生成脱敏、版本化、原子的 JSON 快照，非特权 Web 服务 `umweb` 只读这些数据。Web 不持有 root/sudo/capability，也不执行 Linux 系统写操作。
+
+CLI 用户创建/禁用事件由 root event spool 只读送入 inbox，并按配置投递企业微信；相同事件类型与用户五分钟内只投递一次。Web 仅在已存在账户的密码明确校验失败时写入 `security.login_failed` inbox 通知，同一五分钟时间桶全局合并，通知不含用户名、IP 或密码。首次成功撤销 API Token 写入 `security.token_revoked`；Web 每 30 秒观察经校验的 manifest，只在 fresh/stale 转换时写入 `snapshot.stale` 或 `snapshot.recovered`。缺失、无效、partial 或 unavailable 状态不触发误报。Web 原生事件由独立非特权 worker 按固定模板投递，不读取通知详情或个人信息；队列和投递限制见 [`docs/wecom-native-events.md`](docs/wecom-native-events.md)。真实 webhook 与目标机运行仍需部署验证。
+
+GitHub 当前已发布版本仍为 `v0.2.0`；`v0.3.0` 候选版已准备，版本变更后的 CI 正在核验，目标机与真实 WeCom 验收仍待部署前完成。全仓 Shell 回归在干净克隆中记录为 41 个套件通过、0 个失败、1 个可选性能项跳过；**当前工作树未提交，实测为 P0 通过 + P1 35 通过 / 5 失败**（运行器汇总 36 通过 / 5 失败 / 1 跳过），根因与修复见 [`docs/STATUS.md`](docs/STATUS.md)。Web 后端 65 项测试、严格 Clippy 与格式检查的记录同样来自干净克隆，本次未能复验。浏览器已验证密码与 TOTP 登录、主要数据页键盘交互及窄屏表格导航；完整 WCAG/读屏器审计和目标机服务与文件权限验证仍待完成。阶段详情和验证记录见 [`plan.md`](plan.md) 与 [`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)。
 
 ```bash
 # 手动生成全部快照到默认目录（部署时由 root + systemd timer 运行）
@@ -147,9 +151,35 @@ UM_TEST_JOBS=8 bash tests/run_regression.sh --level p1
 bash scripts/check_sensitive_files.sh .
 ```
 
+单独运行某个套件（绕过分级回归调度，便于定位单点失败）：
+
+```bash
+bash tests/test_snapshot.sh
+bash tests/test_event_spool.sh
+bash tests/test_security_hardening.sh
+```
+
+> **可执行位注意事项**：`tests/test_scripts.sh`、`tests/test_remote_cli.sh`、
+> `tests/test_snapshot.sh`、`tests/test_rl_privilege.sh` 会直接以可执行方式调用
+> `scripts/rl-*.sh`。若这些脚本丢失可执行位，上述套件会失败，表现为「不存在或不可执行」，
+> 而非真实的业务缺陷。排查前先确认：
+>
+> ```bash
+> chmod +x scripts/*.sh
+> ```
+>
+> CI 的 `Run Regression Suite` 步骤已对 `tests/*.sh` 执行 `chmod +x`。
+
 ## Documentation
 
+- 版本变更记录：[`CHANGELOG.md`](CHANGELOG.md)
+- **项目当前状态、Git 工作树现状、已核实的验证结果与已知问题**：[`docs/STATUS.md`](docs/STATUS.md)
+- Web 化实施规划与硬约束（0. 不可违反的架构约束）：[`plan.md`](plan.md)
 - 架构设计与功能说明：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- 架构、入口和回归说明：[`docs/DEEPWIKI.md`](docs/DEEPWIKI.md)
+- 模块分层、目录结构与回归说明：[`docs/DEEPWIKI.md`](docs/DEEPWIKI.md)
+- Web 非特权边界、快照 schema 与 secret 脱敏约定：[`docs/WEB_SECURITY_BOUNDARY.md`](docs/WEB_SECURITY_BOUNDARY.md)
+- 仓库审计与 P0–P7 阶段完成度：[`docs/M1_REPOSITORY_AUDIT.md`](docs/M1_REPOSITORY_AUDIT.md)
 - SSH 主机与 GPU 只读探测：[`docs/REMOTE_HOSTS.md`](docs/REMOTE_HOSTS.md)
+- WeCom 原生事件投递与隐私边界：[`docs/wecom-native-events.md`](docs/wecom-native-events.md)
+- Web 控制台（`umweb`）说明：[`web/README.md`](web/README.md)
 - PR 模板与提交流程：[`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)

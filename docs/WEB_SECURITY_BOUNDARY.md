@@ -65,8 +65,11 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+InaccessiblePaths=-/var/run/docker.sock -/run/docker.sock -/run/containerd/containerd.sock -/run/podman/podman.sock -/run/systemd/private -/run/dbus/system_bus_socket
 ReadWritePaths=/var/lib/user-manager-web
 ReadOnlyPaths=/var/lib/user-manager-web/snapshots
+ReadOnlyPaths=/var/lib/user-manager-web/events
 ```
 
 ---
@@ -154,9 +157,13 @@ mktemp 同目录临时文件 → 写入信封 → chmod 0640 → chown root:umwe
 ```text
 /var/lib/user-manager-web/snapshots    root:umweb  0750   （目录）
 /var/lib/user-manager-web/snapshots/*  root:umweb  0640   （快照，umweb 只读）
+/var/lib/user-manager-web/events       root:umweb  0750   （不可变 CLI/TUI 事件 spool，umweb 只读）
+/var/lib/user-manager-web/events/*.json root:umweb 0640   （单个事件文件，umweb 只读）
 ```
 
 - 采集器（root）写入并 `chown root:umweb`；`umweb` 只读，**不能写**快照。
+- `etc/tmpfiles.d/user-manager-web.conf` 在 Web 服务启动前创建 root-owned event spool；CLI/TUI 只追加原子 UUID JSON 文件，Web 校验并去重后写入自己的 SQLite，不删除或修改 spool 文件。
+- 服务单元显式屏蔽 Docker、containerd、Podman、systemd private 和 D-Bus 控制 socket。`AF_UNIX` 仍用于日志通道，但不能连接这些特权路径。
 - `SNAPSHOT_DIR` 默认 `/var/lib/user-manager-web/snapshots`，可用
   `USER_MANAGER_SNAPSHOT_DIR` 覆盖（开发/测试）。只需**文件名安全**的 kind
   （`^[a-z][a-z-]*$`），路径穿越 kind 直接被 `snapshot_atomic_install` 拒绝。
