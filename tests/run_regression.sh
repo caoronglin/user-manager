@@ -34,7 +34,9 @@ P1_SCRIPTS=(
     test_quota_core.sh
     test_report_core.sh
     test_resource_core.sh
+    test_rl_mail.sh
     test_rl_privilege.sh
+    test_rl_wecom.sh
     test_scripts.sh
     test_security_baseline_core.sh
     test_security_hardening.sh

@@ -160,12 +160,49 @@ jobs:
       
       - name: Check file permissions
         run: |
-          # Ensure scripts are executable
-          for file in *.sh lib/*.sh scripts/*.sh; do
-            if [[ -f "$file" ]] && [[ ! -x "$file" ]]; then
-              echo "Warning: $file is not executable"
+          # 阻断式门禁：入口脚本在 Git 索引中必须是 100755。
+          # 背景：scripts/ 下 16 个入口曾丢失可执行位（索引 mode 为 100644），
+          # 造成 4 个套件 18 个子测试失败；但本步骤原先只 echo Warning、不阻断，
+          # 缺陷因此长期潜伏。Warning 不具备门禁能力，这里收紧为 exit 1。
+          #
+          # 范围与判据：
+          #   - 遍历方式与本 job 语法检查、format job 的 shfmt 保持一致：
+          #     git ls-files -z + 跳过 Miniforge.sh（NUL 安全，不受路径空格影响）
+          #   - 只对入口脚本要求执行位：根目录 *.sh 与 scripts/*.sh
+          #   - lib/*.sh 是被 source 的库，设计上就是 644，不纳入本检查
+          #   - 判定直接读 Git 索引 mode，而不是 [[ -x ]]：
+          #     索引才是 checkout 后权限的唯一来源，且不受 umask/ACL/core.fileMode 影响，
+          #     能精准捕获“本地可执行但索引 100644、CI 上不可执行”的真实故障模式
+          set -uo pipefail
+          checked=0
+          missing=0
+          while IFS=$'\t' read -r -d '' meta path; do
+            [[ "$path" == 'Miniforge.sh' ]] && continue
+            # 入口脚本 = scripts/*.sh，或根目录的 *.sh（路径中不含 /）
+            case "$path" in
+            scripts/*.sh) ;;
+            */*) continue ;;
+            *.sh) ;;
+            *) continue ;;
+            esac
+            mode="${meta%% *}"
+            checked=$((checked + 1))
+            if [[ "$mode" != "100755" ]]; then
+              echo "::error::入口脚本缺少可执行位（索引 mode $mode）: $path"
+              missing=$((missing + 1))
             fi
-          done
+          done < <(git ls-files -s -z -- '*.sh')
+          # 遍历结果为空说明门禁本身失效（模式写错/仓库结构变化），必须报错而不是静默放过
+          if [[ "$checked" -eq 0 ]]; then
+            echo "::error::未匹配到任何入口脚本，权限门禁失效"
+            exit 1
+          fi
+          if [[ "$missing" -gt 0 ]]; then
+            echo "::error::$missing/$checked 个入口脚本在 Git 索引中不是 100755"
+            echo "修复方式: git update-index --chmod=+x <file>  然后提交该 mode 变更"
+            exit 1
+          fi
+          echo "== 权限门禁 summary: checked=$checked, missing=$missing =="
 
   # NOTE: shfmt 格式检查已从提示模式收紧为阻断模式。
   # 仓库已按 shfmt v3.12.0 默认格式完成全量格式化。
