@@ -174,6 +174,7 @@ bash tests/test_security_hardening.sh
 
 - 版本变更记录：[`CHANGELOG.md`](CHANGELOG.md)
 - **项目当前状态、Git 工作树现状、已核实的验证结果与已知问题**：[`docs/STATUS.md`](docs/STATUS.md)
+- **阶段/功能完成度矩阵与未完成项清单**：[`docs/PROGRESS.md`](docs/PROGRESS.md)
 - Web 化实施规划与硬约束（0. 不可违反的架构约束）：[`plan.md`](plan.md)
 - 架构设计与功能说明：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - 模块分层、目录结构与回归说明：[`docs/DEEPWIKI.md`](docs/DEEPWIKI.md)
