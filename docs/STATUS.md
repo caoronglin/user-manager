@@ -1,7 +1,8 @@
 # 项目现状（STATUS）
 
 > 核实时间：**2026-10-02**（CST）
-> 核实基线：`HEAD = 0f6bee5`（`fix(ui): harden ACL cache and render usage colors`，2026-09-23）
+> 核实基线：`HEAD = abc6946`（2026-10-02 整理提交后的 `main`）
+> 对比基线：`0f6bee5`（整理前的 `main`）
 > 核实环境：Linux 容器，工作目录 ext4，非 root（`uid=1001 T25ronglin`），无 Rust 工具链
 >
 > 本文记录**本次实际执行验证**得到的项目状态。凡未标注为「已核实」的内容，均来自仓库既有文档，**未经本次复核**。
@@ -15,14 +16,14 @@
 | --- | --- |
 | 架构与安全边界 | 完整，静态门禁全部通过 |
 | Bash 业务内核 / 只读快照层 / Web 控制台 | 三部分代码齐备 |
-| **Git 工作树** | **严重不干净：97 项未提交改动（80 修改 + 17 未跟踪）** |
-| **发布状态** | **v0.2.0 已发布；v0.3.0 的全部代码与文档从未提交、从未推送** |
-| **Shell 回归（本机实测）** | **P0 1/1 通过；P1 40 套件中 35 通过、5 失败；P2 按规则跳过** |
-| 失败根因 | **已全部定位**，均非业务逻辑缺陷（见第 5 节） |
+| **Git 工作树** | **已整理：97 项改动拆为 6 个提交落地，工作树干净** |
+| **发布状态** | **v0.2.0 已发布；v0.3.0 已提交到本地 `main`，尚未推送或打 tag** |
+| **Shell 回归（本机实测）** | **P0 1/1 通过；P1 40 套件中 39 通过、1 失败；P2 按规则跳过** |
+| 失败根因 | **已全部定位**，均非业务逻辑缺陷；P0-1 已修复（见第 5 节） |
 | 静态门禁（bash -n / ShellCheck / Web 安全门禁 / 敏感文件扫描） | 全部通过 |
 | Rust 后端 / 前端构建 | **本环境无法验证**（见 4.2 节） |
 
-**最需要处理的一件事**：P4–P7（v0.3.0）的全部实现、`CHANGELOG.md`、`docs/M1_REPOSITORY_AUDIT.md` 以及整个 `web/frontend/` 仍处于未提交状态，最新文件修改时间为 2026-09-25，已滞留约一周。任何一次 `git checkout` / `git clean` / `git stash` 丢失都会带走数周的工作量。
+**本轮已完成**：整理前工作树有 97 项未提交改动（最新文件修改时间停在 2026-09-25，滞留约一周），其中包含整个 `web/frontend/`、`lib/snapshot_ops.sh` 与 8 个 Web 后端模块，全部从未进入 Git 历史。现已拆为 6 个提交落地到本地 `main`（`74cdbc1`…`abc6946`），工作树干净。**尚未推送，也未打 `v0.3.0` tag。**
 
 ---
 
@@ -32,16 +33,29 @@
 
 | 项 | 值 |
 | --- | --- |
-| 当前分支 | `main`，领先 `origin/main` **1 个提交**（`0f6bee5`） |
+| 当前分支 | `main`，领先 `origin/main` **7 个提交** |
 | `origin/main` | `3855ec8`（`fix(user): show password when email is unavailable`） |
 | 远端 | `https://github.com/caoronglin/user-manager.git` |
 | 远端标签 | `v0.1.0`、`v0.2.0` —— **无 `v0.3.0`** |
 | 本地标签 | 仅 `v0.1.0`（`v0.2.0` 未拉到本地） |
 | stash | 无 |
+| 工作树 | 干净 |
+| 推送状态 | **未推送**，本地 7 个提交尚未到达 `origin/main` |
 
-### 2.2 未提交改动构成
+### 2.1.1 本轮提交的 7 个提交
 
-共 **97 项**：80 个已跟踪文件被修改，17 项未跟踪。
+| 提交 | 说明 |
+| --- | --- |
+| `74cdbc1` | `chore(tests)` 恢复 31 个测试套件可执行位 |
+| `6df7b18` | `feat(shell)` 只读快照层、Ubuntu Ops 采集、root event spool |
+| `9cc731d` | `feat(web)` WeCom 管理 API、快照新鲜度观察、React 控制台 |
+| `7b6427b` | `ci(deploy)` Rust/前端/文档/格式门禁与 umweb 部署边界加固 |
+| `2563059` | `docs` 项目现状、架构文档刷新与版本状态修正 |
+| `abc6946` | `fix(shell)` 恢复 `scripts/` 入口可执行位（修复 P0-1） |
+
+### 2.2 整理前的未提交改动构成（已全部提交）
+
+整理前工作树有 **97 项**未提交改动：80 个已跟踪文件被修改，17 项未跟踪。以下构成记录当时的状况，现已全部落地。
 
 **（a）49 个文件有实际内容变更**，主要分布：
 
@@ -125,11 +139,13 @@ Web 面板**永远不拥有、代理或间接获得** root / sudo / capability�
 
 ```text
 P0  verify_fixes   1/1 通过（内部检查 20/20）
-P1  40 套件        35 通过 / 5 失败
+P1  40 套件        39 通过 / 1 失败
 P2  性能套件       按默认规则跳过（需 --include-perf）
 
-运行器汇总（含 P0）：36 通过 / 5 失败 / 1 跳过
+运行器汇总（含 P0）：40 通过 / 1 失败 / 1 跳过
 ```
+
+唯一失败：`test_event_spool.sh`（7/11），根因为 P0-2，属环境相关的测试可移植性问题。
 
 > **计数口径**：`P1_SCRIPTS` 数组实际声明 **40** 个套件。运行器末尾的 `Passed/Failed/Skipped`
 > 汇总把 P0 也计入 `PASS_COUNT`，因此「41 个通过」是**全轮次总计**（1 个 P0 + 40 个 P1），
@@ -141,8 +157,15 @@ P2  性能套件       按默认规则跳过（需 --include-perf）
 
 | 套件 | 通过/总数 | 失败子测试 |
 | --- | --- | --- |
+| `test_event_spool.sh` | 7/11 | 4 —— 全部为 publisher 调用失败（P0-2） |
+| **合计** | **7/11** | **4** |
+
+修复 P0-1 之前的对照数据（`HEAD = 2563059`）：
+
+| 套件 | 通过/总数 | 失败子测试 |
+| --- | --- | --- |
 | `test_scripts.sh` | 7/19 | 12 —— 全部为「脚本不存在或不可执行」 |
-| `test_event_spool.sh` | 7/11 | 4 —— 全部为 publisher 调用失败 |
+| `test_event_spool.sh` | 7/11 | 4 —— publisher 调用失败 |
 | `test_snapshot.sh` | 24/25 | 1 —— 「采集器存在且可执行」 |
 | `test_rl_privilege.sh` | 18/19 | 1 —— wrapper 直接调用被拒 |
 | `test_remote_cli.sh` | 8/9 | 1 —— 「缺少可执行主机入口」 |
@@ -157,7 +180,13 @@ P2  性能套件       按默认规则跳过（需 --include-perf）
 | Web 安全门禁 | `bash scripts/check_web_security.sh web/backend/src` | `OK (no forbidden tokens)` |
 | 敏感文件扫描 | `bash scripts/check_sensitive_files.sh .` | `No sensitive tracked files detected` |
 
-**对照修复验证**：执行 `chmod +x scripts/*.sh` 后重跑，`test_scripts.sh` 19/19、`test_snapshot.sh` 25/25、`test_remote_cli.sh` 9/9、`test_rl_privilege.sh` 19/19 —— **72 个子测试全部转绿**。验证后已恢复原有文件权限，工作树未留下改动。
+**P0-1 修复效果**：`abc6946` 恢复 `scripts/` 可执行位后，上述 4 个套件全部转绿（`test_scripts.sh` 19/19、`test_snapshot.sh` 25/25、`test_remote_cli.sh` 9/9、`test_rl_privilege.sh` 19/19，**72 个子测试**），P1 由 35/40 提升到 39/40。
+
+> **并行执行下的偶发失败**：修复后的首次完整回归出现 `test_web_security_gate.sh` 与
+> `test_ubuntu_maintenance_core.sh` 两例失败，但两者单独运行均为全绿，第二次完整回归
+> 也未复现。其中 `test_ubuntu_maintenance_core.sh` 本轮没有任何改动。这说明 P1 默认的
+> 4 路并行在本机负载下存在偶发抖动，**单次回归结果不足以判定**，定位问题时应对失败套件
+> 单独重跑。
 
 ### 4.2 本环境无法验证的部分
 
@@ -175,7 +204,7 @@ P2  性能套件       按默认规则跳过（需 --include-perf）
 
 ## 5. 已知问题
 
-### P0-1　`scripts/*.sh` 丢失可执行位（导致 4 个套件、18 个子测试失败）
+### P0-1　`scripts/*.sh` 丢失可执行位 —— **已修复（`abc6946`）**
 
 **现象**：`test_scripts.sh` 12/19 失败，报「`scripts/rl-xxx.sh` 不存在或不可执行」。`test_snapshot.sh`、`test_remote_cli.sh`、`test_rl_privilege.sh` 各 1 例失败，同源。
 
@@ -188,14 +217,11 @@ P2  性能套件       按默认规则跳过（需 --include-perf）
 
 **影响**：这些脚本**无法被直接执行**，只能 `bash scripts/rl-xxx.sh` 调用。CI 的「Check file permissions」目前只输出 `Warning`，不阻断，因此该问题会长期潜伏。
 
-**修复**：
+**修复（已提交 `abc6946`）**：`scripts/` 下 16 个入口恢复 100755，并补回 `lib/snapshot_core.sh`
+与 3 个测试文件（它们同时存在内容变更，未随 `74cdbc1` 一并恢复）。P1 由 35/40 提升到 39/40。
 
-```bash
-chmod +x scripts/*.sh                         # 工作树
-git update-index --chmod=+x scripts/rl-*.sh   # 索引，纳入提交
-```
-
-并建议将 CI `security` job 的权限检查由 Warning 升级为阻断。
+**仍然遗留**：CI `security` job 的「Check file permissions」目前只输出 `Warning`，不阻断。
+同类问题仍可能再次静默发生，建议升级为阻断门禁。
 
 ### P0-2　`test_event_spool.sh` 依赖小写首字母的用户名
 
@@ -255,12 +281,12 @@ README 的表述（「GitHub 当前已发布版本仍为 `v0.2.0`；`v0.3.0` 候
 
 - 架构与安全边界完整，静态门禁全绿；
 - 双控制面 + 只读快照层实现齐备，静态检查无越权痕迹；
-- 29 个 Action 与 18 个独立 CLI 入口的功能面在 P1 回归中通过（除 P0-1 / P0-2 所述问题外）。
+- 29 个 Action 与 18 个独立 CLI 入口的功能面在 P1 回归中通过（39/40）；唯一失败为 P0-2，属环境相关的测试可移植性问题。
 
 ### 6.2 阻塞发布
 
-1. **提交工作树**（P0-3 的前置）：先落地 97 项改动并拆分合理提交，这是其余所有事项的前提。
-2. **修复 P0-1**：恢复 `scripts/*.sh` 可执行位，并把 CI 权限检查升级为阻断。
+1. ~~**提交工作树**：落地 97 项改动并拆分提交。~~ **已完成**（6 个提交）；剩余动作是**推送到 origin 并打 `v0.3.0` tag**。
+2. ~~**修复 P0-1**：恢复 `scripts/*.sh` 可执行位。~~ **已完成（`abc6946`）**；剩余动作是把 CI 权限检查升级为阻断。
 3. ~~**修正 P0-3**：`CHANGELOG.md` 的版本状态表述。~~ **本次已完成**，剩余动作是提交后打 tag。
 4. **重新执行完整验证**：在干净克隆中跑通 `tests/run_regression.sh --level all`、Rust 门禁与前端构建，取得可发布的 CI 证据。
 
