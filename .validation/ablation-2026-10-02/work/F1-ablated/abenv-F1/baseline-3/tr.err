@@ -1,0 +1,181 @@
++ local spool_dir=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool username=abuser event_type=user.created
++ local owner=T25ronglin group=T
++ local owner_uid group_gid event_id created_at summary severity target tmp old_umask old_event
++ _um_event_spool_username_is_valid abuser
++ local username=abuser
++ [[ 6 -le 32 ]]
++ [[ abuser =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]
++ case "$event_type" in
++ summary='User account created.'
++ severity=info
++ [[ T25ronglin =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]]
++ [[ T =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]]
++ _um_event_spool_path_has_no_symlinks /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ local path=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool rest component current=/
++ [[ /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool == /* ]]
++ [[ /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool != *
+* ]]
++ [[ /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool != ** ]]
++ [[ /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool != *//* ]]
++ [[ /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool != */ ]]
++ rest=mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ [[ -n mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool == */* ]]
++ component=mnt
++ rest=data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ [[ -n mnt ]]
++ [[ mnt != . ]]
++ [[ mnt != .. ]]
++ current=/mnt
++ [[ ! -L /mnt ]]
++ [[ -n data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool == */* ]]
++ component=data02
++ rest=T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ [[ -n data02 ]]
++ [[ data02 != . ]]
++ [[ data02 != .. ]]
++ current=/mnt/data02
++ [[ ! -L /mnt/data02 ]]
++ [[ -n T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool == */* ]]
++ component=T25ronglin
++ rest=code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ [[ -n T25ronglin ]]
++ [[ T25ronglin != . ]]
++ [[ T25ronglin != .. ]]
++ current=/mnt/data02/T25ronglin
++ [[ ! -L /mnt/data02/T25ronglin ]]
++ [[ -n code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool == */* ]]
++ component=code
++ rest=group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ [[ -n code ]]
++ [[ code != . ]]
++ [[ code != .. ]]
++ current=/mnt/data02/T25ronglin/code
++ [[ ! -L /mnt/data02/T25ronglin/code ]]
++ [[ -n group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool == */* ]]
++ component=group
++ rest=user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ [[ -n group ]]
++ [[ group != . ]]
++ [[ group != .. ]]
++ current=/mnt/data02/T25ronglin/code/group
++ [[ ! -L /mnt/data02/T25ronglin/code/group ]]
++ [[ -n user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool == */* ]]
++ component=user
++ rest=.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ [[ -n user ]]
++ [[ user != . ]]
++ [[ user != .. ]]
++ current=/mnt/data02/T25ronglin/code/group/user
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user ]]
++ [[ -n .validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ .validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool == */* ]]
++ component=.validation
++ rest=ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ [[ -n .validation ]]
++ [[ .validation != . ]]
++ [[ .validation != .. ]]
++ current=/mnt/data02/T25ronglin/code/group/user/.validation
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user/.validation ]]
++ [[ -n ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ ablation-2026-10-02/work/_baseline/abenv-F1/spool == */* ]]
++ component=ablation-2026-10-02
++ rest=work/_baseline/abenv-F1/spool
++ [[ -n ablation-2026-10-02 ]]
++ [[ ablation-2026-10-02 != . ]]
++ [[ ablation-2026-10-02 != .. ]]
++ current=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02 ]]
++ [[ -n work/_baseline/abenv-F1/spool ]]
++ [[ work/_baseline/abenv-F1/spool == */* ]]
++ component=work
++ rest=_baseline/abenv-F1/spool
++ [[ -n work ]]
++ [[ work != . ]]
++ [[ work != .. ]]
++ current=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work ]]
++ [[ -n _baseline/abenv-F1/spool ]]
++ [[ _baseline/abenv-F1/spool == */* ]]
++ component=_baseline
++ rest=abenv-F1/spool
++ [[ -n _baseline ]]
++ [[ _baseline != . ]]
++ [[ _baseline != .. ]]
++ current=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline ]]
++ [[ -n abenv-F1/spool ]]
++ [[ abenv-F1/spool == */* ]]
++ component=abenv-F1
++ rest=spool
++ [[ -n abenv-F1 ]]
++ [[ abenv-F1 != . ]]
++ [[ abenv-F1 != .. ]]
++ current=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1 ]]
++ [[ -n spool ]]
++ [[ spool == */* ]]
++ component=spool
++ rest=
++ [[ -n spool ]]
++ [[ spool != . ]]
++ [[ spool != .. ]]
++ current=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ -n '' ]]
++ return 0
++ [[ /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool != / ]]
++ [[ -d /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1 ]]
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
+++ id -u T25ronglin
++ owner_uid=1001
+++ getent group T
+++ cut -d: -f3
++ group_gid=1003
++ [[ 1003 =~ ^[0-9]+$ ]]
++ [[ -e /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ -d /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool ]]
++ chown -- T25ronglin:T /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ chmod 0750 -- /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
+++ stat -c %u:%g:%a -- /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ [[ 1001:1003:750 == 1001\:1003\:750 ]]
+++ _um_event_spool_new_uuid
+++ [[ -r /proc/sys/kernel/random/uuid ]]
+++ local event_id
+++ event_id=85527a11-1944-43f9-b996-e9bfa725fceb
+++ [[ 85527a11-1944-43f9-b996-e9bfa725fceb =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+++ printf '%s\n' 85527a11-1944-43f9-b996-e9bfa725fceb
++ event_id=85527a11-1944-43f9-b996-e9bfa725fceb
+++ date -u +%Y-%m-%dT%H:%M:%SZ
++ created_at=2026-10-02T14:04:01Z
++ [[ 2026-10-02T14:04:01Z =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
++ target=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/85527a11-1944-43f9-b996-e9bfa725fceb.json
++ [[ ! -e /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/85527a11-1944-43f9-b996-e9bfa725fceb.json ]]
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/85527a11-1944-43f9-b996-e9bfa725fceb.json ]]
+++ umask
++ old_umask=0022
++ umask 077
+++ mktemp -- /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/.event.XXXXXXXXXX
++ tmp=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/.event.ZBKZb8lVNV
++ jq -n --arg event_id 85527a11-1944-43f9-b996-e9bfa725fceb --arg event_type user.created --arg created_at 2026-10-02T14:04:01Z --arg severity info --arg summary 'User account created.' --arg username abuser '{schema_version:1,event_id:$event_id,event_type:$event_type,created_at:$created_at,source:"cli",severity:$severity,summary:$summary,data:{username:$username}}'
++ chown -- T25ronglin:T /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/.event.ZBKZb8lVNV
++ chmod 0640 -- /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/.event.ZBKZb8lVNV
+++ stat -c %u:%g:%a -- /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/.event.ZBKZb8lVNV
++ [[ 1001:1003:640 == 1001\:1003\:640 ]]
++ mv -Tn -- /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/.event.ZBKZb8lVNV /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/85527a11-1944-43f9-b996-e9bfa725fceb.json
++ [[ -e /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/.event.ZBKZb8lVNV ]]
++ [[ -L /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/.event.ZBKZb8lVNV ]]
++ umask 0022
++ [[ -f /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/85527a11-1944-43f9-b996-e9bfa725fceb.json ]]
++ [[ ! -L /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool/85527a11-1944-43f9-b996-e9bfa725fceb.json ]]
++ IFS=
++ read -r -d '' old_event
+++ find -P /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool -mindepth 1 -maxdepth 1 -type f -name '*.json' -mtime +30 -print0
+++ head -z -n 16
++ return 0

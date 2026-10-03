@@ -1,0 +1,1 @@
+snapshot: 快照目录包含符号链接或路径无效: /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-C1/link

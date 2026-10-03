@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "C2-INJECTED: mktemp unavailable" >&2
+exit 1

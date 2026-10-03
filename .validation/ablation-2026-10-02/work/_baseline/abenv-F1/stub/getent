@@ -1,0 +1,3 @@
+#!/bin/bash
+printf 'getent %s\n' "$*" >> "$IDLOG"
+exec /usr/bin/getent "$@"

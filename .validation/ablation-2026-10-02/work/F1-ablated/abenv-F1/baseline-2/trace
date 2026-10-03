@@ -1,0 +1,11 @@
++ set -uo pipefail
++ D=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline
++ O=root/../root
++ G=root/../root
++ T=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/baseline-2/tr
++ source /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/lib/common.sh
++ source /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/lib/user_core.sh
++ S=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ mkdir -p /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool
++ _um_publish_cli_user_event_spool_at /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool abuser user.created root/../root root/../root
++ echo rc=1

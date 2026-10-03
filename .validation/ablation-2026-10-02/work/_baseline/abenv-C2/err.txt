@@ -1,0 +1,2 @@
+C2-INJECTED: mktemp unavailable
+snapshot: 无法创建临时快照文件: /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-C2/snap

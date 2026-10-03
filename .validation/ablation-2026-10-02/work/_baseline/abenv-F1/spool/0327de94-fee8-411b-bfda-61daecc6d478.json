@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "event_id": "0327de94-fee8-411b-bfda-61daecc6d478",
+  "event_type": "user.created",
+  "created_at": "2026-10-02T14:04:38Z",
+  "source": "cli",
+  "severity": "info",
+  "summary": "User account created.",
+  "data": {
+    "username": "abuser"
+  }
+}

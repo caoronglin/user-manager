@@ -1,0 +1,3 @@
+#!/bin/bash
+printf 'chmod %s\n' "$*" >> "$AB_STUB_LOG"
+exit 0

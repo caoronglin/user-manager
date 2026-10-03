@@ -1,0 +1,2 @@
+snapshot: 快照目录不是安全目录: /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/C1-ablated/abenv-C1/link
+snapshot: 无法创建快照目录: /mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/C1-ablated/abenv-C1/link

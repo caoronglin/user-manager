@@ -1,0 +1,12 @@
++ local spool_dir=/mnt/data02/T25ronglin/code/group/user/.validation/ablation-2026-10-02/work/_baseline/abenv-F1/spool username=abuser event_type=user.created
++ local owner=root/../root group=root/../root
++ local owner_uid group_gid event_id created_at summary severity target tmp old_umask old_event
++ _um_event_spool_username_is_valid abuser
++ local username=abuser
++ [[ 6 -le 32 ]]
++ [[ abuser =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]
++ case "$event_type" in
++ summary='User account created.'
++ severity=info
++ [[ root/../root =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]]
++ return 1

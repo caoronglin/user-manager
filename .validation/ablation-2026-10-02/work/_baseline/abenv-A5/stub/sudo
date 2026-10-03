@@ -1,0 +1,4 @@
+#!/bin/bash
+printf 'sudo %s\n' "$*" >> "$AB_STUB_LOG"
+[[ "${1:-}" == "-n" ]] && shift
+exec "$@"

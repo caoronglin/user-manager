@@ -1,0 +1,2 @@
+mv: 'manifest.json' 与 'manifest.json' 为同一文件
+snapshot: 原子安装快照失败: manifest.json

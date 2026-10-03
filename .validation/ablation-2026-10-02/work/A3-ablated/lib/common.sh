@@ -1,0 +1,663 @@
+#!/bin/bash
+# common.sh - 通用工具函数库 v0.2.1
+# 提供消息输出、锁机制、输入验证、UI组件等基础功能
+
+# === 颜色定义 ===
+# shellcheck disable=SC2034
+C_RESET='\033[0m'
+C_BOLD='\033[1m'
+C_DIM='\033[2m'
+C_RED='\033[0;31m'
+C_GREEN='\033[0;32m'
+C_WHITE='\033[1;37m'
+C_BRED='\033[1;31m'
+C_BGREEN='\033[1;32m'
+C_BG_RED='\033[41m'
+C_BG_GREEN='\033[42m'
+C_BG_YELLOW='\033[43m'
+
+# 兼容旧变量名
+# shellcheck disable=SC2034
+Red="$C_RED"
+Green="$C_GREEN"
+Color_Off="$C_RESET"
+
+# === 语义化配色 ===
+# 根据终端能力自动选择 256 色或标准色
+# shellcheck disable=SC2034
+if [[ "${COLORTERM:-}" =~ ^(truecolor|24bit)$ ]] || [[ "${TERM:-}" == *"256color"* ]]; then
+    C_PRIMARY='\033[38;5;40m'      # 绿色 — 主交互色
+    C_ACCENT='\033[38;5;46m'       # 亮绿色 — 强调
+    C_MENU_NUMBER='\033[38;5;46m'  # 菜单编号 — 亮绿
+    C_MENU_LABEL='\033[38;5;120m'  # 菜单文本 — 柔和浅绿
+    C_MENU_SUBMENU='\033[38;5;83m' # 子菜单入口 — 中亮绿
+    C_MENU_EXIT='\033[38;5;71m'    # 返回/退出 — 暗绿
+    C_MUTED='\033[38;5;243m'       # 中灰 — 次要信息
+    C_SUBTLE='\033[38;5;239m'      # 暗灰 — 边框
+else
+    C_PRIMARY="$C_GREEN"
+    C_ACCENT="$C_BOLD"
+    C_MENU_NUMBER="$C_BGREEN"
+    C_MENU_LABEL="$C_GREEN"
+    C_MENU_SUBMENU="$C_BGREEN"
+    C_MENU_EXIT="$C_GREEN"
+    C_MUTED="$C_DIM"
+    C_SUBTLE="$C_DIM"
+fi
+
+# 菜单布局常量
+MENU_WIDTH=54
+
+# === 消息函数 ===
+msg() { echo -e "$*"; }
+msg_info() { echo -e " ${C_GREEN}●${C_RESET} $*"; }
+msg_warn() { echo -e " ${C_RED}▲${C_RESET} $*"; }
+msg_err() { echo -e " ${C_BRED}✗${C_RESET} $*" >&2; }
+msg_ok() { echo -e " ${C_BGREEN}✓${C_RESET} $*"; }
+msg_step() { echo -e " ${C_GREEN}→${C_RESET} $*"; }
+msg_debug() {
+    if [[ "${DEBUG:-0}" == "1" ]]; then
+        echo -e " ${C_DIM}[DEBUG] $*${C_RESET}" >&2
+    fi
+}
+
+# 带上下文的错误提示
+msg_err_ctx() {
+    local func="${1:-}" detail="${2:-}"
+    if [[ -n "$func" ]]; then
+        echo -e " ${C_BRED}✗${C_RESET} ${C_DIM}[$func]${C_RESET} $detail" >&2
+    else
+        echo -e " ${C_BRED}✗${C_RESET} $detail" >&2
+    fi
+}
+
+# === 权限辅助函数 ===
+
+# 检查当前是否以 root 身份运行
+is_root() { [[ "$(id -u)" -eq 0 ]]; }
+
+# 通用特权命令执行（用于白名单外的命令）
+# 用法: run_privileged command [args...]
+run_privileged() {
+    local cmd="$1"
+
+    if [[ $# -eq 0 ]]; then
+        msg_err "run_privileged: 未指定命令"
+        return 1
+    fi
+
+    if [[ "$cmd" == -* ]]; then
+        msg_err "run_privileged: 拒绝以选项作为命令名: $cmd"
+        return 1
+    fi
+
+
+    if is_root; then
+        "$@"
+    elif command -v sudo &>/dev/null; then
+        sudo "$@"
+    else
+        msg_err "无法提升权限: 非 root 且 sudo 不可用"
+        return 1
+    fi
+}
+
+run_as_user() {
+    local username="$1"
+    shift
+
+    if [[ -z "$username" ]]; then
+        msg_err "run_as_user: 用户名不能为空"
+        return 1
+    fi
+
+    if [[ $# -eq 0 ]]; then
+        msg_err "run_as_user: 未指定命令"
+        return 1
+    fi
+
+    if ! id "$username" &>/dev/null; then
+        msg_err "run_as_user: 用户不存在: $username"
+        return 1
+    fi
+
+    if command -v sudo &>/dev/null; then
+        if [[ "${SUDO_NONINTERACTIVE:-0}" == "1" ]]; then
+            sudo -n -u "$username" "$@"
+        else
+            sudo -u "$username" "$@"
+        fi
+    elif is_root && command -v runuser &>/dev/null; then
+        runuser -u "$username" -- "$@"
+    else
+        msg_err "run_as_user: 无法切换到用户 $username 执行命令"
+        return 1
+    fi
+}
+
+# === UI 组件 ===
+
+draw_line() {
+    local width="${1:-$MENU_WIDTH}"
+    local line=""
+    local i
+    for ((i = 0; i < width; i++)); do line+="─"; done
+    printf "  ${C_SUBTLE}%s${C_RESET}\n" "$line"
+}
+
+draw_header() {
+    local title="$1"
+    echo ""
+    local hline=""
+    local _i
+    for ((_i = 0; _i < MENU_WIDTH; _i++)); do hline+="─"; done
+    printf "  ${C_SUBTLE}%s${C_RESET}\n" "$hline"
+    echo -e "  ${C_PRIMARY}■${C_RESET} ${C_BOLD}${C_WHITE}${title}${C_RESET}"
+    printf "  ${C_SUBTLE}%s${C_RESET}\n" "$hline"
+}
+
+draw_menu_item() {
+    local num="$1" label="$2" icon="${3:-}"
+    if [[ -n "$icon" ]]; then
+        printf "  ${C_MUTED}[${C_RESET}${C_MENU_NUMBER}%2s${C_RESET}${C_MUTED}]${C_RESET}  ${C_MENU_LABEL}%s %s${C_RESET}\n" "$num" "$icon" "$label"
+    else
+        printf "  ${C_MUTED}[${C_RESET}${C_MENU_NUMBER}%2s${C_RESET}${C_MUTED}]${C_RESET}  ${C_MENU_LABEL}%s${C_RESET}\n" "$num" "$label"
+    fi
+}
+
+draw_menu_submenu() {
+    local num="$1" label="$2"
+    printf "  ${C_MUTED}[${C_RESET}${C_MENU_NUMBER}%2s${C_RESET}${C_MUTED}]${C_RESET}  ${C_BOLD}${C_MENU_SUBMENU}%s${C_RESET} ${C_ACCENT}›${C_RESET}\n" "$num" "$label"
+}
+
+draw_menu_exit() {
+    local label="${1:-返回}"
+    printf "\n  ${C_MUTED}[${C_RESET}${C_MENU_EXIT}%2s${C_RESET}${C_MUTED}]${C_RESET}  ${C_MENU_EXIT}%s${C_RESET}\n" "0" "$label"
+}
+
+draw_prompt() {
+    echo ""
+    echo -ne "  ${C_PRIMARY}❯${C_RESET} "
+}
+
+pause_continue() {
+    echo ""
+    read -rsp $'\n  按回车键继续...' -n1
+}
+
+# 使用率颜色
+get_usage_color() {
+    local pct="$1"
+    if ((pct >= 90)); then
+        echo "$C_BRED"
+    elif ((pct >= 70)); then
+        echo "$C_RED"
+    elif ((pct >= 50)); then
+        echo "$C_GREEN"
+    else
+        echo "$C_BGREEN"
+    fi
+}
+
+# 使用率条
+draw_usage_bar() {
+    local pct="$1" width="${2:-20}"
+    local color
+    color=$(get_usage_color "$pct")
+    local filled=$((pct * width / 100))
+    [[ $filled -gt $width ]] && filled=$width
+    local empty=$((width - filled))
+    local fill_char="#" empty_char="-"
+    printf '%b' "$color"
+    printf '%*s' "$filled" '' | tr ' ' "$fill_char"
+    printf '%b' "$C_DIM"
+    printf '%*s' "$empty" '' | tr ' ' "$empty_char"
+    printf '%b %b%3d%%%b' "$C_RESET" "$color" "$pct" "$C_RESET"
+}
+
+# 确认提示
+confirm_action() {
+    local prompt="${1:-确认继续？}" default="${2:-N}"
+    local hint
+    [[ "$default" == "Y" ]] && hint="Y/n" || hint="y/N"
+    read -r -p "$(echo -e " ${C_ACCENT}?${C_RESET} ${prompt} ${C_MUTED}(${hint})${C_RESET}: ")" answer
+    answer="${answer:-$default}"
+    [[ "$answer" =~ ^[Yy]$ ]]
+}
+
+# 信息卡片
+draw_info_card() {
+    local label="$1" value="$2" color="${3:-$C_BOLD}"
+    printf "  ${C_MUTED}%-16s${C_RESET} ${color}%s${C_RESET}\n" "$label" "$value"
+}
+
+# === 锁机制（已拆分到 lock_core.sh） ===
+# 兜底路径（直接 source common.sh 时 LIB_DIR 可能未定义）
+if [[ -z "${LIB_DIR:-}" ]]; then
+    LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+# shellcheck disable=SC1091
+source "$LIB_DIR/lock_core.sh"
+
+# === 用户列表缓存机制 ===
+# shellcheck disable=SC2034
+USERNAMES_CACHE=""
+USERNAMES_CACHE_TIME=0
+USERNAMES_CACHE_TTL=300 # 5 分钟 TTL
+
+# 清除用户名缓存
+clear_usernames_cache() {
+    USERNAMES_CACHE=""
+    USERNAMES_CACHE_TIME=0
+}
+
+# === 输入验证函数 ===
+USERNAME_PATTERN='^[a-zA-Z_][a-zA-Z0-9_-]{0,30}$'
+
+validate_username() {
+    local username="$1"
+    [[ "$username" =~ $USERNAME_PATTERN ]] && return 0
+    msg_err "用户名 '$username' 无效 (字母/数字/下划线/连字符，以字母或下划线开头)"
+    return 1
+}
+
+validate_cpu_quota() {
+    local value="$1"
+    [[ -z "$value" ]] && return 1
+    [[ "$value" =~ ^[0-9]+(\.[0-9]+)?%$ ]] && return 0
+    msg_err "CPU 配额格式无效，应形如 50% 或 200%"
+    return 1
+}
+
+validate_memory_limit() {
+    local value="$1"
+    [[ -z "$value" ]] && return 1
+    [[ "$value" =~ ^[0-9]+(\.[0-9]+)?[KMGTP]$ ]] && return 0
+    msg_err "内存配额格式无效，应形如 512M、32G、1T"
+    return 1
+}
+
+# === 工具函数 ===
+get_user_home() { getent passwd "$1" | cut -d: -f6; }
+
+parse_quota_input() {
+    local input="$1"
+    if [[ "$input" =~ ^([0-9]+\.?[0-9]*)([GT])?$ ]]; then
+        local num="${BASH_REMATCH[1]}" unit="${BASH_REMATCH[2]}"
+        case "$unit" in
+        G) awk "BEGIN {printf \"%.0f\", $num * 1024^3}" ;; T) awk "BEGIN {printf \"%.0f\", $num * 1024^4}" ;;
+        *) awk "BEGIN {printf \"%.0f\", $num * 1024^3}" ;; esac
+        return 0
+    else return 1; fi
+}
+
+bytes_to_gb() {
+    local bytes="$1"
+    # 验证输入为数字
+    [[ -z "$bytes" ]] && {
+        echo "0.00"
+        return 1
+    }
+    [[ "$bytes" =~ ^[0-9]+$ ]] || {
+        echo "0.00"
+        return 1
+    }
+    awk "BEGIN {printf \"%.2f\", $bytes / 1073741824}"
+}
+
+bytes_to_human() {
+    local b="$1"
+    # 验证输入
+    [[ -z "$b" ]] && {
+        echo "0 B"
+        return 1
+    }
+    [[ "$b" =~ ^[0-9]+$ ]] || {
+        echo "0 B"
+        return 1
+    }
+    if ((b >= 1099511627776)); then
+        awk "BEGIN {printf \"%.1f TB\", $b / 1099511627776}"
+    elif ((b >= 1073741824)); then
+        awk "BEGIN {printf \"%.1f GB\", $b / 1073741824}"
+    elif ((b >= 1048576)); then
+        awk "BEGIN {printf \"%.1f MB\", $b / 1048576}"
+    else awk "BEGIN {printf \"%.1f KB\", $b / 1024}"; fi
+}
+
+remove_file_entry() {
+    local file="$1" pattern="$2"
+    [[ -f "$file" ]] || return 0
+    local tmp
+    tmp=$(mktemp) || {
+        msg_err "无法创建临时文件"
+        return 1
+    }
+    grep -v "$pattern" "$file" >"$tmp" || true
+    mv "$tmp" "$file" || {
+        rm -f "$tmp"
+        return 1
+    }
+}
+
+check_dependencies() {
+    local missing=() required=(awk sed grep id useradd usermod userdel passwd setquota repquota)
+    for cmd in "${required[@]}"; do
+        command -v "$cmd" &>/dev/null || missing+=("$cmd")
+    done
+    if ((${#missing[@]} > 0)); then
+        msg_err "缺少必要命令: ${missing[*]}"
+        return 1
+    fi
+    return 0
+}
+
+# ============================================================
+# 鲁棒性增强
+# ============================================================
+
+# 全局 trap 处理器：清理锁文件和临时文件
+setup_trap_handler() {
+    trap '_cleanup_on_exit' EXIT
+    trap '_cleanup_on_error $LINENO' ERR
+    trap '_cleanup_on_signal' INT TERM HUP
+}
+
+_cleanup_on_exit() {
+    release_lock 2>/dev/null || true
+    # 清理可能残留的临时文件
+    rm -f /tmp/backup_parallel_*.sh 2>/dev/null || true
+}
+
+_cleanup_on_error() {
+    local lineno="$1"
+    # 构建函数调用栈上下文
+    local stack="" i
+    for ((i = 1; i < ${#FUNCNAME[@]}; i++)); do
+        [[ "${FUNCNAME[$i]}" == "main" ]] && continue
+        if [[ -n "$stack" ]]; then
+            stack="${FUNCNAME[$i]} → $stack"
+        else
+            stack="${FUNCNAME[$i]}"
+        fi
+    done
+    if [[ -n "$stack" ]]; then
+        msg_err "错误在第 ${lineno} 行 [${stack}]" 2>/dev/null || true
+    else
+        msg_err "错误发生在第 ${lineno} 行" 2>/dev/null || true
+    fi
+    release_lock 2>/dev/null || true
+}
+
+_cleanup_on_signal() {
+    echo ""
+    msg_warn "操作被中断" 2>/dev/null || true
+    release_lock 2>/dev/null || true
+    exit 130
+}
+
+# 安全的参数校验函数
+require_param() {
+    local param_name="$1"
+    local param_value="$2"
+    if [[ -z "$param_value" ]]; then
+        msg_err "必需参数缺失: ${param_name}"
+        return 1
+    fi
+    return 0
+}
+
+# 安全的文件操作检查
+require_file() {
+    local filepath="$1"
+    local desc="${2:-文件}"
+    if [[ ! -f "$filepath" ]]; then
+        msg_err "${desc}不存在: $filepath"
+        return 1
+    fi
+    return 0
+}
+
+# 安全的目录操作检查
+require_dir() {
+    local dirpath="$1"
+    local desc="${2:-目录}"
+    if [[ ! -d "$dirpath" ]]; then
+        msg_err "${desc}不存在: $dirpath"
+        return 1
+    fi
+    return 0
+}
+
+# 安全的用户存在性检查
+require_user() {
+    local username="$1"
+    if [[ -z "$username" ]]; then
+        msg_err "用户名不能为空"
+        return 1
+    fi
+    if ! id "$username" &>/dev/null; then
+        msg_err "用户 ${C_BOLD}$username${C_RESET} 不存在"
+        return 1
+    fi
+    return 0
+}
+
+# 安全的数值检查
+is_positive_int() {
+    local value="$1"
+    [[ "$value" =~ ^[0-9]+$ ]] && ((value > 0))
+}
+
+# 安全的挂载点检查
+require_mountpoint() {
+    local mp="$1"
+    if [[ -z "$mp" ]]; then
+        msg_err "挂载点不能为空"
+        return 1
+    fi
+    if ! mountpoint -q "$mp" 2>/dev/null; then
+        msg_err "挂载点 $mp 未挂载"
+        return 1
+    fi
+    return 0
+}
+
+# 以特权身份写入托管文本文件，并补齐所有权/权限。
+# 用法: write_privileged_text_file <path> [mode] [owner:group] <<'EOF'
+write_privileged_text_file() {
+    local target_file="$1"
+    local file_mode="${2:-0644}"
+    local owner_group="${3:-root:root}"
+    local file_content
+
+    if [[ -z "$target_file" ]]; then
+        msg_err "目标文件路径不能为空"
+        return 1
+    fi
+
+    file_content=$(cat) || {
+        msg_err "无法读取待写入内容"
+        return 1
+    }
+
+    if declare -F priv_tee >/dev/null 2>&1; then
+        printf '%s' "$file_content" | priv_tee "$target_file" >/dev/null || {
+            msg_err "写入文件失败: $target_file"
+            return 1
+        }
+    else
+        printf '%s' "$file_content" | run_privileged tee "$target_file" >/dev/null || {
+            msg_err "写入文件失败: $target_file"
+            return 1
+        }
+    fi
+
+    if declare -F priv_chown >/dev/null 2>&1; then
+        priv_chown "$owner_group" "$target_file" >/dev/null 2>&1 || true
+    else
+        run_privileged chown "$owner_group" "$target_file" >/dev/null 2>&1 || true
+    fi
+
+    if declare -F priv_chmod >/dev/null 2>&1; then
+        priv_chmod "$file_mode" "$target_file" >/dev/null 2>&1 || true
+    else
+        run_privileged chmod "$file_mode" "$target_file" >/dev/null 2>&1 || true
+    fi
+    return 0
+}
+
+# Cron 辅助函数（已迁移到 system_core.sh）
+# shellcheck disable=SC1091
+source "$LIB_DIR/system_core.sh"
+
+# 超时包装器：prevent 长时间阻塞的操作
+run_with_timeout() {
+    local timeout_secs="$1"
+    shift
+    if command -v timeout &>/dev/null; then
+        timeout "$timeout_secs" "$@"
+    else
+        "$@"
+    fi
+}
+
+# ============================================================
+# 框架：安全执行 & 统一菜单循环
+# ============================================================
+
+# 安全执行：隔离子函数错误，防止菜单崩溃
+# 用法: safe_run some_function arg1 arg2
+safe_run() {
+    local rc=0
+    "$@" || rc=$?
+    if ((rc != 0)); then
+        msg_warn "函数 '$1' 执行失败 (返回码: $rc)"
+        msg_debug "函数 '$1' 参数: ${*:2}"
+    fi
+    return 0 # 始终返回 0，防止主循环退出
+}
+
+# 统一交互式输入（带标签和默认值）
+# 用法: read_input "提示文本" [变量名] [默认值]
+# 返回值通过 REPLY_INPUT 全局变量传出
+REPLY_INPUT=""
+read_input() {
+    local prompt="$1" default="${2:-}"
+    local display_default=""
+    [[ -n "$default" ]] && display_default=" ${C_DIM}[${default}]${C_RESET}"
+    echo -ne "  ${prompt}${display_default}: "
+    read -r REPLY_INPUT
+    REPLY_INPUT="${REPLY_INPUT:-$default}"
+}
+
+# 统一用户名输入（含验证）
+# 成功时 REPLY_INPUT = 用户名; 失败返回 1
+read_username() {
+    local prompt="${1:-请输入用户名}"
+    read_input "$prompt"
+    [[ "$REPLY_INPUT" == "0" || "$REPLY_INPUT" == "q" || "$REPLY_INPUT" == "Q" ]] && return 1
+    if [[ -z "$REPLY_INPUT" ]]; then
+        msg_err "用户名不能为空"
+        return 1
+    fi
+    validate_username "$REPLY_INPUT" || return 1
+    return 0
+}
+
+# 统一用户名输入（含存在性验证）
+read_existing_username() {
+    local prompt="${1:-请输入用户名}"
+    read_username "$prompt" || return 1
+    if ! id "$REPLY_INPUT" &>/dev/null; then
+        msg_err "用户 '${REPLY_INPUT}' 不存在"
+        return 1
+    fi
+    return 0
+}
+
+# 统一子菜单循环框架
+# 用法: run_submenu "标题" handler_function "编号:标签" ...
+# 特殊条目: "---" 画分隔线, "编号:标签 ›" 画子菜单箭头
+# handler_function 接收选项编号作为参数
+run_submenu() {
+    local title="$1"
+    shift
+    local handler="$1"
+    shift
+    local -a items=("$@")
+    local max_option
+    max_option="$(rl_menu_max_option "${items[@]}")"
+
+    while true; do
+        clear
+        draw_header "$title"
+        local num label
+        for entry in "${items[@]}"; do
+            # 分隔线
+            if [[ "$entry" == "---" ]]; then
+                draw_line "$MENU_WIDTH"
+                continue
+            fi
+            num="${entry%%:*}"
+            label="${entry#*:}"
+            if [[ "$label" == *"›" ]]; then
+                draw_menu_submenu "$num" "${label% ›}"
+            else
+                draw_menu_item "$num" "$label"
+            fi
+        done
+        draw_menu_exit "返回"
+        draw_prompt
+        opt="$(rl_read_menu_key "$max_option")"
+        printf '\n'
+        [[ "$opt" == "0" || "$opt" == "q" || "$opt" == "Q" ]] && return 0
+        safe_run "$handler" "$opt"
+        pause_continue
+    done
+}
+
+rl_menu_max_option() {
+    local max=0 entry num
+    for entry in "$@"; do
+        [[ "$entry" == "---" ]] && continue
+        num="${entry%%:*}"
+        if [[ "$num" =~ ^[0-9]+$ ]] && ((num > max)); then
+            max="$num"
+        fi
+    done
+    printf '%s\n' "$max"
+}
+
+rl_menu_prefix_can_extend() {
+    local prefix="$1" max_option="${2:-0}"
+    [[ "$prefix" =~ ^[0-9]+$ && "$max_option" =~ ^[0-9]+$ ]] || return 1
+    ((max_option >= prefix * 10))
+}
+
+# 单键读取；连续数字可组成 10/11 等编号，无需回车确认。
+rl_read_menu_key() {
+    local max_option="${1:-0}"
+    local rl_key next_key
+    IFS= read -rsn1 rl_key || return 1
+    if [[ "$rl_key" =~ ^[1-9]$ ]]; then
+        while rl_menu_prefix_can_extend "$rl_key" "$max_option"; do
+            IFS= read -rsn1 -t "${RL_MENU_DIGIT_TIMEOUT:-0.35}" next_key 2>/dev/null || break
+            [[ "$next_key" =~ ^[0-9]$ ]] || break
+            rl_key+="$next_key"
+        done
+    fi
+    printf '%s\n' "$rl_key"
+}
+
+# ============================================================
+# 网络信息函数（已迁移到 network_stack_core.sh）
+# ============================================================
+# shellcheck disable=SC1091
+source "$LIB_DIR/network_stack_core.sh"
+
+# ============================================================
+# 安全验证函数（已迁移到 security_baseline_core.sh）
+# ============================================================
+# shellcheck disable=SC1091
+source "$LIB_DIR/security_baseline_core.sh"
