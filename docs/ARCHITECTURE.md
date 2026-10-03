@@ -522,7 +522,7 @@ Web 不触发刷新。快照超过阈值时，接口与界面显式标记为 sta
 | `web/backend/src/store/web_event_delivery.rs` | Web 原生事件 outbox、限流与投递历史 |
 | `web/backend/src/web_event_delivery.rs` | 原生事件投递循环（独立于 root spool） |
 | `web/backend/src/store/wecom.rs` | 企业微信加密设置、订阅与投递历史 |
-| `web/backend/src/store/web_audit.rs` | Web 侧操作审计 |
+| `web/backend/src/http/wecom_api.rs`（+ `store/mod.rs` 建表） | Web 侧操作审计：`web_audit` 表在 `store/mod.rs:79` 建表，写入目前内联在 `wecom_api.rs:234` 等 handler 内，**无独立 `store/web_audit.rs` 模块**（旧版文档误列了该文件） |
 
 Web 自身数据库只保存 Web 数据，不含系统数据、不含明文 secret，表集合为：`web_users`、`sessions`、`api_tokens`、`wecom_settings`、`wecom_deliveries`、`notifications`、`web_audit`、`web_event_delivery_queue`、`web_event_delivery_throttle`、`wecom_event_throttle`、`event_spool_records`、`snapshot_freshness_observer`。
 

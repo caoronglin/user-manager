@@ -1,7 +1,12 @@
 # 项目现状（STATUS）
 
-> 核实时间：**2026-10-02**（CST）
-> 核实基线：`main` @ `91706e1`；本轮修复提交 `87a74da`、`b5c469d`、`a4762a5`、`91706e1`
+> 核实时间：**2026-10-03**（CST）；运行时目录注入契约 + SMB 加固 + 门禁修复后复验
+> 核实基线：`main` 包含本轮新增的 5 个提交（见 §2.1.3）
+> **Git 工作树：干净。** `main` 领先 `origin/main` **19 个提交**，**未推送**。
+> 本轮提交前工作树为 11 个已跟踪文件被修改 + 4 项未跟踪
+> （`tests/test_runtime_dir_contract.sh`、`docs/ablation/`、`docs/audit/`、`.validation/`），
+> 现已全部入库；另有 1 份设计文档因 `.gitignore:56` 忽略整个 `docs/superpowers/`
+> 而不在 `git status` 中，已用 `git add -f` 纳入（`850a807`）。
 > 对比基线：`0f6bee5`（2026-10-02 整理前的 `main`）
 > 核实环境：Linux 容器，工作目录 ext4，非 root（`uid=1001 T25ronglin`），无 Rust 工具链
 >
@@ -16,14 +21,14 @@
 | --- | --- |
 | 架构与安全边界 | 完整，静态门禁全部通过 |
 | Bash 业务内核 / 只读快照层 / Web 控制台 | 三部分代码齐备 |
-| **Git 工作树** | **干净**；`main` 领先 `origin/main` 13 个提交，未推送 |
+| **Git 工作树** | **干净**；`main` 领先 `origin/main` **19 个提交**，未推送 |
 | **发布状态** | **v0.2.0 已发布；v0.3.0 已提交到本地 `main`，尚未推送或打 tag** |
-| **Shell 回归（本机实测）** | **P0 1/1 通过；P1 42 套件全绿；P2 按规则跳过** |
-| 已知缺陷 | **P0-1 / P0-2 / P0-3 均已修复**；CI 权限门禁已阻断化（见第 5 节） |
+| **Shell 回归（本机实测）** | **P0 1/1 通过；P1 43 套件全绿；P2 按规则跳过** |
+| 已知缺陷 | **P0-1 / P0-2 / P0-3 / P2-1 / P2-2 均已修复**；CI 权限门禁与 validate-docs 章节检查已阻断化；`umweb` 无 root 拒绝启动为**已接受的纵深防御缺口**（P1-5，未修，理由见第 5 节） |
 | 静态门禁（bash -n / ShellCheck / Web 安全门禁 / 敏感文件扫描） | 全部通过 |
 | Rust 后端 / 前端构建 | **本环境无法验证**（见 4.2 节） |
 
-**本轮已完成**：整理前工作树有 97 项未提交改动（最新文件修改时间停在 2026-09-25，滞留约一周），其中包含整个 `web/frontend/`、`lib/snapshot_ops.sh` 与 8 个 Web 后端模块，全部从未进入 Git 历史。现已拆为 6 个提交落地到本地 `main`（`74cdbc1`…`abc6946`），工作树干净。**尚未推送，也未打 `v0.3.0` tag。**
+**本轮已完成**：整理前工作树有 97 项未提交改动（最新文件修改时间停在 2026-09-25，滞留约一周），其中包含整个 `web/frontend/`、`lib/snapshot_ops.sh` 与 8 个 Web 后端模块，全部从未进入 Git 历史。现已拆为 6 个提交落地到本地 `main`（`74cdbc1`…`abc6946`），**在那轮结束时**工作树干净；此后又追加 7 个提交（§2.1.2），并产生了当前这批未提交改动（见文首）。**尚未推送，也未打 `v0.3.0` tag。**
 
 ---
 
@@ -33,16 +38,22 @@
 
 | 项 | 值 |
 | --- | --- |
-| 当前分支 | `main`，领先 `origin/main` **7 个提交** |
+| 当前分支 | `main`，领先 `origin/main` **19 个提交**（含整理前的旧 HEAD `0f6bee5`） |
 | `origin/main` | `3855ec8`（`fix(user): show password when email is unavailable`） |
 | 远端 | `https://github.com/caoronglin/user-manager.git` |
 | 远端标签 | `v0.1.0`、`v0.2.0` —— **无 `v0.3.0`** |
 | 本地标签 | 仅 `v0.1.0`（`v0.2.0` 未拉到本地） |
 | stash | 无 |
-| 工作树 | 干净 |
-| 推送状态 | **未推送**，本地 7 个提交尚未到达 `origin/main` |
+| 工作树 | **干净**（本轮 5 个提交已全部落地） |
+| 推送状态 | **未推送**，本地 19 个提交尚未到达 `origin/main` |
 
-### 2.1.1 本轮提交的 7 个提交
+> **计数订正（2026-10-03）**：本文此前在摘要写「13」、在 §2.1 写「7」，两处都与
+> `git rev-list --count origin/main..HEAD` 的实测值不符。本轮 5 个提交入库后实测为 **19**
+> = 整理阶段 6（§2.1.1）+ 后续 7（§2.1.2）+ 本轮 5（§2.1.3）+ 整理前的旧 HEAD `0f6bee5`。
+
+### 2.1.1 整理阶段的 6 个提交
+
+> 标题原写「本轮提交的 7 个提交」，但表内只有 6 行；第 7 个是后续的 `1317c44`，已移入 §2.1.2。
 
 | 提交 | 说明 |
 | --- | --- |
@@ -52,6 +63,28 @@
 | `7b6427b` | `ci(deploy)` Rust/前端/文档/格式门禁与 umweb 部署边界加固 |
 | `2563059` | `docs` 项目现状、架构文档刷新与版本状态修正 |
 | `abc6946` | `fix(shell)` 恢复 `scripts/` 入口可执行位（修复 P0-1） |
+
+### 2.1.2 整理之后的 7 个提交
+
+| 提交 | 说明 |
+| --- | --- |
+| `1317c44` | `docs` 同步 P0-1 修复后的实测结果 |
+| `0c82afc` | `docs` 新增完成进度与未完成项清单（`docs/PROGRESS.md`） |
+| `87a74da` | `fix(shell)` owner/group 校验误用 Linux 用户名规则（修复 P0-2） |
+| `b5c469d` | `fix(tests)` `test_security_hardening` 向仓库内 `logs/email.log` 追加写入 |
+| `a4762a5` | `ci` 邮件与企业微信链路纳入 P1 门禁，权限检查升级为阻断 |
+| `91706e1` | `docs` 修正技术栈表述并补全 Web 架构 |
+| `62f00fc` | `docs` 同步两个缺陷修复与门禁收紧后的实测结果 |
+
+### 2.1.3 本轮（2026-10-03）新增的 5 个提交
+
+| 提交 | 说明 |
+| --- | --- |
+| `850a807` | `feat(shell)` 运行时目录注入契约：`DATA_DIR` / `LOG_DIR` 可被 `USER_MANAGER_*` 重定向，配套 10 例契约测试与设计文档 |
+| `9fe6296` | `fix(smb)` 共享路径可向 smb.conf 注入指令、共享名按正则匹配致误删共享段（见 P2-1） |
+| `807114a` | `ci` Web 安全门禁空转守卫 + 两处永不阻断的检查 + `.validation/*` 排除（见 P2-2） |
+| `cdabb37` | `docs` 收录独立审计与守卫消融实验产物（含 `.validation/`） |
+| 本提交 | `docs` 本文与 `PROGRESS.md` / `ARCHITECTURE.md` / `DEEPWIKI.md` 的事实订正 |
 
 ### 2.2 整理前的未提交改动构成（已全部提交）
 
@@ -123,10 +156,10 @@ Web 面板**永远不拥有、代理或间接获得** root / sudo / capability�
 | --- | --- |
 | `lib/*.sh` 模块 | 67 |
 | `scripts/*.sh` 独立 CLI 入口 | 18 |
-| `tests/*.sh` 测试文件 | 44 |
-| P1 回归套件（`P1_SCRIPTS`） | 40 |
+| `tests/*.sh` 测试文件 | 45（43 个 P1 套件 + 1 个 P0 `verify_fixes` + `test_framework.sh` 框架） |
+| P1 回归套件（`P1_SCRIPTS`） | 43 |
 | Action Registry 条目 | 29（`safe` 18 / `dangerous` 11；`both` 14 / `cli` 15） |
-| Web 后端 Rust 源文件 | 48 |
+| Web 后端 Rust 源文件 | 38（`web/backend/src/**/*.rs`；另有 10 个位于 `web/backend/tests/`） |
 | 前端源文件 | 6 |
 
 ---
@@ -139,18 +172,19 @@ Web 面板**永远不拥有、代理或间接获得** root / sudo / capability�
 
 ```text
 P0  verify_fixes   1/1 通过（内部检查 20/20）
-P1  42 套件        42 通过 / 0 失败
+P1  43 套件        43 通过 / 0 失败
 P2  性能套件       按默认规则跳过（需 --include-perf）
 
-运行器汇总（含 P0）：43 通过 / 0 失败 / 1 跳过
+运行器汇总（含 P0）：44 通过 / 0 失败 / 1 跳过
 ```
 
 P1 全绿。套件数由 40 增至 42 是因为 `test_rl_mail.sh` 与 `test_rl_wecom.sh`
-已纳入门禁（见 5.1）。
+已纳入门禁（见 5.1）；由 42 增至 43 是因为 `test_runtime_dir_contract.sh`
+已纳入门禁（见 P1-3 勘误）。
 
-> **计数口径**：`P1_SCRIPTS` 数组当前声明 **42** 个套件。运行器末尾的
-> `Passed/Failed/Skipped` 汇总把 P0 也计入 `PASS_COUNT`，因此「43 个通过」是
-> **全轮次总计**（1 个 P0 + 42 个 P1），不是 P1 的套件数。仓库既有文档中沿用的
+> **计数口径**：`P1_SCRIPTS` 数组当前声明 **43** 个套件。运行器末尾的
+> `Passed/Failed/Skipped` 汇总把 P0 也计入 `PASS_COUNT`，因此「44 个通过」是
+> **全轮次总计**（1 个 P0 + 43 个 P1），不是 P1 的套件数。仓库既有文档中沿用的
 > 「41 个套件通过」是 2026-10-02 补入门禁前的口径（当时 P1 为 40），容易被误读为
 > P1 有 41 个套件。
 
@@ -178,9 +212,10 @@ P1 全绿。套件数由 40 增至 42 是因为 `test_rl_mail.sh` 与 `test_rl_w
 | --- | --- | --- |
 | Shell 语法 | `bash -n`（Git 跟踪的全部 `.sh`） | 通过 |
 | ShellCheck error gate | `shellcheck --severity=error` | 通过 |
-| Web 安全门禁 | `bash scripts/check_web_security.sh web/backend/src` | `OK (no forbidden tokens)` |
+| Web 安全门禁 | `bash scripts/check_web_security.sh web/backend/src` | `OK (no forbidden tokens)`（空目录改为报错，见 P2-2） |
 | 敏感文件扫描 | `bash scripts/check_sensitive_files.sh .` | `No sensitive tracked files detected` |
 | 入口可执行位 | CI `security` job（读 Git 索引 mode） | `checked=23, missing=0` |
+| CI YAML 可解析 | `python3 -c "import yaml;yaml.safe_load(...)"` | 7 个 job 均可解析 |
 
 **P0-1 修复效果**：`abc6946` 恢复 `scripts/` 可执行位后，上述 4 个套件全部转绿（`test_scripts.sh` 19/19、`test_snapshot.sh` 25/25、`test_remote_cli.sh` 9/9、`test_rl_privilege.sh` 19/19，**72 个子测试**），P1 由 35/40 提升到 39/40。
 
@@ -189,6 +224,18 @@ P1 全绿。套件数由 40 增至 42 是因为 `test_rl_mail.sh` 与 `test_rl_w
 > 也未复现。其中 `test_ubuntu_maintenance_core.sh` 本轮没有任何改动。这说明 P1 默认的
 > 4 路并行在本机负载下存在偶发抖动，**单次回归结果不足以判定**，定位问题时应对失败套件
 > 单独重跑。
+
+> **新增抖动观察**：`test_runtime_dir_contract.sh` 第 8 例曾在 4 路并行下 FAIL、单跑 PASS，
+> 后续两次连跑均绿。与上面同属一类并行抖动，定位时同样先单跑再下结论。
+
+> **抖动根因线索（2026-10-03）**：本机多次出现**与并发无关**的进程/线程创建失败——
+> `find` 报 `failed to spawn thread: Os { code: 11, kind: WouldBlock }`，
+> `shellcheck` 报 `internal error: Ticker: Failed to spawn thread`、
+> `scripts/check_sensitive_files.sh` 报 `fork: retry: 资源暂时不可用`，
+> 而**同一条命令稍后重跑即全部通过**。这说明至少有一部分「4 路并行偶发失败、单跑全绿」
+> 来自**本机进程/线程资源耗尽（EAGAIN）**，而不是套件逻辑缺陷。
+> 触发阈值尚未定位，但以后定位这类抖动，应先看失败输出里有没有 spawn/fork/资源类错误，
+> 再去怀疑测试代码或被测实现。
 
 ### 4.2 本环境无法验证的部分
 
@@ -205,6 +252,37 @@ P1 全绿。套件数由 40 增至 42 是因为 `test_rl_mail.sh` 与 `test_rl_w
 ---
 
 ## 5. 已知问题
+
+### P2-1　本轮（2026-10-03）已修复：SMB 共享入参校验缺失
+
+消融实验场景 E1（`lib/smb_core.sh:228` 共享名校验）在实跑边界值时暴露了两个**静态审计未抓到**的缺陷。
+两者都在 `smb_share_add()` / `smb_share_remove()` 的入参上，写入目标是 root 拥有的
+`/etc/samba/user-manager-shares.conf`。
+
+| 缺陷 | 定级 | 实际后果（已用 `62f00fc` 原始代码复现） | 修复 |
+| --- | --- | --- | --- |
+| 共享路径无任何校验（仅 `[[ -n "$path" ]]`） | **P2** | ① **配置注入**：路径含换行时，后续内容变成 smb.conf 的**新指令行**。实测传入 `"/srv/ok\n   writable = yes"` 后 drop-in 里真的出现了 `writable = yes`，即把只读共享变成可写共享；理论上可注入任意指令。② **路径越界**：`../../etc` 原样写入，使本应只管 `/srv` 的操作可指向任意路径。 | 新增 `_smb_valid_share_path()`：必须绝对路径、不得含控制字符（换行/回车/制表）、不得含 `.` / `..` 路径段 |
+| 共享名匹配未按字面量 | **P2**（原估 P3） | 共享名被直接拼进 `grep` / `awk` 正则，`.` 是通配符：**`smb_share_remove a.b` 会连带删除 `[axb]` 段**。实测在原始代码上 `a.b` 与 `axb` 两个共享，删除 `a.b` 后两个段全没了。另 `.` / `..` / `---` 因字符类含 `.` 与 `+` 而被放行。 | 匹配改为 `index()` 字面量比较（新增 `_smb_share_section_exists()`）；共享名额外要求至少含一个字母/数字/下划线 |
+
+**为什么值得当场修**：可利用面确实有限——Web 侧没有 SMB 写路由，`smb.share.add` 是
+`dangerous` 且只经本机 CLI/TUI 调用，所以**不构成越权**。但第 ① 条不需要攻击者：
+TUI 输入框粘贴带换行的路径、或任何把未清洗变量透传给 `rl-action.sh` 的脚本，都会静默
+把共享改成可写。修复共 4 处代码 + 4 条回归用例（`tests/test_smb_core.sh` 现 24/24）。
+
+**验证方式**：4 条新用例对 `62f00fc` 原始 `smb_core.sh` **全部 FAIL**，对修复后代码全部 PASS
+（不是同义反复测试）。本环境可完整验证，无需 cargo。
+
+### P2-2　本轮（2026-10-03）已修复：三个失效门禁
+
+| 门禁 | 原行为 | 修复 |
+| --- | --- | --- |
+| `scripts/check_web_security.sh` | 目录存在但无任何 `.rs` 时打印 `OK (no forbidden tokens)` 并返回 **0** —— 路径传错、源码被清空与「源码干净」不可区分 | 新增 `scanned` 计数，为 0 时报错并 `exit 1`（fail-closed），与 `a4762a5` 给权限检查加 `checked -eq 0` 守卫同理 |
+| `ci.yml` Web 安全门禁步骤 | `bash scripts/check_web_security.sh ...` 后紧跟 `rc=$?`，但 GHA 的 `run` 默认 `bash -e`，脚本非零退出会先被 `-e` 中止，**`rc=2` 的跳过分支永不可达**（已实测：`bash -e -c 'bash t.sh; rc=$?'` 在 `t.sh` exit 2 时不执行后续行）。后果是「无 web 源码」从「跳过」变成「失败」 | 执行移入 `if` 条件上下文（条件失败不触发 `-e`），两种语义同时保留 |
+| `ci.yml` validate-docs README 章节检查 | 三处 `grep` 全部只 Warning，**永远不可能让 CI 变红** | 章节存在性（Quick Start / Documentation）改为 `::error::` + `exit 1`；「Installation」那一条**故意保留 Warning**（它是给人的确认提示，不是机器可判定断言） |
+
+只有第 1 项能写回归用例（`tests/test_web_security_gate.sh` 新增 2 例，现 9/9）；后两项是
+CI 配置改动，**本环境无法在 GitHub Actions 上执行**，只做了 `yaml.safe_load()` 可解析性与
+本地等价复现（README 现满足全部检查，阻断化不会让现有 CI 变红）。
 
 ### P0-1　`scripts/*.sh` 丢失可执行位 —— **已修复（`abc6946`）**
 
@@ -293,17 +371,72 @@ LOG_DIR="$SCRIPT_DIR/logs"
 - 任何通过环境变量重定向数据/日志目录的尝试都会被 `config.sh` 覆盖；
 - 库会把数据写进**源码树**，而不是安装位置或临时目录；
 - 逐套件隔离因此必须由测试自己显式覆盖变量，无法在 runner 层统一兜底
-  （`run_p1_one` 传的是 `USER_MANAGER_DATA_BASE`，与库读��� `DATA_DIR` 是两套不
-  互通的变量名）。
+  （`run_p1_one` 传的是 `USER_MANAGER_DATA_BASE`，与库读取的 `DATA_DIR` 不是
+  同一个变量）。
 
-本轮的 `test_security_hardening.sh` 泄漏正是这一设计放大的结果。**未擅自修改**：
-把无条件赋值改为 `${DATA_DIR:=...}` 会影响全部 42 个套件与生产部署路径，属于需要
-单独评估的契约变更。已用针对性修复（测试层重定向 `EMAIL_LOG_FILE`）解决当前问题。
+本轮的 `test_security_hardening.sh` 泄漏正是这一设计放大的结果。**已修复（2026-10-02）**：
+见下方勘误。测试层重定向 `EMAIL_LOG_FILE` 的针对性修复保留，作为纵深防御。
+
+#### 勘误（2026-10-02）：本项已解决
+
+契约已改为可被环境覆盖，`lib/config.sh:25-27`：
+
+```bash
+DATA_DIR="${USER_MANAGER_DATA_DIR:-$SCRIPT_DIR/data}"
+LOG_DIR="${USER_MANAGER_LOG_DIR:-$SCRIPT_DIR/logs}"
+REPORT_DIR="$DATA_DIR/report"
+```
+
+- **用 `:-` 而非 `:=`**：`source config.sh` 不会把默认值回写进 `USER_MANAGER_DATA_DIR`，
+  避免同 shell 内 source 之后再改写 `DATA_DIR` 的调用方读到陈旧值（`test_security_hardening.sh`、
+  `test_proc_manager.sh`、`test_audit_integration.sh` 都是这个顺序）。
+- **空值视为未设置**并回退默认，避免 `DISABLED_USERS_FILE` 退化为 `/disabled_users.txt`。
+- **目录创建责任不变**：`init_directories` 仍是唯一创建者，失败即返回非 0（fail-closed）。
+  本轮未新增任何 `mkdir`、未改动权限语义。
+- **兼容性**：未设置新变量时行为逐字节不变；`etc/` 下 systemd 单元、tmpfiles.d、sudoers
+  均不引用这两个变量，部署行为零变化。
+- **实测副作用已消除**：注入生效后，一轮全量回归对 `data/` 与 `logs/` **零写入**
+  （前后文件清单与 md5 快照完全一致）。这正是本项的原始诉求。
+- **配套**：`run_regression.sh` 在并行与顺序两条路径都注入新变量，P1 套件由此获得真正的
+  逐套件隔离；新增 `test_runtime_dir_contract.sh`（10 个用例）覆盖默认值、注入生效、
+  空值回退、相对路径边界、目录不存在时的创建、创建失败关闭、与 `USER_MANAGER_DATA_BASE`
+  的互不干扰、重复 source 稳定性。
+
+**关于原文中「`USER_MANAGER_DATA_BASE` 与库读取的 `DATA_DIR` 是两套不互通的变量名」这一表述，
+需要修正**：库确实读取了 `USER_MANAGER_DATA_BASE`（`lib/config.sh:57`，`DATA_BASE="${USER_MANAGER_DATA_BASE:-/mnt}"`），
+但它是**用户家目录挂载点的父目录**（`/mnt/data01`…`/mnt/data07`，见 `lib/quota_core.sh:16,67,82,245,296`、
+`lib/controller_user_provisioning_support.sh:17,67`、`lib/report_core.sh:271,1489`、`lib/symlink_core.sh:129`），
+与运行时数据目录是两个正交概念。让 `DATA_DIR` 回退到它会在生产上把
+`DISABLED_USERS_FILE` 变成 `/mnt/disabled_users.txt`，与家目录挂载点同级。
+因此本轮的做法是**新增专用变量**而非复用，并对该不相关用例做了回归护栏。
+
+设计与兼容分析见 `docs/superpowers/specs/2026-10-02-runtime-dir-injection-design.md`。
 
 ### P1-4　工作树卫生
 
 - 存在 15 个 `*.bak` 备份文件（含 `README.md.bak`、`tui_manager.sh.bak`、`lib/tui_core.sh.bak` 等）。`.gitignore:36` 已忽略 `*.bak`，均未跟踪，但持续干扰检索。
 - `data/` 含运行时产物（`created_users.txt`、`logs/`、`report/`、`secrets/`），已正确排除在版本控制外。
+
+---
+
+### P1-5　`umweb` 无代码层的 root 拒绝启动 —— **接受风险，本轮不修**
+
+**事实**（已逐行复核）：`web/backend/src/main.rs` 去掉文档注释后只有 4 行代码，函数体只有
+`umweb::run().await` 一句；全仓 `geteuid` 仅 2 处，都在 `crypto.rs:83/124` 的 master.key
+属主比对里。**整个 Rust 侧没有任何 uid 检查**，手工 `sudo ./umweb` 会以 root 全量运行。
+
+**为什么不改**（裁决结论）：
+
+1. 它**不违反**黄金标准「Web 永不获得 root」——生产路径由 `etc/systemd/system/umweb.service:23`
+   的 `User=umweb` 强制，Web 不会自己获得 root。实际暴露的是「绕过 systemd 手工启动时提权」。
+2. 加 `geteuid() == 0` 拒绝启动有**真实副作用**：CI、开发机 `sudo cargo run`、容器内以 root 跑测试
+   都会直接起不来。
+3. 审计报告未评估这层副作用，而**本环境无 cargo，无法验证改动的编译结果**。在无法编译验证的前提下
+   改 Rust 生产入口，是拿「看起来更安全」换「可能构建失败」。
+
+**建议路径**：目标主机部署验收时用 `systemd-analyze security umweb` + 实机 `id umweb` 先行确认；
+若确需代码层兜底，改为**可配置开关**（`UMWEB_ALLOW_ROOT_FOR_DEV=1` 仅开发用）而不是硬拒绝，
+并在具备 Rust 工具链的环境里编译 + 跑测试后再合入。
 
 ---
 
@@ -313,7 +446,7 @@ LOG_DIR="$SCRIPT_DIR/logs"
 
 - 架构与安全边界完整，静态门禁全绿；
 - 双控制面 + 只读快照层实现齐备，静态检查无越权痕迹；
-- 29 个 Action 与 18 个独立 CLI 入口的功能面在 P1 回归中通过；P1 42 个套件全绿。
+- 29 个 Action 与 18 个独立 CLI 入口的功能面在 P1 回归中通过；P1 43 个套件全绿。
 
 ### 6.2 阻塞发布
 
@@ -321,9 +454,10 @@ LOG_DIR="$SCRIPT_DIR/logs"
 2. ~~**修复 P0-1**：恢复入口可执行位。~~ **已完成**（`abc6946` + 根目录 5 个入口），CI 权限检查已阻断化（`a4762a5`）。
 3. ~~**修正 P0-2**：事件 spool 的 owner/group 校验。~~ **已完成（`87a74da`）**。
 4. ~~**修正 P0-3**：`CHANGELOG.md` 的版本状态表述。~~ **已完成（`2563059`）**。
-5. **重新执行完整验证**：本机 P1 已 42/42 全绿，但 Rust 门禁与前端构建本环境无法执行。推送后由 CI 取得可发布证据。
+5. **重新执行完整验证**：本机 P1 已 43/43 全绿，但 Rust 门禁与前端构建本环境无法执行。推送后由 CI 取得可发布证据。
+6. **提交本轮未提交改动**：运行时目录注入契约、SMB 共享入参校验、两个失效门禁、独立审计与消融实验产物目前**全部只在工作树**（见文首）。**是否提交、如何拆分由维护者决定，本文不代为执行。**
 
-**已解除的阻塞**：P0-1/P0-2/P0-3、门禁覆盖缺口、CI 权限门禁。剩余阻塞集中在环境相关的
+**已解除的阻塞**：P0-1/P0-2/P0-3、门禁覆盖缺口、CI 权限门禁、SMB 共享入参校验、Web 安全门禁空转。剩余阻塞集中在环境相关的
 验收项（目标主机、真实 webhook、无障碍审计、Rust/前端工具链），见 6.3。
 
 ### 6.3 部署前必须完成（既有文档已记录，本次未验证）
@@ -338,8 +472,8 @@ LOG_DIR="$SCRIPT_DIR/logs"
 
 | 文档 | 内容 | 时效 |
 | --- | --- | --- |
-| [`STATUS.md`](STATUS.md) | 本文：现状、已核实结果、已知问题 | 2026-10-02 |
-| [`PROGRESS.md`](PROGRESS.md) | 阶段/功能完成度矩阵与未完成项清单 | 2026-10-02 |
+| [`STATUS.md`](STATUS.md) | 本文：现状、已核实结果、已知缺陷 | 2026-10-03 |
+| [`PROGRESS.md`](PROGRESS.md) | 阶段/功能完成度矩阵与未完成项清单 | 2026-10-03 |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | 版本变更记录 | 见 P0-3 |
 | [`../plan.md`](../plan.md) | Web 化实施规划与不可违反的架构约束 | 活跃 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 架构设计与功能说明 | 2026-08-31，缺 Web |
@@ -350,6 +484,13 @@ LOG_DIR="$SCRIPT_DIR/logs"
 | [`REMOTE_HOSTS.md`](REMOTE_HOSTS.md) | SSH 主机与 GPU 只读探测 | 活跃 |
 | [`../web/README.md`](../web/README.md) | Web 控制台（`umweb`） | 2026-09-25 |
 | [`../README.md`](../README.md) | 入口、Action 表、快速开始 | 活跃 |
+| [`audit/2026-10-02/README.md`](audit/2026-10-02/README.md) | 独立审计：硬约束 / 404-405 契约 / 文档偏差 / CI 门禁 / 安全性（P0=0、P1=1、P2=12、P3=19） | 2026-10-02 |
+| [`ablation/2026-10-02/README.md`](ablation/2026-10-02/README.md) | 消融实验：12 个守卫场景的 GUARD-ACTIVE / INERT 判定与证据 | 2026-10-02 |
+
+> `docs/superpowers/` 被 `.gitignore:56` 整目录忽略，因此运行时目录注入契约的设计文档
+> （`superpowers/specs/2026-10-02-runtime-dir-injection-design.md`）**不会自动入库**。
+> 该文件已于 `850a807` 用 `git add -f` 显式纳入，链接在 GitHub 上可用；
+> 但**同目录下其余 8 份历史设计文档仍不在版本控制内**。
 
 ### 相关但已过时的过程文档
 

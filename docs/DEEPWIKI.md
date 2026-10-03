@@ -331,19 +331,25 @@ CI（`.github/workflows/ci.yml`）按 job 划分 shellcheck、Rust、前端构�
 
 ## 近期目录清理结果
 
-已删除无引用历史文件：
+> 订正（2026-10-03）：本节旧版把「已删除」与「已归档」混列，且列了 4 个**仓库中不存在**的文件名。
+> 逐项核对 Git 历史后重写如下：`archive/` 目录下实际只有 2 个文件；
+> `lib/ui_menu_fixed.sh`、`lib/ui_optimized.sh`、`optimization_summary.sh` 是在 `3dd1c06`
+> 中**直接删除**（未保留归档副本）；`lib/miniforge_core.sh.backup` **从未进入 Git 历史**。
+
+已删除无引用历史文件（Git 历史中曾存在，于 `3dd1c06` 删除）：
+
+- `lib/ui_menu_fixed.sh`（281 行）
+- `lib/ui_optimized.sh`（126 行）
+- `optimization_summary.sh`（156 行，仓库根目录）
+
+仅存在于本地工作树、从未入库，已清除：
 
 - `lib/miniforge_core.sh.backup`
-- `lib/ui_menu_modern.sh.backup`
-- `lib/ui_modern.sh.backup2`
-- `lib/ui_menu_fixed.sh`
 
-已归档无运行时引用模块：
+已归档（`archive/`，确实存在且仍被 Git 跟踪）：
 
 - `archive/lib/ui_menu_modern.sh`
 - `archive/lib/privilege_cache.sh`
-- `lib/ui_optimized.sh`
-- `optimization_summary.sh`
 
 ## 后续建议
 
