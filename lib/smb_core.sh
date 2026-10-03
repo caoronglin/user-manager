@@ -225,7 +225,36 @@ smb_delete_user() {
 # ============================================================
 
 _smb_valid_share_name() {
-    [[ "$1" =~ ^[A-Za-z0-9_.-]+$ ]]
+    [[ "$1" =~ ^[A-Za-z0-9_.-]+$ ]] || return 1
+    # 必须至少含一个字母/数字/下划线。纯点号或纯短横线的名字（`.`、`..`、`---`）
+    # 在下游是按正则匹配的：`.` 是通配符，`..` 会让 grep/awk 命中任意两字符的段名，
+    # 导致误判「共享已存在」或误删另一个共享段。
+    [[ "$1" =~ [A-Za-z0-9_] ]] || return 1
+}
+
+# 校验共享路径。落盘目标是 root 拥有的 drop-in，因此每条拒绝理由都对应一种真实后果：
+#   - 非绝对路径：含义依赖调用方 cwd，写入配置后不可复现；
+#   - 控制字符（换行/回车/制表符）：换行会让后续内容变成 smb.conf 的**新指令行**，
+#     等于向 root 拥有的配置注入任意指令（如 `writable = yes`）；
+#   - `.` / `..` 路径段：指向共享根之外，使本应只管 /srv 的操作越界到任意路径。
+_smb_valid_share_path() {
+    local path="$1"
+    [[ -n "$path" ]] || return 1
+    [[ "$path" == /* ]] || return 1
+    [[ "$path" != *[[:cntrl:]]* ]] || return 1
+    [[ ! "$path" =~ (^|/)\.\.?(/|$) ]] || return 1
+    return 0
+}
+
+# 判断托管 drop-in 中是否已存在同名共享段。按**字面量**匹配（index）而非正则：
+# 共享名里的 `.` 在正则中是通配符，`a.b` 会误命中 `[axb]`。
+_smb_share_section_exists() {
+    local conf="$1" name="$2"
+    [[ -f "$conf" ]] || return 1
+    awk -v target="[$name]" '
+        /^[ \t]*\[/ && index($0, target) > 0 { found = 1; exit }
+        END { exit(found ? 0 : 1) }
+    ' "$conf"
 }
 
 # 解析单个 Samba 配置文件中的 [share] 段，输出 "name|path"
@@ -319,16 +348,16 @@ smb_ensure_include() {
 smb_share_add() {
     local name="$1" path="$2" readonly="${3:-no}"
     _smb_valid_share_name "$name" || {
-        _smb_msg_err "共享名只能包含字母/数字/._-"
+        _smb_msg_err "共享名只能包含字母/数字/._-，且至少含一个字母/数字/下划线"
         return 1
     }
-    [[ -n "$path" ]] || {
-        _smb_msg_err "共享路径不能为空"
+    _smb_valid_share_path "$path" || {
+        _smb_msg_err "共享路径必须是绝对路径，且不得含换行等控制字符或 .. 路径段: ${path//$'\n'/}"
         return 1
     }
     [[ "$readonly" == "yes" || "$readonly" == "no" ]] || readonly="no"
 
-    if [[ -f "$SMB_SHARES_CONF" ]] && grep -q "^[[:space:]]*\[$name\]" "$SMB_SHARES_CONF"; then
+    if _smb_share_section_exists "$SMB_SHARES_CONF" "$name"; then
         _smb_msg_err "共享已存在: $name"
         return 1
     fi
@@ -359,17 +388,17 @@ smb_share_add() {
 smb_share_remove() {
     local name="$1"
     _smb_valid_share_name "$name" || {
-        _smb_msg_err "共享名只能包含字母/数字/._-"
+        _smb_msg_err "共享名只能包含字母/数字/._-，且至少含一个字母/数字/下划线"
         return 1
     }
     [[ -f "$SMB_SHARES_CONF" ]] || return 0
 
     local tmp
     tmp=$(mktemp) || return 1
-    awk -v name="$name" '
-        BEGIN { skip=0 }
-        /^[[:space:]]*\[[^]]+\]/ {
-            if ($0 ~ "\\[" name "\\]") skip=1; else skip=0
+    awk -v target="[$name]" '
+        BEGIN { skip = 0 }
+        /^[ \t]*\[/ {
+            skip = (index($0, target) > 0) ? 1 : 0
         }
         !skip { print }
     ' "$SMB_SHARES_CONF" >"$tmp"

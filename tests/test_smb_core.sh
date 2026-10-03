@@ -286,6 +286,52 @@ else
     test_fail "smb_share_add 未自动写入主配置 include（smb.conf 内容: $(cat "$SMB_CONF")）"
 fi
 
+test_start "smb_share_add 拒绝可向 drop-in 注入指令的路径（换行）"
+# 换行会把 path 之后的内容变成 smb.conf 的新指令行（writable = yes 即为可写共享）
+: >"$SMB_SHARES_CONF"
+inject_path="/srv/ok
+   writable = yes"
+if ! smb_share_add "inject" "$inject_path" "no" >/dev/null 2>&1 &&
+    ! grep -q 'writable' "$SMB_SHARES_CONF"; then
+    test_pass
+else
+    test_fail "smb_share_add 未拒绝含换行的路径（drop-in: $(cat "$SMB_SHARES_CONF")）"
+fi
+
+test_start "smb_share_add 拒绝非绝对路径与 .. 路径段"
+: >"$SMB_SHARES_CONF"
+if ! smb_share_add "rel" "../../etc" "no" >/dev/null 2>&1 &&
+    ! smb_share_add "dotdot" "/srv/../etc" "no" >/dev/null 2>&1 &&
+    ! smb_share_add "dotslash" "srv/team" "no" >/dev/null 2>&1 &&
+    ! smb_share_add "empty" "" "no" >/dev/null 2>&1; then
+    test_pass
+else
+    test_fail "smb_share_add 未拒绝非绝对路径 / .. 路径段（drop-in: $(cat "$SMB_SHARES_CONF")）"
+fi
+
+test_start "smb_share_add 拒绝纯点号 / 纯短横线共享名"
+: >"$SMB_SHARES_CONF"
+if ! smb_share_add ".." "/srv/x" "no" >/dev/null 2>&1 &&
+    ! smb_share_add "." "/srv/x" "no" >/dev/null 2>&1 &&
+    ! smb_share_remove ".." >/dev/null 2>&1; then
+    test_pass
+else
+    test_fail "smb_share_add/remove 未拒绝 '..' / '.'（drop-in: $(cat "$SMB_SHARES_CONF")）"
+fi
+
+test_start "共享名按字面量匹配：删除 a.b 不得误删 axb"
+# 回归缺陷：共享名曾被直接拼进 grep/awk 正则，`.` 是通配符，
+# `smb_share_remove a.b` 会连带删除 [axb] 段（root 拥有的配置被误改）。
+: >"$SMB_SHARES_CONF"
+smb_share_add "a.b" "/srv/ab" "no" >/dev/null 2>&1
+smb_share_add "axb" "/srv/axb" "no" >/dev/null 2>&1
+smb_share_remove "a.b" >/dev/null 2>&1
+if grep -q '^\[axb\]' "$SMB_SHARES_CONF" && ! grep -q '^\[a\.b\]' "$SMB_SHARES_CONF"; then
+    test_pass
+else
+    test_fail "共享名被当作正则匹配导致误删（drop-in: $(cat "$SMB_SHARES_CONF")）"
+fi
+
 PATH="$old_path"
 cleanup_test_env
 test_suite_end
