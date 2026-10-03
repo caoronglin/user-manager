@@ -5,6 +5,10 @@
 #   所有配置项都支持通过环境变量覆盖默认值。
 #   环境变量命名规则: USER_MANAGER_<配置项名称>
 #   例如: DATA_BASE -> USER_MANAGER_DATA_BASE
+#   DATA_DIR -> USER_MANAGER_DATA_DIR, LOG_DIR -> USER_MANAGER_LOG_DIR
+#
+# 注意: USER_MANAGER_DATA_BASE 是用户家目录挂载点的父目录（默认 /mnt），
+#       与运行时数据目录 DATA_DIR 是两个独立变量，不要互相替代。
 #
 # 使用示例:
 #   export USER_MANAGER_DATA_BASE=/data
@@ -14,8 +18,12 @@
 # === 路径配置 ===
 # shellcheck disable=SC2034
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA_DIR="$SCRIPT_DIR/data"
-LOG_DIR="$SCRIPT_DIR/logs"
+# 运行时目录可被环境重定向：未设置时回退到源码树内的默认位置，行为与历史一致。
+# 用 :- 而非 := 赋值，避免把 DATA_DIR 的值回写进 USER_MANAGER_DATA_DIR，
+# 否则同 shell 内 source 之后再改写 DATA_DIR 的调用方会读到陈旧的环境变量。
+# 契约、兼容性与回滚见 docs/superpowers/specs/2026-10-02-runtime-dir-injection-design.md
+DATA_DIR="${USER_MANAGER_DATA_DIR:-$SCRIPT_DIR/data}"
+LOG_DIR="${USER_MANAGER_LOG_DIR:-$SCRIPT_DIR/logs}"
 REPORT_DIR="$DATA_DIR/report"
 
 # Parse numeric environment overrides before their values can reach Bash arithmetic.

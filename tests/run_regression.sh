@@ -34,6 +34,7 @@ P1_SCRIPTS=(
     test_quota_core.sh
     test_report_core.sh
     test_resource_core.sh
+    test_runtime_dir_contract.sh
     test_rl_mail.sh
     test_rl_privilege.sh
     test_rl_wecom.sh
@@ -144,11 +145,16 @@ run_p1_one() {
     local timeout_seconds="${UM_TEST_TIMEOUT:-180}"
     local rc=0
 
+    # 逐套件隔离：USER_MANAGER_DATA_BASE 是家目录挂载点根（/mnt 语义），
+    # USER_MANAGER_DATA_DIR / USER_MANAGER_LOG_DIR 才是运行时数据与日志目录，
+    # 两者不可互相替代。契约见 docs/superpowers/specs/2026-10-02-runtime-dir-injection-design.md
     if command -v timeout >/dev/null 2>&1; then
         timeout "$timeout_seconds" env \
             SUDO_NONINTERACTIVE=1 \
             USER_MANAGER_DATA_BASE="$tmp" \
             USER_MANAGER_BACKUP_ROOT="$tmp/backup" \
+            USER_MANAGER_DATA_DIR="$tmp/data" \
+            USER_MANAGER_LOG_DIR="$tmp/logs" \
             UM_INCLUDE_LINT="$include_lint" \
             bash "$project_root/tests/$name" </dev/null >"$log" 2>&1
         rc=$?
@@ -157,6 +163,8 @@ run_p1_one() {
             SUDO_NONINTERACTIVE=1 \
             USER_MANAGER_DATA_BASE="$tmp" \
             USER_MANAGER_BACKUP_ROOT="$tmp/backup" \
+            USER_MANAGER_DATA_DIR="$tmp/data" \
+            USER_MANAGER_LOG_DIR="$tmp/logs" \
             UM_INCLUDE_LINT="$include_lint" \
             bash "$project_root/tests/$name" </dev/null >"$log" 2>&1
         rc=$?
@@ -230,30 +238,40 @@ run_p1() {
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_bootstrap_integration.sh"
 
     run_step "P1 user core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_user_core.sh"
 
     run_step "P1 password change SMB" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_password_change_smb.sh"
 
     run_step "P1 resource core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_resource_core.sh"
 
     run_step "P1 quota core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_quota_core.sh"
 
     run_step "P1 rl_privilege" bash "$SCRIPT_DIR/test_rl_privilege.sh"
@@ -268,72 +286,96 @@ run_p1() {
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_audit_integration.sh"
 
     run_step "P1 proc manager" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_proc_manager.sh"
 
     run_step "P1 TUI core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_tui_core.sh"
 
     run_step "P1 TUI native forms" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_tui_native_forms.sh"
 
     run_step "P1 TUI mainline" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_tui_mainline.sh"
 
     run_step "P1 security hardening" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_security_hardening.sh"
 
     run_step "P1 security scan" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_security_scan.sh"
 
     run_step "P1 journalctl core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_journalctl_core.sh"
 
     run_step "P1 environment core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_env_core.sh"
 
     run_step "P1 action registry" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_action_registry.sh"
 
     run_step "P1 logs core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_logs_core.sh"
 
     run_step "P1 report core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_report_core.sh"
 
     run_step "P1 shell config core" bash "$SCRIPT_DIR/test_shell_config_core.sh"
@@ -342,60 +384,80 @@ run_p1() {
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_logs_presenter.sh"
 
     run_step "P1 TUI logs view" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_tui_logs_view.sh"
 
     run_step "P1 ubuntu maintenance" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_ubuntu_maintenance_core.sh"
 
     run_step "P1 security baseline" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_security_baseline_core.sh"
 
     run_step "P1 network stack" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_network_stack_core.sh"
 
     run_step "P1 systemd timer" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_systemd_timer_core.sh"
 
     run_step "P1 lock core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_lock_core.sh"
 
     run_step "P1 backup core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_backup_core.sh"
 
     run_step "P1 VM core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_vm_core.sh"
 
     run_step "P1 GPU core" env \
         SUDO_NONINTERACTIVE=1 \
         USER_MANAGER_DATA_BASE="$PROJECT_ROOT/data" \
         USER_MANAGER_BACKUP_ROOT="$PROJECT_ROOT/data/backup" \
+        USER_MANAGER_DATA_DIR="$PROJECT_ROOT/data" \
+        USER_MANAGER_LOG_DIR="$PROJECT_ROOT/logs" \
         bash "$SCRIPT_DIR/test_gpu_core.sh"
 
     run_step "P1 host inventory" bash "$SCRIPT_DIR/test_host_inventory.sh"
