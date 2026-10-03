@@ -59,5 +59,21 @@ if bash "$GATE" "$TEST_TMPDIR/src_api" >/dev/null 2>&1; then
     test_pass
 else test_fail "with_graceful_shutdown 被误报"; fi
 
+test_start "空目录不得空转通过（门禁失效必须报错）"
+# 回归缺陷：目录存在但没有任何 .rs 时，脚本曾打印 OK 并返回 0，
+# 使「源码被清空 / 路径传错」与「源码干净」不可区分。
+mkdir -p "$TEST_TMPDIR/src_empty"
+if bash "$GATE" "$TEST_TMPDIR/src_empty" >/dev/null 2>&1; then
+    test_fail "空目录被静默判为通过（门禁空转）"
+else test_pass; fi
+
+test_start "目录不存在时返回 2（跳过语义，供 CI 区分）"
+if bash "$GATE" "$TEST_TMPDIR/does_not_exist" >/dev/null 2>&1; then
+    test_fail "缺失目录未按跳过语义处理"
+else
+    rc=$?
+    if [[ "$rc" -eq 2 ]]; then test_pass; else test_fail "缺失目录退出码应为 2，实际 $rc"; fi
+fi
+
 cleanup_test_env
 test_suite_end

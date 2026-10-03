@@ -24,8 +24,10 @@ jobs:
           set -euo pipefail
           checked=0
           while IFS= read -r -d '' file; do
+            # `.validation/` 是消融实验的 scratch + 证据树（内含**故意删掉守卫**的源码副本
+            # 与无 shebang 的探针脚本），不是交付代码。与 data/ logs/ templates/ 同理排除。
             case "$file" in
-              Miniforge.sh|data/*|logs/*|templates/*) continue ;;
+              Miniforge.sh|data/*|logs/*|templates/*|.validation/*) continue ;;
             esac
             shellcheck --severity=error "$file"
             checked=$((checked + 1))
@@ -110,6 +112,8 @@ jobs:
           git ls-files -z -- '*.sh' |
             while IFS= read -r -d '' file; do
               [[ "$file" == 'Miniforge.sh' ]] && continue
+              # `.validation/` = 消融实验 scratch/证据树，含故意删守卫的副本，不参与语法检查
+              [[ "$file" == .validation/* ]] && continue
               bash -n "$file" || exit 1
             done
 
@@ -131,13 +135,22 @@ jobs:
 
       - name: Check README sections
         run: |
-          grep -Eq "Quick Start|快速开始" README.md || echo "Warning: README missing Quick Start section"
+          # 章节存在性是不可协商的不变量，改为阻断式：只 Warning 的检查永远不可能
+          # 让 CI 变红，等于没有门禁（与 a4762a5 收紧权限检查同理）。
+          # 安装口径那一条**故意保留为 Warning**：它是留给人的确认提示，不是机器可判定的断言。
+          if ! grep -Eq "Quick Start|快速开始" README.md; then
+            echo "::error::README 缺少 Quick Start / 快速开始章节"
+            exit 1
+          fi
           # 项目已明确移除“安装/Installation”口径，不再要求该章节；
           # 若未来重新出现安装描述，则给出提示以便确认。
           if grep -Eiq "Installation|安装" README.md; then
             echo "Warning: README still mentions Installation; confirm it is intentional"
           fi
-          grep -Eq "Documentation|文档" README.md || echo "Warning: README missing Documentation section"
+          if ! grep -Eq "Documentation|文档" README.md; then
+            echo "::error::README 缺少 Documentation / 文档章节"
+            exit 1
+          fi
 
   security:
     name: Security Scan
@@ -153,8 +166,16 @@ jobs:
         # plan.md 14.1-14.3：阻断式门禁。web/backend/src 里禁止出现提权/系统管理命令/任意进程派生。
         run: |
           # 无 web 源码时（目录缺失）视为跳过，退出码 2。
-          bash scripts/check_web_security.sh web/backend/src
-          rc=$?
+          #
+          # 注意执行方式：GitHub Actions 的 run 默认跑 `bash -e`，脚本非零退出会**先**
+          # 被 -e 中止，直接跟一句 `rc=$?` 是死代码，rc=2 的「跳过」分支永远不可达
+          # （实测：`bash -e -c 'bash t.sh; rc=$?'` 在 t.sh exit 2 时不打印后续行）。
+          # 把执行放进 if 条件里，条件上下文的失败不触发 -e，两种语义才能同时保留。
+          if bash scripts/check_web_security.sh web/backend/src; then
+            rc=0
+          else
+            rc=$?
+          fi
           if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then exit "$rc"; fi
           echo "web security gate rc=$rc"
       
@@ -227,8 +248,12 @@ jobs:
           checked=0
           unclean=0
           # 与语法检查 job 一致的遍历方式：NUL 安全 + 跳过 Miniforge.sh
+          # `.validation/` 是消融实验的 scratch + 证据树（含故意删守卫的源码副本），
+          # 其格式不归本 job 管，与 data/ logs/ templates/ 同理排除。
           while IFS= read -r -d '' file; do
-            [[ "$file" == 'Miniforge.sh' ]] && continue
+            case "$file" in
+              Miniforge.sh|.validation/*) continue ;;
+            esac
             checked=$((checked + 1))
             if ! shfmt -d "$file"; then
               echo "::warning::shfmt: $file needs formatting"
