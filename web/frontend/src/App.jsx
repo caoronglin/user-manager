@@ -8,6 +8,7 @@ import {
 import {
   AuditPage, DashboardPage, HostsPage, LogsPage, ReportsPage, ResourcesPage, SmbPage, SystemPage, UsersPage, WeComSettingsPage,
 } from './pages.jsx';
+import { ApiTokensPage, MfaPage, NotificationsPage } from './access.jsx';
 import { EmptyState, Icon, LoginPage, PageHeader, SnapshotStatus } from './ui.jsx';
 
 const { Header, Sider, Content } = Layout;
@@ -25,9 +26,13 @@ const NAV_ITEMS = [
   { key: 'logs', zh: '运行日志', en: 'Logs', capability: 'logs.read', icon: 'logs' },
   { key: 'reports', zh: '报告', en: 'Reports', capability: 'reports.read', icon: 'reports' },
   { key: 'audit', zh: '审计记录', en: 'Audit', capability: 'audit.read', icon: 'audit' },
+  { key: 'notifications', zh: '通知中心', en: 'Notifications', capability: 'notifications.read', icon: 'bell' },
   { key: 'system-group', zh: '系统与设置', en: 'System & settings', icon: 'system', children: [
     { key: 'system', zh: '系统状态', en: 'System status', capability: 'dashboard.read', icon: 'system' },
     { key: 'wecom', zh: '企业微信设置', en: 'WeCom settings', capability: 'wecom.manage', icon: 'settings' },
+    { key: 'tokens', zh: 'API Token', en: 'API tokens', capability: 'tokens.manage', icon: 'resources' },
+    // MFA 是已登录用户的自助操作，没有 capability 门控；过滤逻辑据��放行无 capability 的项。
+    { key: 'mfa', zh: '双重验证', en: 'Two-factor', icon: 'audit' },
   ] },
 ];
 
@@ -41,6 +46,9 @@ const PAGE_COMPONENTS = {
   logs: LogsPage,
   reports: ReportsPage,
   audit: AuditPage,
+  notifications: NotificationsPage,
+  tokens: ApiTokensPage,
+  mfa: MfaPage,
   wecom: WeComSettingsPage,
 };
 
@@ -68,8 +76,8 @@ function AppContent({ dark, setDark }) {
   // language 变化时换身份，loadIdentity 随之重建，回调链不会每帧重建。
   const text = useCallback((zh, en) => language === 'zh' ? zh : en, [language]);
   const availableItems = useMemo(() => NAV_ITEMS.map((item) => item.children
-    ? { ...item, children: item.children.filter((child) => capabilities.has(child.capability)) }
-    : item).filter((item) => item.children ? item.children.length > 0 : capabilities.has(item.capability)), [capabilities]);
+    ? { ...item, children: item.children.filter((child) => !child.capability || capabilities.has(child.capability)) }
+    : item).filter((item) => item.children ? item.children.length > 0 : (!item.capability || capabilities.has(item.capability))), [capabilities]);
   const availablePages = useMemo(() => availableItems.flatMap((item) => item.children || [item]), [availableItems]);
   const registerFreshness = useCallback((source, freshness) => {
     if (!freshness) return;
