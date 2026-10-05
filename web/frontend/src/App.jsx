@@ -63,7 +63,10 @@ function AppContent({ dark, setDark }) {
   const [loginNotice, setLoginNotice] = useState('');
 
   const capabilities = useMemo(() => new Set(identity?.capabilities || []), [identity]);
-  const text = (zh, en) => language === 'zh' ? zh : en;
+  // 稳定引用：loadIdentity 通过 [text] 依赖它取最新语言，否则闭包会冻结在首次渲染的
+  // 语言上（切到 English 后「服务不可用」提示仍显示中文）。useCallback 化后 text 只在
+  // language 变化时换身份，loadIdentity 随之重建，回调链不会每帧重建。
+  const text = useCallback((zh, en) => language === 'zh' ? zh : en, [language]);
   const availableItems = useMemo(() => NAV_ITEMS.map((item) => item.children
     ? { ...item, children: item.children.filter((child) => capabilities.has(child.capability)) }
     : item).filter((item) => item.children ? item.children.length > 0 : capabilities.has(item.capability)), [capabilities]);
@@ -97,7 +100,7 @@ function AppContent({ dark, setDark }) {
         setLoginNotice(error.message || text('无法连接到服务。', 'The service is unavailable.'));
       }
     }
-  }, []);
+  }, [text]);
 
   useEffect(() => {
     loadIdentity();
@@ -301,7 +304,13 @@ export default function App() {
           fontFamily: 'Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
           controlHeight: 36,
         },
-        components: { Layout: { headerBg: '#ffffff', siderBg: '#ffffff' }, Menu: { itemBorderRadius: 8 } },
+        // headerBg / siderBg 只在浅色下固定为白底；深色下留空交给 darkAlgorithm 派生，
+        // 否则 token 声明白底、styles.css:218 再用 !important 强行改深色，两处互相打架。
+        // CSS 的 .app-dark 覆盖仍保留，因此本改动不改变任何现有视觉表现。
+        components: {
+          Layout: { headerBg: dark ? undefined : '#ffffff', siderBg: dark ? undefined : '#ffffff' },
+          Menu: { itemBorderRadius: 8 },
+        },
       }}
     >
       <AppContent dark={dark} setDark={setDark} />
