@@ -237,11 +237,20 @@ async fn me(
             |r| r.get::<_, String>(0),
         )
         .unwrap_or_default();
+    // 控制台需要知道 MFA 当前状态：mfa_setup（admin_api.rs:31-35）会直接覆盖已存的
+    // secret 而不检查是否已启用，前端若看不到状态，已启用用户点一次「设置」就会失去
+    // 原验证器。复用 store 既有的 get_by_id，不新增 SQL。
+    let mfa_enabled = crate::store::user::get_by_id(&conn, &auth.user_id)
+        .map(|user| user.mfa_enabled)
+        .unwrap_or(false);
     drop(conn);
     let caps: Vec<String> = auth.capabilities.allowed.iter().cloned().collect();
     Ok(Json(json!({
         "ok": true,
-        "data": { "id": auth.user_id, "username": username, "role": auth.role, "capabilities": caps }
+        "data": {
+            "id": auth.user_id, "username": username, "role": auth.role,
+            "capabilities": caps, "mfa_enabled": mfa_enabled,
+        }
     })))
 }
 
