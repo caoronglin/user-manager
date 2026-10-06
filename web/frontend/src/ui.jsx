@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert, Button, Card, Empty, Form, Input, Result, Skeleton, Space, Table, Tag, Typography,
+  Alert, Button, Card, Empty, Form, Input, Skeleton, Space, Table, Tag, Typography,
 } from 'antd';
 import { ApiError, apiRequest, freshnessLabel, formatTime, hasSensitiveKey, unwrap } from './api.js';
 import { useFreshness, useLanguage } from './App.jsx';

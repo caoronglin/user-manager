@@ -1,15 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, Avatar, Button, ConfigProvider, Drawer, Dropdown, Layout, Menu, Space, Spin, Tooltip, Typography, theme,
+  Avatar, Button, ConfigProvider, Drawer, Dropdown, Layout, Menu, Spin, Tooltip, Typography, theme,
 } from 'antd';
 import {
-  apiRequest, freshnessLabel, unwrap,
+  apiRequest, unwrap,
 } from './api.js';
 import {
   AuditPage, DashboardPage, HostsPage, LogsPage, ReportsPage, ResourcesPage, SmbPage, SystemPage, UsersPage, WeComSettingsPage,
 } from './pages.jsx';
 import { ApiTokensPage, MfaPage, NotificationsPage } from './access.jsx';
-import { EmptyState, Icon, LoginPage, PageHeader, SnapshotStatus } from './ui.jsx';
+import { EmptyState, Icon, LoginPage, SnapshotStatus } from './ui.jsx';
 
 const { Header, Sider, Content } = Layout;
 const LanguageContext = createContext(null);
