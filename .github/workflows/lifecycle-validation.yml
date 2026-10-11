@@ -1,0 +1,75 @@
+name: Lifecycle contract verification
+
+on:
+  push:
+    branches: [main, ci/lifecycle-failure-contracts]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifecycle-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  failure-contracts:
+    name: Lifecycle fault injection (runner)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Bash syntax
+        run: bash -n tests/test_lifecycle_failure_contract.sh
+
+      - name: Exercise lifecycle failure contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lifecycle-artifacts"
+          timeout 120s bash tests/test_lifecycle_failure_contract.sh 2>&1 | tee "$RUNNER_TEMP/lifecycle-artifacts/runner.log"
+
+      - name: Publish diagnostic logs on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-runner-${{ github.run_id }}
+          path: ${{ runner.temp }}/lifecycle-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  ubuntu26-sandbox:
+    name: Lifecycle contracts (Ubuntu 26.04 isolated)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run without host privileges or network
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lifecycle-artifacts"
+          timeout 180s docker run --rm \
+            --network none \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --read-only \
+            --tmpfs /tmp:rw,nosuid,nodev,size=128m \
+            --volume "$PWD:/repo:ro" \
+            --workdir /repo \
+            ubuntu:26.04 \
+            bash tests/test_lifecycle_failure_contract.sh \
+            2>&1 | tee "$RUNNER_TEMP/lifecycle-artifacts/ubuntu26.log"
+
+      - name: Publish sandbox diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-ubuntu26-${{ github.run_id }}
+          path: ${{ runner.temp }}/lifecycle-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
