@@ -89,10 +89,10 @@ async fn tokens_create(
     if name.is_empty() || name.len() > 64 {
         return Err(bad("invalid name"));
     }
-    let expire_days: i64 = body
-        .get("expire_days")
-        .and_then(Value::as_i64)
-        .unwrap_or(90);
+    let expire_days = match body.get("expire_days") {
+        None => 90,
+        Some(value) => value.as_i64().ok_or_else(|| bad("expire_days must be an integer"))?,
+    };
     if !(1..=3650).contains(&expire_days) {
         return Err(bad("expire_days out of range"));
     }

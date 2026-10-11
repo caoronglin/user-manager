@@ -445,3 +445,28 @@ async fn token_revocation_emits_one_fixed_safe_notification_only_on_success() {
         .unwrap();
     assert_eq!(count, 1);
 }
+
+#[tokio::test]
+async fn token_expire_days_rejects_invalid_types_without_creating_tokens() {
+    let (app, db) = make_app().await;
+    let (status, _, headers) = send(
+        app.clone(), Method::POST, "/api/auth/login",
+        Some(r#"{"username":"admin_user","password":"adminpass"}"#),
+        None, None, None,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let cookie = cookie_pair(&headers, "umweb_session");
+    let csrf = cookie_value(&headers, "umweb_csrf");
+    for days in [serde_json::json!(1.5), serde_json::json!("30"), Value::Null, serde_json::json!(true)] {
+        let body = serde_json::json!({"name":"invalid-days", "expire_days":days, "capabilities":["users.read"]}).to_string();
+        let (status, _, _) = send(
+            app.clone(), Method::POST, "/api/api-tokens", Some(&body),
+            Some(&cookie), Some(&csrf), None,
+        ).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let conn = Connection::open(&db).unwrap();
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM api_tokens", [], |row| row.get(0)).unwrap();
+    assert_eq!(count, 0);
+}
+
