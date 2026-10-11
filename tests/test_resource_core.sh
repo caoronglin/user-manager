@@ -202,5 +202,24 @@ else
     test_fail "空的管理文件应被移除"
 fi
 
+test_start "资源限制：--effective 只读展示真实 TasksMax 和继承后的 EffectiveTasksMax"
+systemctl() {
+    if [[ "${1:-}" == show && "${2:-}" == "user-4242.slice" ]]; then
+        printf 'LoadState=loaded\nTasksMax=infinity\nEffectiveTasksMax=1024\nTasksCurrent=36\n'
+        return 0
+    fi
+    return 1
+}
+effective_out="$(rl_resource_effective_tasks "$rl_test_user" 2>/dev/null || true)"
+unset -f systemctl
+if [[ "$effective_out" == *"unit=user-4242.slice"* ]] &&
+    [[ "$effective_out" == *"TasksMax=infinity"* ]] &&
+    [[ "$effective_out" == *"EffectiveTasksMax=1024"* ]]; then
+    test_pass
+else
+    test_fail "未正确读取有效任务上限: $effective_out"
+fi
+
+
 cleanup_test_env
 test_suite_end
