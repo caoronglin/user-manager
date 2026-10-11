@@ -91,7 +91,9 @@ async fn tokens_create(
     }
     let expire_days = match body.get("expire_days") {
         None => 90,
-        Some(value) => value.as_i64().ok_or_else(|| bad("expire_days must be an integer"))?,
+        Some(value) => value
+            .as_i64()
+            .ok_or_else(|| bad("expire_days must be an integer"))?,
     };
     if !(1..=3650).contains(&expire_days) {
         return Err(bad("expire_days out of range"));

@@ -34,7 +34,9 @@ async fn mfa_setup(
     let conn = state.db.lock().unwrap();
     let user = crate::store::user::get_by_id(&conn, &auth.user_id).ok_or_else(unauth)?;
     if user.mfa_enabled {
-        return Err(bad("MFA already enabled; disable it with a valid code first"));
+        return Err(bad(
+            "MFA already enabled; disable it with a valid code first",
+        ));
     }
     crate::store::user::set_mfa_secret(&conn, &auth.user_id, &cipher).map_err(|_| internal())?;
     drop(conn);

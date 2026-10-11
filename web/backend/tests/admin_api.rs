@@ -515,14 +515,26 @@ async fn mfa_setup_verify_then_login_challenge() {
 
     // /me exposes enabled state, and setup must not reset an active factor.
     let (s_me, me_body, _) = send(
-        app.clone(), Method::GET, "/api/auth/me", None, Some(&vc), None,
-    ).await;
+        app.clone(),
+        Method::GET,
+        "/api/auth/me",
+        None,
+        Some(&vc),
+        None,
+    )
+    .await;
     assert_eq!(s_me, StatusCode::OK);
     let me: Value = serde_json::from_str(&me_body).unwrap();
     assert_eq!(me["data"]["mfa_enabled"], true);
     let (s_reset, _, _) = send(
-        app.clone(), Method::POST, "/api/auth/mfa/setup", None, Some(&vc), Some(&vcsrf),
-    ).await;
+        app.clone(),
+        Method::POST,
+        "/api/auth/mfa/setup",
+        None,
+        Some(&vc),
+        Some(&vcsrf),
+    )
+    .await;
     assert_eq!(s_reset, StatusCode::BAD_REQUEST);
 
     // 重新登录 → mfa_required=true，受保护资源暂 401
@@ -597,16 +609,24 @@ fn mfa_secret_store_never_overwrites_enabled_factor() {
     user::enable_mfa(&conn, "u").unwrap();
     assert!(user::set_mfa_secret(&conn, "u", "replacement").is_err());
     assert!(user::get_by_id(&conn, "u").unwrap().mfa_enabled);
-    assert_eq!(user::get_mfa_secret(&conn, "u").as_deref(), Some("original"));
+    assert_eq!(
+        user::get_mfa_secret(&conn, "u").as_deref(),
+        Some("original")
+    );
 }
 
 #[tokio::test]
 async fn mfa_disable_rejects_missing_or_corrupt_secret() {
     let (app, db) = make_app_with_db().await;
     let (status, _, headers) = send(
-        app.clone(), Method::POST, "/api/auth/login",
-        Some(r#"{"username":"view_user","password":"viewpass"}"#), None, None,
-    ).await;
+        app.clone(),
+        Method::POST,
+        "/api/auth/login",
+        Some(r#"{"username":"view_user","password":"viewpass"}"#),
+        None,
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let cookie = session_cookie_from(&headers);
     let csrf = csrf_cookie_from(&headers);
@@ -615,14 +635,23 @@ async fn mfa_disable_rejects_missing_or_corrupt_secret() {
         conn.execute(
             "UPDATE web_users SET mfa_enabled = 1, mfa_secret_cipher = ?1 WHERE id = 'u-view'",
             rusqlite::params![cipher],
-        ).unwrap();
+        )
+        .unwrap();
         let (status, _, _) = send(
-            app.clone(), Method::POST, "/api/auth/mfa/disable",
-            Some(r#"{"code":"123456"}"#), Some(&cookie), Some(&csrf),
-        ).await;
-        let expected = if cipher.is_some() { StatusCode::INTERNAL_SERVER_ERROR } else { StatusCode::BAD_REQUEST };
+            app.clone(),
+            Method::POST,
+            "/api/auth/mfa/disable",
+            Some(r#"{"code":"123456"}"#),
+            Some(&cookie),
+            Some(&csrf),
+        )
+        .await;
+        let expected = if cipher.is_some() {
+            StatusCode::INTERNAL_SERVER_ERROR
+        } else {
+            StatusCode::BAD_REQUEST
+        };
         assert_eq!(status, expected);
         assert!(user::get_by_id(&conn, "u-view").unwrap().mfa_enabled);
     }
 }
-
