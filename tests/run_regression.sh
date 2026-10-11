@@ -26,6 +26,7 @@ P1_SCRIPTS=(
     test_remote_cli.sh
     test_journalctl_core.sh
     test_lock_core.sh
+    test_lifecycle_failure_contract.sh
     test_logs_core.sh
     test_logs_presenter.sh
     test_network_stack_core.sh
