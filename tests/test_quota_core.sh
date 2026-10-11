@@ -197,6 +197,9 @@ findmnt() {
     }
     return 1
 }
+mountpoint() {
+    [[ "${2:-${1:-}}" == "/mnt/data06" ]]
+}
 test_start "配额：中文 repquota 报告正常解析并保留硬限额"
 quota_out="$(get_user_quota_info alice /mnt/data06 2>/dev/null || true)"
 assert_equals "43008:2097152" "$quota_out" "应从中文报告读取已用 42 KiB 与硬限额 2048 KiB"
