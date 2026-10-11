@@ -50,6 +50,13 @@ ulimit -Sn
 ulimit -Hn
 ```
 
+管理员 CLI 可以只读查询指定账户：
+
+```bash
+bash scripts/rl-user-resource.sh --effective USERNAME
+```
+
+显示 `TasksMax`、`EffectiveTasksMax`、`TasksCurrent`，不会调用 `set-property`。
 PAM 文件不能突破 systemd 上级 cgroup 限制；不要通过提高 `ulimit -u` 推断线程已无限制。
 
 ## 验收清单
