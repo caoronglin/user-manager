@@ -6,6 +6,7 @@ import {
   apiRequest, formatTime, getArray, safeObject, unwrap,
 } from './api.js';
 import { useLanguage } from './App.jsx';
+import { notificationsUrl, tokenStatus, validTokenName } from './access-model.js';
 import { ContentCard, DataState, EmptyState, PageHeader, useEndpoint } from './ui.jsx';
 
 const { Text, Paragraph } = Typography;
@@ -30,7 +31,8 @@ export function NotificationsPage({ capabilities }) {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, toastContext] = message.useMessage();
-  const endpoint = unreadOnly ? '/api/notifications?unread=1&limit=100' : '/api/notifications?limit=100';
+  const [cursors, setCursors] = useState([]);
+  const endpoint = notificationsUrl(unreadOnly, cursors.at(-1));
   const inbox = useEndpoint(endpoint);
   const data = safeObject(inbox.data);
   const items = getArray(inbox.data, 'items');
@@ -40,7 +42,8 @@ export function NotificationsPage({ capabilities }) {
     setBusy(true);
     try {
       await apiRequest(path, { method: 'POST', body });
-      await inbox.refresh();
+      setCursors([]);
+      inbox.refresh();
       toast.success(successText);
     } catch (error) {
       toast.error(error.message || text('操作失败。', 'The request failed.'));
@@ -107,7 +110,7 @@ export function NotificationsPage({ capabilities }) {
         actions={(
           <Space>
             {unread > 0 && <Tag color="processing">{text(`${unread} 条未读`, `${unread} unread`)}</Tag>}
-            <Button onClick={() => setUnreadOnly((v) => !v)}>{unreadOnly ? text('显示全部', 'Show all') : text('只看未读', 'Unread only')}</Button>
+            <Button disabled={busy || inbox.loading} onClick={() => { setUnreadOnly((v) => !v); setCursors([]); }}>{unreadOnly ? text('显示全部', 'Show all') : text('只看未读', 'Unread only')}</Button>
             {canManage && unread > 0 && (
               <Button type="primary" loading={busy} onClick={() => act('/api/notifications/read-all', {}, text('已全部标记为已读。', 'All marked as read.'))}>
                 {text('全部已读', 'Mark all read')}
@@ -134,6 +137,11 @@ export function NotificationsPage({ capabilities }) {
             locale={{ emptyText: text('暂无记录', 'No records') }}
           />
         </DataState>
+        <Space style={{ marginTop: 16 }}>
+          <Button disabled={!cursors.length || inbox.loading || busy} onClick={() => setCursors((current) => current.slice(0, -1))}>{text('上一页', 'Previous')}</Button>
+          <Text>{text('第', 'Page')} {cursors.length + 1} {text('页', '')}</Text>
+          <Button disabled={!data.next_cursor || inbox.loading || busy || Boolean(inbox.error)} onClick={() => setCursors((current) => [...current, data.next_cursor])}>{text('下一页', 'Next')}</Button>
+        </Space>
       </ContentCard>
       {toastContext}
     </>
@@ -147,6 +155,7 @@ export function ApiTokensPage() {
   const [saving, setSaving] = useState(false);
   const [issued, setIssued] = useState(null);
   const [toast, toastContext] = message.useMessage();
+  const [modal, modalContext] = Modal.useModal();
   const tokens = useEndpoint('/api/api-tokens');
   const rows = getArray(tokens.data, 'tokens');
 
@@ -168,7 +177,7 @@ export function ApiTokensPage() {
   };
 
   const revoke = (row) => {
-    Modal.confirm({
+    modal.confirm({
       title: text('吊销这个 API Token？', 'Revoke this API token?'),
       content: text('吊销后使用该 Token 的客户端将立即收到 401，操作不可撤销。', 'Clients using it will get 401 immediately. This cannot be undone.'),
       okText: text('吊销', 'Revoke'),
@@ -181,6 +190,7 @@ export function ApiTokensPage() {
           toast.success(text('已吊销。', 'Revoked.'));
         } catch (error) {
           toast.error(error.message || text('吊销失败。', 'Could not revoke.'));
+          throw error; // Keep the failed confirmation open for retry.
         }
       },
     });
@@ -204,7 +214,12 @@ export function ApiTokensPage() {
       title: text('状态', 'Status'),
       dataIndex: 'revoked',
       width: 96,
-      render: (v) => (v ? <Tag color="red">{text('已吊销', 'Revoked')}</Tag> : <Tag color="success">{text('有效', 'Active')}</Tag>),
+      render: (_, row) => {
+        const status = tokenStatus(row);
+        const labels = { revoked: text('已吊销', 'Revoked'), expired: text('已过期', 'Expired'), active: text('有效', 'Active'), unknown: text('未知', 'Unknown') };
+        const colors = { revoked: 'red', expired: 'default', active: 'success', unknown: 'warning' };
+        return <Tag color={colors[status]}>{labels[status]}</Tag>;
+      },
     },
     {
       title: text('操作', 'Actions'),
@@ -224,7 +239,7 @@ export function ApiTokensPage() {
         actions={<Button type="primary" onClick={() => setOpen(true)}>{text('签发 Token', 'Issue token')}</Button>}
       />
       {issued?.token && (
-        <Alert
+        <Alert key={issued.id}
           className="snapshot-alert"
           type="warning"
           showIcon
@@ -261,10 +276,10 @@ export function ApiTokensPage() {
         destroyOnHidden
       >
         <Form form={form} layout="vertical" requiredMark={false} initialValues={{ expire_days: 90 }}>
-          <Form.Item name="name" label={text('名称', 'Name')} rules={[{ required: true, message: text('请输入名称', 'Enter a name') }, { max: 64, message: text('不超过 64 个字符', 'At most 64 characters') }]}>
+          <Form.Item name="name" label={text('名称', 'Name')} rules={[{ validator: (_, value) => validTokenName(value) ? Promise.resolve() : Promise.reject(new Error(text('名称不能为空且不能超过 64 个 UTF-8 字节', 'Use a nonempty name of at most 64 UTF-8 bytes'))) }]}>
             <Input maxLength={64} placeholder={text('例如：grafana-readonly', 'e.g. grafana-readonly')} />
           </Form.Item>
-          <Form.Item name="expire_days" label={text('有效天数', 'Valid for (days)')} rules={[{ required: true, message: text('请输入有效天数', 'Enter a validity in days') }]}>
+          <Form.Item name="expire_days" label={text('有效天数', 'Valid for (days)')} rules={[{ type: 'integer', required: true, min: 1, max: 3650, message: text('请输入 1–3650 的整数天数', 'Enter a whole number of days from 1 to 3650') }]}>
             <InputNumber min={1} max={3650} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="capabilities" label={text('只读能力', 'Read capabilities')} rules={[{ required: true, message: text('至少选择一项只读能力', 'Pick at least one read capability') }]}>
@@ -275,6 +290,7 @@ export function ApiTokensPage() {
           </Paragraph>
         </Form>
       </Modal>
+      {modalContext}
       {toastContext}
     </>
   );
@@ -286,13 +302,14 @@ export function MfaPage({ identity, onIdentityChanged }) {
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(null);
   const [toast, toastContext] = message.useMessage();
-  const enabled = Boolean(identity?.mfa_enabled);
+  const stateKnown = typeof identity?.mfa_enabled === 'boolean';
+  const enabled = identity?.mfa_enabled === true;
 
   const run = async (path, body, onDone) => {
     setBusy(true);
     try {
       const response = await apiRequest(path, { method: 'POST', body });
-      onDone(unwrap(response));
+      await onDone(unwrap(response));
     } catch (error) {
       toast.error(error.message || text('操作失败。', 'The request failed.'));
     } finally {
@@ -307,34 +324,40 @@ export function MfaPage({ identity, onIdentityChanged }) {
     try {
       values = await form.validateFields();
     } catch { return; }
-    await run('/api/auth/mfa/verify', { code: String(values.code || '').trim() }, () => {
+    await run('/api/auth/mfa/verify', { code: String(values.code || '').trim() }, async () => {
       setPending(null);
       form.resetFields();
-      onIdentityChanged(true);
+      await onIdentityChanged();
       toast.success(text('双重验证已启用。', 'Two-factor verification is now on.'));
     });
   };
 
-  const disable = () => run('/api/auth/mfa/disable', { code: String(form.getFieldValue('code') || '').trim() }, () => {
-    form.resetFields();
-    onIdentityChanged(false);
-    toast.success(text('双重验证已停用。', 'Two-factor verification is off.'));
-  });
+  const disable = async () => {
+    let values;
+    try { values = await form.validateFields(); } catch { return; }
+    await run('/api/auth/mfa/disable', { code: String(values.code || '').trim() }, async () => {
+      form.resetFields();
+      await onIdentityChanged();
+      toast.success(text('双重验证已停用。', 'Two-factor verification is off.'));
+    });
+  };
 
   return (
     <>
       <PageHeader
         title={text('双重验证', 'Two-factor verification')}
         description={text('用 TOTP 身份验证器为登录追加一层保护。', 'Add a TOTP authenticator as a second step at sign-in.')}
-        actions={<Tag color={enabled ? 'green' : 'default'}>{enabled ? text('已启用', 'Enabled') : text('未启用', 'Not enabled')}</Tag>}
+        actions={<Tag color={enabled ? 'green' : 'default'}>{!stateKnown ? text('状态未知', 'Status unknown') : enabled ? text('已启用', 'Enabled') : text('未启用', 'Not enabled')}</Tag>}
       />
       <ContentCard>
-        {pending ? (
+        {!stateKnown ? (
+          <Alert type="warning" showIcon title={text('无法确认双重验证状态', 'Cannot determine MFA status')} description={text('请刷新身份信息或更新后端后再操作。', 'Refresh your identity or update the backend before making changes.')} action={<Button onClick={() => onIdentityChanged()}>{text('刷新状态', 'Refresh status')}</Button>} />
+        ) : pending ? (
           <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
             <Alert
               type="info"
               showIcon
-              title={text('第 1 步：用身份验证器扫描', 'Step 1: scan with your authenticator')}
+              title={text('第 1 步：导入身份验证器', 'Step 1: import into your authenticator')}
               description={(
                 <Space orientation="vertical" size={4} style={{ width: '100%' }}>
                   <Text type="secondary">{text('把下面链接导入 Google Authenticator、1Password 或其他 TOTP 应用：', 'Import the link below into Google Authenticator, 1Password or any TOTP app:')}</Text>

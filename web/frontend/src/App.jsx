@@ -31,7 +31,7 @@ const NAV_ITEMS = [
     { key: 'system', zh: '系统状态', en: 'System status', capability: 'dashboard.read', icon: 'system' },
     { key: 'wecom', zh: '企业微信设置', en: 'WeCom settings', capability: 'wecom.manage', icon: 'settings' },
     { key: 'tokens', zh: 'API Token', en: 'API tokens', capability: 'tokens.manage', icon: 'resources' },
-    // MFA 是已登录用户的自助操作，没有 capability 门控；过滤逻辑据��放行无 capability 的项。
+    // MFA 是已登录用户的自助操作，没有 capability 门控；过滤逻辑放行无 capability 的项。
     { key: 'mfa', zh: '双重验证', en: 'Two-factor', icon: 'audit' },
   ] },
 ];
@@ -269,7 +269,7 @@ function AppContent({ dark, setDark }) {
             </Header>
 
             <Content id="main-content" className="content-area" role="main" tabIndex={-1}>
-              {active && Page ? <Page capabilities={capabilities} /> : (
+              {active && Page ? <Page capabilities={capabilities} identity={identity} onIdentityChanged={loadIdentity} /> : (
                 <EmptyState title={text('暂无可查看的页面', 'No pages available')} description={text('当前账号尚未获得只读查看权限。', 'This account has no read access capabilities.')}/>
               )}
             </Content>
