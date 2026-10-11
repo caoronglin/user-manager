@@ -139,8 +139,7 @@ set_user_ulimit() {
     fi
     # 仅两个数值都有限额时比较，避免 Bash 将巨大用户输入当作算术表达式。
     if [[ "$soft_limit" =~ ^[0-9]+$ && "$hard_limit" =~ ^[0-9]+$ ]]; then
-        if (("${#soft_limit}" > "${#hard_limit}")) ||
-           { (("${#soft_limit}" == "${#hard_limit}")) && [[ "$soft_limit" > "$hard_limit" ]]; }; then
+        if ((10#$soft_limit > 10#$hard_limit)); then
             msg_err "软限制不能超过硬限制"
             return 1
         fi
