@@ -98,16 +98,21 @@ _change_all_users_password >/dev/null 2>&1
 test_pass
 
 test_start "批量密码修改: SMB 失败不中断批量操作"
-smb_call_count=0
+# 记录到临时文件：即使未来实现将同步移入子 shell，也能准确统计调用。
+smb_calls_file="$TEST_TMPDIR/smb_calls"
+: >"$smb_calls_file"
 _smb_sync_password() {
-    smb_call_count=$((smb_call_count + 1))
+    printf '%s\n' "$1" >>"$smb_calls_file"
     return 1
 }
 _change_all_users_password >/dev/null 2>&1
-if [[ $smb_call_count -eq 2 ]]; then
+smb_call_count=$(wc -l <"$smb_calls_file")
+if [[ "$smb_call_count" -eq 2 ]] &&
+    grep -Fxq user1 "$smb_calls_file" &&
+    grep -Fxq user2 "$smb_calls_file"; then
     test_pass
 else
-    test_fail "所有用户都应尝试 SMB 同步，实际调用次数: $smb_call_count (预期 2)"
+    test_fail "两个托管用户都应调用 SMB 同步，实际: $smb_call_count; 用户: $(tr '\n' ',' <"$smb_calls_file")"
 fi
 
 # ------------------------------------------------------------
