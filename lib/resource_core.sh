@@ -104,83 +104,106 @@ get_user_ulimit() {
     echo "$result"
 }
 
-# 设置指定用户的 ulimit 值（通过 limits.d 配置）
-set_user_ulimit() {
-    local username="$1"
-    local resource="$2"
-    local soft_limit="$3"
-    local hard_limit="${4:-$3}"
+# PAM limits.d 使用四列格式: domain type item value。
+# 固定系统路径由单一函数提供，测试通过覆盖该函数避免触碰宿主机。
+rl_resource_ulimit_file() {
+    local username="${1:-}"
+    [[ "$username" =~ ^[a-zA-Z_][a-zA-Z0-9_.-]*[$]?$ ]] || return 1
+    printf '/etc/security/limits.d/90-user-manager-%s.conf\n' "$username"
+}
 
-    # 验证用户存在
+rl_resource_ulimit_valid() {
+    local resource="$1" value="$2" allowed
+    for allowed in "${ULIMIT_TYPES[@]}"; do
+        if [[ "$resource" == "$allowed" ]]; then
+            [[ "$value" == "unlimited" || "$value" =~ ^[0-9]{1,15}$ ]]
+            return $?
+        fi
+    done
+    return 1
+}
+
+# 设置指定用户的 ulimit 值（需重新登录，PAM 会话才会生效）。
+set_user_ulimit() {
+    local username="${1:-}" resource="${2:-}" soft_limit="${3:-}" hard_limit="${4:-${3:-}}"
+    local limits_file existing_config rendered_config
+
     if ! id "$username" &>/dev/null; then
         msg_err "用户不存在: $username"
         return 1
     fi
-
-    # 创建 limits.d 配置文件
-    local limits_file="/etc/security/limits.d/90-user-manager-${username}.conf"
-
-    # 读取现有配置
-    local existing_config=""
-    if [[ -f "$limits_file" ]]; then
-        existing_config=$(grep -v "^#" "$limits_file" 2>/dev/null | grep -v "^${username}\s*${resource}\s*" || true)
+    if ! rl_resource_ulimit_valid "$resource" "$soft_limit" ||
+        ! rl_resource_ulimit_valid "$resource" "$hard_limit"; then
+        msg_err "资源类型或限额无效"
+        return 1
+    fi
+    # 仅两个数值都有限额时比较，避免 Bash 将巨大用户输入当作算术表达式。
+    if [[ "$soft_limit" =~ ^[0-9]+$ && "$hard_limit" =~ ^[0-9]+$ ]]; then
+        if ((10#$soft_limit > 10#$hard_limit)); then
+            msg_err "软限制不能超过硬限制"
+            return 1
+        fi
     fi
 
-    # 写入新配置
-    local rendered_config
+    limits_file="$(rl_resource_ulimit_file "$username")" || return 1
+    existing_config=""
+    if [[ -e "$limits_file" ]]; then
+        [[ -f "$limits_file" && ! -L "$limits_file" ]] || return 1
+        # 清理同一资源的现行四列记录及旧版生成的错误三列记录。
+        existing_config=$(awk -v user="$username" -v item="$resource" '
+            /^# user-manager: PAM limits for / { next }
+            $1 == user && (($2 == "soft" || $2 == "hard") && $3 == item ||
+                           $3 == item && ($2 ~ /^[0-9]+$/ || $2 == "unlimited")) { next }
+            { print }
+        ' "$limits_file") || return 1
+    fi
+
     rendered_config=$(
-        {
-            echo "# 由 user-manager 自动生成 - 用户 $username 的资源限制"
-            echo "# 更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
-            echo ""
-            # 保留其他资源类型的配置
-            if [[ -n "$existing_config" ]]; then
-                echo "$existing_config"
-                echo ""
-            fi
-            # 添加新的限制
-            echo "$username    ${soft_limit}    ${resource}"
-            [[ "$soft_limit" != "$hard_limit" ]] && echo "$username    ${hard_limit}    ${resource}"
-        }
-    )
+        printf '%s\n' "# user-manager: PAM limits for $username"
+        [[ -z "$existing_config" ]] || printf '%s\n' "$existing_config"
+        printf '%s soft %s %s\n' "$username" "$resource" "$soft_limit"
+        printf '%s hard %s %s\n' "$username" "$resource" "$hard_limit"
+    ) || return 1
 
-    printf '%s' "$rendered_config" | write_privileged_text_file "$limits_file" "0644" "root:root" || return 1
-
+    printf '%s\n' "$rendered_config" |
+        write_privileged_text_file "$limits_file" "0644" "root:root" || return 1
     msg_ok "ulimit 已设置: $username - $resource (soft: $soft_limit, hard: $hard_limit)"
     msg_warn "用户需要重新登录才能生效"
-
-    return 0
 }
 
-# 删除用户的 ulimit 配置
+# 删除指定资源的 PAM limits 配置；不影响其他资源。
 remove_user_ulimit() {
-    local username="$1"
-    local resource="${2:-}"
-
-    local limits_file="/etc/security/limits.d/90-user-manager-${username}.conf"
-
-    if [[ ! -f "$limits_file" ]]; then
+    local username="${1:-}" resource="${2:-}" limits_file filtered_config
+    limits_file="$(rl_resource_ulimit_file "$username")" || return 1
+    if [[ -n "$resource" ]] && ! rl_resource_ulimit_valid "$resource" "0"; then
+        msg_err "不支持的资源类型: $resource"
+        return 1
+    fi
+    if [[ ! -e "$limits_file" ]]; then
         msg_info "用户 $username 没有 ulimit 配置"
         return 0
     fi
+    [[ -f "$limits_file" && ! -L "$limits_file" ]] || return 1
 
     if [[ -n "$resource" ]]; then
-        # 删除特定资源的配置
-        local filtered_config
-        filtered_config=$(grep -v "^${username}\s*\(soft\|hard\)\s*${resource}\s*$" "$limits_file" 2>/dev/null || true)
-        if [[ -n "${filtered_config//[[:space:]]/}" ]]; then
-            printf '%s' "$filtered_config" | write_privileged_text_file "$limits_file" "0644" "root:root" || return 1
+        filtered_config=$(awk -v user="$username" -v item="$resource" '
+            $1 == user && (($2 == "soft" || $2 == "hard") && $3 == item ||
+                           $3 == item && ($2 ~ /^[0-9]+$/ || $2 == "unlimited")) { next }
+            { print }
+        ' "$limits_file") || return 1
+        if printf '%s\n' "$filtered_config" | awk '
+            NF > 0 && $1 !~ /^#/ { found = 1 } END { exit !found }
+        '; then
+            printf '%s\n' "$filtered_config" |
+                write_privileged_text_file "$limits_file" "0644" "root:root" || return 1
         else
             priv_rm -f "$limits_file" || return 1
         fi
         msg_ok "已移除资源 $resource 的 ulimit 配置"
     else
-        # 删除整个配置文件
-        priv_rm -f "$limits_file"
+        priv_rm -f "$limits_file" || return 1
         msg_ok "已移除用户 $username 的所有 ulimit 配置"
     fi
-
-    return 0
 }
 
 # 显示用户的所有 ulimit 设置
@@ -224,7 +247,8 @@ show_user_ulimits() {
     echo ""
 
     # 显示 limits.d 配置
-    local limits_file="/etc/security/limits.d/90-user-manager-${username}.conf"
+    local limits_file
+    limits_file="$(rl_resource_ulimit_file "$username")" || return 1
     if [[ -f "$limits_file" ]]; then
         msg_info "limits.d 配置文件内容:"
         echo "${C_DIM}"
@@ -315,6 +339,23 @@ show_user_process_resources() {
     msg_info "进程总数: ${C_RESET}${total_procs}${C_RESET}  线程总数: ${C_RESET}${total_threads}${C_RESET}"
 
     return 0
+}
+
+# 查询用户 slice 的实际任务上限；只读，不向 systemd 写入配置。
+# TasksMax 是本 slice 的属性，EffectiveTasksMax 才是继承上级后的有效上限。
+rl_resource_effective_tasks() {
+    local username="${1:-}" uid unit result
+    [[ -n "$username" ]] || return 1
+    uid=$(id -u "$username" 2>/dev/null) || {
+        msg_err "用户不存在: $username"
+        return 1
+    }
+    unit="user-${uid}.slice"
+    result=$(systemctl show "$unit" -p LoadState -p TasksMax -p EffectiveTasksMax -p TasksCurrent 2>&1) || {
+        msg_err "无法读取用户 slice: $unit"
+        return 1
+    }
+    printf 'username=%s\nunit=%s\n%s\n' "$username" "$unit" "$result"
 }
 
 # ============================================================

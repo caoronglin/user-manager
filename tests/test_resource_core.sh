@@ -38,6 +38,7 @@ id() {
         printf '%s\n' "${rl_test_uid_map[${2:-}]}"
         return 0
     fi
+    [[ "${1:-}" == "$rl_test_user" ]] && return 0
     command id "$@"
 }
 
@@ -146,6 +147,77 @@ if rl_resource_policy_remove_group testgroup >/dev/null 2>&1 &&
     test_pass
 else
     test_fail "未移除 testgroup 所有成员资源配置"
+fi
+
+# PAM limits 回归：测试重定向目标到临时目录，禁止访问真实 /etc。
+rl_resource_ulimit_file() { printf '%s/pam/%s.conf\n' "$TEST_TMPDIR" "$1"; }
+write_privileged_text_file() {
+    local target="$1"
+    command mkdir -p "$(dirname "$target")"
+    cat >"$target"
+}
+test_start "PAM limits: 正确写出 soft/hard 四列，且相同限额可重复设置"
+pam_file="$(rl_resource_ulimit_file "$rl_test_user")"
+if set_user_ulimit "$rl_test_user" nofile 65535 524288 >/dev/null 2>&1 &&
+    set_user_ulimit "$rl_test_user" nofile 65535 524288 >/dev/null 2>&1 &&
+    [[ "$(grep -c "^rltest soft nofile 65535$" "$pam_file")" == 1 ]] &&
+    [[ "$(grep -c "^rltest hard nofile 524288$" "$pam_file")" == 1 ]]; then
+    test_pass
+else
+    test_fail "PAM 四列格式错误或产生重复项"
+fi
+
+test_start "PAM limits: 相等软硬限额也应成功"
+if set_user_ulimit "$rl_test_user" nproc 4096 4096 >/dev/null 2>&1 &&
+    grep -qx 'rltest soft nproc 4096' "$pam_file" &&
+    grep -qx 'rltest hard nproc 4096' "$pam_file"; then
+    test_pass
+else
+    test_fail "软硬限额相等时配置失败"
+fi
+
+test_start "PAM limits: 删除指定项不影响其他资源"
+if remove_user_ulimit "$rl_test_user" nofile >/dev/null 2>&1 &&
+    ! grep -q 'nofile' "$pam_file" &&
+    grep -qx 'rltest hard nproc 4096' "$pam_file"; then
+    test_pass
+else
+    test_fail "删除 nofile 后破坏其他资源配置"
+fi
+
+test_start "PAM limits: 拒绝软限额超过硬限额及非法资源"
+if ! set_user_ulimit "$rl_test_user" nofile 70000 60000 >/dev/null 2>&1 &&
+    ! set_user_ulimit "$rl_test_user" bogus 1 2 >/dev/null 2>&1 &&
+    ! set_user_ulimit "$rl_test_user" nofile 999999999999999999999 0 >/dev/null 2>&1; then
+    test_pass
+else
+    test_fail "无效限额/资源类型未拒绝"
+fi
+
+test_start "PAM limits: 删除最后一个资源后移除管理文件"
+if remove_user_ulimit "$rl_test_user" nproc >/dev/null 2>&1 &&
+    [[ ! -e "$pam_file" ]]; then
+    test_pass
+else
+    test_fail "空的管理文件应被移除"
+fi
+
+test_start "资源限制：--effective 只读展示真实 TasksMax 和继承后的 EffectiveTasksMax"
+systemctl() {
+    if [[ "${1:-}" == show && "${2:-}" == "user-4242.slice" ]]; then
+        printf 'LoadState=loaded\nTasksMax=infinity\nEffectiveTasksMax=1024\nTasksCurrent=36\n'
+        return 0
+    fi
+    return 1
+}
+effective_out="$(rl_resource_effective_tasks "$rl_test_user" 2>/dev/null || true)"
+unset -f systemctl
+if [[ "$effective_out" == *"unit=user-4242.slice"* ]] &&
+    [[ "$effective_out" == *"TasksMax=infinity"* ]] &&
+    [[ "$effective_out" == *"EffectiveTasksMax=1024"* ]]; then
+    test_pass
+else
+    test_fail "未正确读取有效任务上限: $effective_out"
 fi
 
 cleanup_test_env

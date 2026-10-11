@@ -171,8 +171,24 @@ rl_action_users_create_cli() {
 
 rl_action_users_quota_cli() {
     local rl_mode="${1:-}" rl_username="${2:-}" rl_value="${3:-}" rl_mp="${4:-}"
+    if [[ "$rl_mode" == "--health" ]]; then
+        if [[ -n "$rl_username" ]]; then
+            quota_mount_health "$rl_username"
+            return $?
+        fi
+        local disk_num idx mp failed=0 found=0
+        for disk_num in "${ALL_DISKS[@]}"; do
+            idx=$(printf '%02d' "$disk_num")
+            mp="${DATA_BASE}/data${idx}"
+            mountpoint -q "$mp" 2>/dev/null || continue
+            ((found += 1))
+            quota_mount_health "$mp" || ((failed += 1))
+        done
+        ((found > 0 && failed == 0))
+        return $?
+    fi
     [[ -n "$rl_username" ]] || {
-        printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点]\n' >&2
+        printf '用法: rl-user-quota.sh --get <用户名> | --set <用户名> <配额> [挂载点] | --health [挂载点]\\n' >&2
         return "$RL_ERR_PARAM"
     }
     [[ -n "$rl_mp" ]] || rl_mp="$(get_user_mountpoint "$(get_user_home "$rl_username")")"
@@ -198,18 +214,19 @@ rl_action_users_quota_cli() {
 rl_action_users_resource_cli() {
     local rl_mode="${1:-}" rl_username="${2:-}"
     [[ -n "$rl_username" ]] || {
-        printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2
+        printf '用法: rl-user-resource.sh --get <用户名> | --effective <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2
         return "$RL_ERR_PARAM"
     }
 
     case "$rl_mode" in
     --get) get_current_resource_limits "$rl_username" ;;
+    --effective) rl_resource_effective_tasks "$rl_username" ;;
     --set) configure_resource_limits "$rl_username" "${3:-}" "${4:-}" ;;
     --runtime-set) rl_resource_apply_runtime_limits "$(id -u "$rl_username")" "${3:-}" "${4:-}" ;;
     --runtime-reset) rl_resource_reset_runtime_limits "$(id -u "$rl_username")" ;;
     --remove) remove_resource_limits "$(id -u "$rl_username")" ;;
     *)
-        printf '用法: rl-user-resource.sh --get <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2
+        printf '用法: rl-user-resource.sh --get <用户名> | --effective <用户名> | --set <用户名> <CPU> <内存> | --runtime-set <用户名> <CPU> <内存> | --runtime-reset <用户名> | --remove <用户名>\n' >&2
         return "$RL_ERR_PARAM"
         ;;
     esac

@@ -12,7 +12,7 @@ rl_project_root="$(dirname "$rl_script_dir")"
 rl_usage() {
     cat <<'EOF'
 用法: rl-user-quota.sh --get <用户名>
-用法: rl-user-quota.sh --set <用户名> <配额> [挂载点]
+用法: rl-user-quota.sh --set <用户名> <配额> [挂载点]\n用法: rl-user-quota.sh --health [挂载点]  # 只读检查磁盘配额状态
 
 选项:
   -h, --help  显示此帮助

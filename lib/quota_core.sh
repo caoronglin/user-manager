@@ -35,11 +35,12 @@ collect_quota_users() {
     local mp="$1"
     [[ -z "$mp" ]] && return 1
 
-    # 在 pipefail 下，repquota 不存在/失败不应让只读列表命令报错。
+    # 按数据行中的 quota 标志解析，不依赖英文/中文标题及固定行数。
+    # quota-tools 格式：username -- used soft hard ...（超限标志可为 +）。
     priv_repquota -u "$mp" 2>/dev/null | awk '
-        NR > 6 && $1 ~ /^[a-zA-Z_][a-zA-Z0-9_.-]*$/ {
-            print $1
-        }
+        $1 ~ /^[a-zA-Z_][a-zA-Z0-9_.-]*$/ &&
+        $2 ~ /^[+-][+-]$/ && $3 ~ /^[0-9]+$/ &&
+        $4 ~ /^[0-9]+$/ && $5 ~ /^[0-9]+$/ { print $1 }
     ' || true
 }
 
@@ -111,41 +112,46 @@ get_user_quota_info() {
         return 1
     }
 
-    local used_kb="" limit_kb=""
-
-    # ── 优先尝试 quota 命令 ──
+    local used_kb="" limit_kb="" device quota_output repquota_output quota_line
+    # quota -u 提供本地挂载的按设备查询；精确匹配设备/挂载点，
+    # 避免将 /dev/sdf 误匹配到 /dev/sdf1 或把路径中的 . 作为正则。
     if command -v quota &>/dev/null; then
-        local device quota_output
-        device=$(df "$mp" 2>/dev/null | awk 'NR==2 {print $1}')
+        device=$(findmnt -n -M "$mp" -o SOURCE 2>/dev/null || true)
         if [[ -n "$device" ]]; then
-            quota_output=$(priv_quota -u "$username" 2>/dev/null |
-                grep -E "^[[:space:]]*(${device}|${mp})" || true)
-            if [[ -n "$quota_output" ]]; then
-                used_kb=$(echo "$quota_output" | awk '{print $2}')
-                limit_kb=$(echo "$quota_output" | awk '{print $4}')
+            quota_output=$(priv_quota -u "$username" 2>/dev/null || true)
+            quota_line=$(printf '%s\n' "$quota_output" | awk -v dev="$device" -v mount="$mp" '
+                ($1 == dev || $1 == mount) && $2 ~ /^[0-9]+$/ && $4 ~ /^[0-9]+$/ {
+                    print $2, $4; exit
+                }
+            ')
+            if [[ -n "$quota_line" ]]; then
+                read -r used_kb limit_kb <<<"$quota_line"
             fi
         fi
     fi
 
-    # ── 回退到 repquota ──
-    if [[ ! "$used_kb" =~ ^[0-9]+$ ]] || [[ ! "$limit_kb" =~ ^[0-9]+$ ]]; then
-        local repquota_output quota_line
-        repquota_output=$(priv_repquota -u "$mp" 2>/dev/null) || true
-        if [[ -n "$repquota_output" ]]; then
-            quota_line=$(echo "$repquota_output" | awk -v user="$username" '
-                /^\*\*\*/ || /Block limits/ || /File limits/ || /^[[:space:]]*$/ || /^---/ || /用户.*已用/ { next }
-                $1 == user {
-                    used = $3; hard = $5
-                    gsub(/[^0-9]/, "", used)
-                    gsub(/[^0-9]/, "", hard)
-                    if (used != "" && hard != "") print used, hard
-                    exit
-                }
-            ')
-            if [[ -n "$quota_line" ]]; then
-                used_kb=$(echo "$quota_line" | awk '{print $1}')
-                limit_kb=$(echo "$quota_line" | awk '{print $2}')
-            fi
+    # 回退到 repquota：兼容 Ubuntu 26.04 本地化表头及 ext4 内置 quota。
+    # 只接受严格的数字列，不把解析失败的文本转换成 0。
+    if [[ ! "$used_kb" =~ ^[0-9]+$ || ! "$limit_kb" =~ ^[0-9]+$ ]]; then
+        local repquota_rc=0
+        repquota_output=$(priv_repquota -u "$mp" 2>/dev/null) || repquota_rc=$?
+        quota_line=$(printf '%s\n' "$repquota_output" | awk -v user="$username" '
+            $1 == user && $2 ~ /^[+-][+-]$/ &&
+            $3 ~ /^[0-9]+$/ && $4 ~ /^[0-9]+$/ && $5 ~ /^[0-9]+$/ {
+                print $3, $5; exit
+            }
+        ')
+        if [[ -n "$quota_line" ]]; then
+            # 部分 quota-tools 版本会因无关 tmpfs 挂载警告返回非零，
+            # 但目标用户的数值报告仍是可用的。
+            read -r used_kb limit_kb <<<"$quota_line"
+        elif ((repquota_rc != 0)); then
+            msg_err "无法读取挂载点 $mp 的配额报告"
+            return 1
+        else
+            # 成功读取报告但无该用户条目，代表尚未使用该文件系统。
+            used_kb=0
+            limit_kb=0
         fi
     fi
 
@@ -384,6 +390,45 @@ get_all_quota_usage() {
         quota_info=$(get_user_quota_info "$username" "$mp")
         echo "${username}:${quota_info}"
     done < <(get_managed_usernames)
+}
+
+# 只读诊断：查看精确挂载点及 quota-tools 报告可用性。
+# 不运行 quotaon/quotacheck、不修改 fstab，不假设 ext4 内置配额需要 aquota.* 文件。
+quota_mount_health() {
+    local mp="${1:-}" source fstype options quota_user quota_group
+    if [[ -z "$mp" ]] || ! mountpoint -q "$mp" 2>/dev/null; then
+        msg_err "挂载点无效或未挂载: $mp"
+        return 1
+    fi
+    local mount_info
+    mount_info=$(findmnt -n -M "$mp" -o SOURCE,FSTYPE,OPTIONS 2>/dev/null) || {
+        msg_err "无法读取挂载信息: $mp"
+        return 1
+    }
+    read -r source fstype options <<<"$mount_info"
+    [[ -n "$source" && -n "$fstype" ]] || return 1
+    quota_user="unavailable"
+    quota_group="unavailable"
+    local output rc type status
+    for type in u g; do
+        rc=0
+        output=$(priv_repquota "-$type" "$mp" 2>/dev/null) || rc=$?
+        status="unavailable"
+        if ((rc == 0)); then
+            status="readable"
+        elif [[ "$output" == *"***"* && "$output" == *"Block limits"* && "$output" == *"File limits"* ]]; then
+            # 非零退出码可能来自无关 tmpfs 警告，但不忽略它。
+            status="readable-with-warning"
+        fi
+        if [[ "$type" == u ]]; then
+            quota_user="$status"
+        else
+            quota_group="$status"
+        fi
+    done
+    printf 'mount=%s\nsource=%s\nfilesystem=%s\noptions=%s\nuser_report=%s\ngroup_report=%s\n' \
+        "$mp" "$source" "$fstype" "$options" "$quota_user" "$quota_group"
+    [[ "$quota_user" != "unavailable" && "$quota_group" != "unavailable" ]]
 }
 
 # 设置组磁盘配额
