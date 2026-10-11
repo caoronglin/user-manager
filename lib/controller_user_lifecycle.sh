@@ -22,7 +22,11 @@ delete_user_account() {
 
     # 可选备份
     if confirm_action "是否在删除前备份用户数据？"; then
-        manual_backup_user "$username"
+        if ! manual_backup_user "$username"; then
+            msg_err "删除已取消：删除前备份失败，尚未清理用户数据"
+            release_lock
+            return 1
+        fi
     fi
 
     # 清理关联资源
