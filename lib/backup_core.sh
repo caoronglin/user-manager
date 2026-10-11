@@ -306,9 +306,23 @@ restore_user_backup() {
     # 恢复前先备份当前数据
     local pre_restore_backup
     pre_restore_backup="$BACKUP_ROOT/$username/pre_restore_$(date +%Y%m%d_%H%M%S)"
+    # 目标备份不完整时拒绝恢复；需由调用入口加载 backup_verify.sh。
+    if declare -F verify_before_restore >/dev/null 2>&1; then
+        if ! verify_before_restore "$backup_dir"; then
+            msg_err "恢复已取消：备份点未通过完整性检查"
+            return 1
+        fi
+    fi
+
     msg_step "先备份当前数据到: $pre_restore_backup"
-    priv_mkdir -p "$pre_restore_backup"
-    priv_rsync -a "$user_home/" "$pre_restore_backup/" 2>/dev/null || true
+    if ! priv_mkdir -p "$pre_restore_backup"; then
+        msg_err "恢复已取消：无法创建恢复前保护目录"
+        return 1
+    fi
+    if ! priv_rsync -a "$user_home/" "$pre_restore_backup/"; then
+        msg_err "恢复已取消：当前数据保护备份失败，未执行覆盖恢复"
+        return 1
+    fi
 
     msg_step "开始恢复..."
 
@@ -983,7 +997,7 @@ backup_all_users() {
     } | priv_tee -a "$batch_log" >/dev/null
 
     record_user_event "system" "batch_backup" "批量备份: 成功${success_count}, 失败${failed_count}"
-    return 0
+    ((failed_count == 0))
 }
 
 # ============================================================
