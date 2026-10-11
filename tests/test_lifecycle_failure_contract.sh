@@ -9,6 +9,7 @@ source "$SCRIPT_DIR/test_framework.sh"
 source "$PROJECT_ROOT/lib/common.sh"
 source "$PROJECT_ROOT/lib/config.sh"
 LIB_DIR="$PROJECT_ROOT/lib"
+source "$PROJECT_ROOT/lib/quota_core.sh"
 source "$PROJECT_ROOT/lib/user_core.sh"
 source "$PROJECT_ROOT/lib/backup_core.sh"
 source "$PROJECT_ROOT/lib/controller_user_provisioning.sh"
@@ -226,6 +227,169 @@ test_provisioning_does_not_report_success_without_quota() {
         ! grep -Eq 'NOTIFIED|EVENT' "$logfile"
 }
 
+# 用户重命名/备份验证/账户发现的真实函数契约。
+test_rename_disabled_preserves_lock() {
+    local logfile="$TEST_TMPDIR/rename_disabled.log"
+    local old_home="$TEST_TMPDIR/rename_old"
+    mkdir -p "$old_home"
+    DISABLED_USERS_FILE="$TEST_TMPDIR/disabled-rename.txt"
+    printf 'olduser\treason\t2026-10-01\t2026-10-20\t/bin/bash\tactive\t-1\tsuspend\n' >"$DISABLED_USERS_FILE"
+    USER_CONFIG_FILE="$TEST_TMPDIR/no-config.json"
+    JOB_STATS_DIR="$TEST_TMPDIR/no-stats"
+    REPLY_INPUT=""
+    read_existing_username() { REPLY_INPUT=olduser; }
+    read_username() { REPLY_INPUT=newuser; }
+    draw_header() { :; }
+    draw_info_card() { :; }
+    msg_step() { :; }
+    msg_ok() { :; }
+    msg_err() { :; }
+    confirm_action() { return 0; }
+    acquire_lock() { return 0; }
+    release_lock() { :; }
+    id() { [[ "${1:-}" == olduser ]]; }
+    get_user_home() { printf '%s/rename_old\n' "$TEST_TMPDIR"; }
+    _um_user_lock_state() { printf 'locked'; }
+    priv_usermod() { printf '%s\n' "$*" >>"$logfile"; }
+    priv_mv() { command mv "$@"; }
+    getent() { return 2; }
+    priv_iptables() { return 1; }
+    priv_ufw() { return 1; }
+    record_user_event() { :; }
+    rename_user_account >/dev/null 2>&1 || return 1
+    [[ -d "$TEST_TMPDIR/newuser" ]] && return 1 # 目标 home 是 rename_newuser 的父级拼接路径。
+    [[ -d "$TEST_TMPDIR/newuser" || -d "$TEST_TMPDIR/rename_old" ]] && return 1
+    grep -q "^newuser" test_password_failure_rolls_back_account
+run_contract "删除前备份失败禁止删除及关联清理" test_delete_stops_after_backup_failure
+run_contract "恢复前保护备份失败禁止覆盖恢复" test_restore_stops_when_protection_fails
+run_contract "备份校验失败禁止恢复" test_restore_refuses_unverified_backup
+run_contract "批量备份部分失败返回非零退出码" test_bulk_backup_returns_failure
+run_contract "普通用户组入口拒绝 sudo 等高权限组" test_privileged_group_denied
+run_contract "配额设置失败禁止上报账户创建完成" test_provisioning_does_not_report_success_without_quota
+
+cleanup_test_env
+test_suite_end
+\t' "$DISABLED_USERS_FILE" &&
+        ! grep -q "^olduser" test_password_failure_rolls_back_account
+run_contract "删除前备份失败禁止删除及关联清理" test_delete_stops_after_backup_failure
+run_contract "恢复前保护备份失败禁止覆盖恢复" test_restore_stops_when_protection_fails
+run_contract "备份校验失败禁止恢复" test_restore_refuses_unverified_backup
+run_contract "批量备份部分失败返回非零退出码" test_bulk_backup_returns_failure
+run_contract "普通用户组入口拒绝 sudo 等高权限组" test_privileged_group_denied
+run_contract "配额设置失败禁止上报账户创建完成" test_provisioning_does_not_report_success_without_quota
+
+cleanup_test_env
+test_suite_end
+\t' "$DISABLED_USERS_FILE" &&
+        ! grep -q -- '-U newuser' "$logfile" &&
+        grep -q -- '-l newuser olduser' "$logfile"
+}
+
+test_rename_active_unlocks_only_after_success() {
+    local logfile="$TEST_TMPDIR/rename_active.log"
+    local old_home="$TEST_TMPDIR/active_old"
+    mkdir -p "$old_home"
+    DISABLED_USERS_FILE="$TEST_TMPDIR/no-disabled-active.txt"
+    USER_CONFIG_FILE="$TEST_TMPDIR/no-config.json"
+    JOB_STATS_DIR="$TEST_TMPDIR/no-stats"
+    REPLY_INPUT=""
+    read_existing_username() { REPLY_INPUT=activeold; }
+    read_username() { REPLY_INPUT=activenew; }
+    draw_header() { :; }
+    draw_info_card() { :; }
+    msg_step() { :; }
+    msg_ok() { :; }
+    msg_err() { :; }
+    confirm_action() { return 0; }
+    acquire_lock() { return 0; }
+    release_lock() { :; }
+    id() { [[ "${1:-}" == activeold ]]; }
+    get_user_home() { printf '%s/active_old\n' "$TEST_TMPDIR"; }
+    _um_user_lock_state() { printf 'active'; }
+    priv_usermod() { printf '%s\n' "$*" >>"$logfile"; }
+    priv_mv() { command mv "$@"; }
+    getent() { return 2; }
+    priv_iptables() { return 1; }
+    priv_ufw() { return 1; }
+    record_user_event() { :; }
+    rename_user_account >/dev/null 2>&1 &&
+        grep -qx -- '-U activenew' "$logfile"
+}
+
+test_restore_refuses_missing_verification_module() {
+    local logfile="$TEST_TMPDIR/missing_verify.log"
+    BACKUP_ROOT="$TEST_TMPDIR/restore_missing_module"
+    mkdir -p "$BACKUP_ROOT/lifetest/full_1" "$TEST_TMPDIR/missing_verify_home"
+    printf 'data\n' >"$BACKUP_ROOT/lifetest/full_1/a"
+    draw_header() { :; }
+    draw_info_card() { :; }
+    msg_warn() { :; }
+    msg_err() { :; }
+    confirm_action() { return 0; }
+    id() { return 0; }
+    get_user_home() { printf '%s/missing_verify_home\n' "$TEST_TMPDIR"; }
+    unset -f verify_before_restore 2>/dev/null || true
+    priv_rsync() { printf 'called\n' >>"$logfile"; }
+    if restore_user_backup lifetest full_1 >/dev/null 2>&1; then
+        return 1
+    fi
+    [[ ! -e "$logfile" ]]
+}
+
+test_checksum_restore_policy() {
+    BACKUP_ROOT="$TEST_TMPDIR/checksum_backup"
+    mkdir -p "$BACKUP_ROOT/lifetest/full_1"
+    printf 'experiment data\n' >"$BACKUP_ROOT/lifetest/full_1/a.bam"
+    msg_step() { :; }
+    msg_ok() { :; }
+    msg_err() { :; }
+    msg_warn() { :; }
+    # checksum 目录常量来自当前沙箱的 BACKUP_ROOT，仅在子 shell 加载。
+    source "$PROJECT_ROOT/lib/backup_verify.sh"
+    if verify_before_restore "$BACKUP_ROOT/lifetest/full_1" >/dev/null 2>&1; then return 1; fi
+    generate_backup_checksum "$BACKUP_ROOT/lifetest/full_1" >/dev/null 2>&1 || return 1
+    verify_before_restore "$BACKUP_ROOT/lifetest/full_1" >/dev/null 2>&1 || return 1
+    printf 'corrupted\n' >"$BACKUP_ROOT/lifetest/full_1/a.bam"
+    if verify_before_restore "$BACKUP_ROOT/lifetest/full_1" >/dev/null 2>&1; then return 1; fi
+}
+
+test_unquotaed_account_discoverable() {
+    DATA_BASE="$TEST_TMPDIR/disks"
+    ALL_DISKS=(6 7)
+    USERNAMES_CACHE=""
+    USERNAMES_CACHE_TIME=0
+    USERNAME_PATTERN='^[a-zA-Z_][a-zA-Z0-9_.-]* test_password_failure_rolls_back_account
+run_contract "删除前备份失败禁止删除及关联清理" test_delete_stops_after_backup_failure
+run_contract "恢复前保护备份失败禁止覆盖恢复" test_restore_stops_when_protection_fails
+run_contract "备份校验失败禁止恢复" test_restore_refuses_unverified_backup
+run_contract "批量备份部分失败返回非零退出码" test_bulk_backup_returns_failure
+run_contract "普通用户组入口拒绝 sudo 等高权限组" test_privileged_group_denied
+run_contract "配额设置失败禁止上报账户创建完成" test_provisioning_does_not_report_success_without_quota
+
+cleanup_test_env
+test_suite_end
+
+    getent() {
+        if [[ "$#" == 1 && "$1" == passwd ]]; then
+            printf 'studentx:x:2001:2001::%s/data06/studentx:/bin/bash\n' "$DATA_BASE"
+            printf 'other:x:2002:2002::/home/other:/bin/bash\n'
+        elif [[ "$1" == passwd && "$2" == studentx ]]; then
+            printf 'studentx:x:2001:2001::%s/data06/studentx:/bin/bash\n' "$DATA_BASE"
+        else
+            return 2
+        fi
+    }
+    get_user_home() { printf '%s/data06/studentx\n' "$DATA_BASE"; }
+    mountpoint() { return 0; }
+    priv_repquota() { return 1; }
+    [[ "$(get_managed_usernames)" == studentx ]]
+}
+
+run_contract "用户重命名保留锁定状态及迁移禁用记录" test_rename_disabled_preserves_lock
+run_contract "正常用户重命名成功后恢复原登录状态" test_rename_active_unlocks_only_after_success
+run_contract "校验模块未加载时拒绝覆盖恢复" test_restore_refuses_missing_verification_module
+run_contract "无校验清单拒绝恢复、正确清单通过、篡改拒绝" test_checksum_restore_policy
+run_contract "无配额记录的受管账户仍可发现" test_unquotaed_account_discoverable
 run_contract "密码初始化失败撤销账户且不删除主目录" test_password_failure_rolls_back_account
 run_contract "删除前备份失败禁止删除及关联清理" test_delete_stops_after_backup_failure
 run_contract "恢复前保护备份失败禁止覆盖恢复" test_restore_stops_when_protection_fails
