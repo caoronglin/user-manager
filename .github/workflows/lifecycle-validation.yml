@@ -23,14 +23,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate Bash syntax
-        run: bash -n tests/test_lifecycle_failure_contract.sh
+        run: bash -n tests/test_lifecycle_failure_contract.sh && bash -n tests/test_lifecycle_state_contract.sh
 
       - name: Exercise lifecycle failure contracts
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/lifecycle-artifacts"
-          timeout 120s bash tests/test_lifecycle_failure_contract.sh 2>&1 | tee "$RUNNER_TEMP/lifecycle-artifacts/runner.log"
+          timeout 120s bash -c 'bash tests/test_lifecycle_failure_contract.sh && bash tests/test_lifecycle_state_contract.sh' 2>&1 | tee "$RUNNER_TEMP/lifecycle-artifacts/runner.log"
 
       - name: Publish diagnostic logs on failure
         if: always()
@@ -62,7 +62,7 @@ jobs:
             --volume "$PWD:/repo:ro" \
             --workdir /repo \
             ubuntu:26.04 \
-            bash tests/test_lifecycle_failure_contract.sh \
+            bash -c 'bash tests/test_lifecycle_failure_contract.sh && bash tests/test_lifecycle_state_contract.sh' \
             2>&1 | tee "$RUNNER_TEMP/lifecycle-artifacts/ubuntu26.log"
 
       - name: Publish sandbox diagnostics
