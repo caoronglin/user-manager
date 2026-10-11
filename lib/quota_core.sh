@@ -168,8 +168,8 @@ get_user_quota_info() {
             msg_err "无法读取挂载点 $mp 的配额报告"
             return 1
         elif [[ "$repquota_output" == *"***"* &&
-                "$repquota_output" == *"Block limits"* &&
-                "$repquota_output" == *"File limits"* ]]; then
+            "$repquota_output" == *"Block limits"* &&
+            "$repquota_output" == *"File limits"* ]]; then
             # 确实成功收到目标挂载点的完整报告，但没有用户记录。
             used_kb=0
             limit_kb=0
