@@ -341,6 +341,23 @@ show_user_process_resources() {
     return 0
 }
 
+# 查询用户 slice 的实际任务上限；只读，不向 systemd 写入配置。
+# TasksMax 是本 slice 的属性，EffectiveTasksMax 才是继承上级后的有效上限。
+rl_resource_effective_tasks() {
+    local username="${1:-}" uid unit result
+    [[ -n "$username" ]] || return 1
+    uid=$(id -u "$username" 2>/dev/null) || {
+        msg_err "用户不存在: $username"
+        return 1
+    }
+    unit="user-${uid}.slice"
+    result=$(systemctl show "$unit" -p LoadState -p TasksMax -p EffectiveTasksMax -p TasksCurrent 2>&1) || {
+        msg_err "无法读取用户 slice: $unit"
+        return 1
+    }
+    printf 'username=%s\nunit=%s\n%s\n' "$username" "$unit" "$result"
+}
+
 # ============================================================
 # 查询资源限制
 # ============================================================
