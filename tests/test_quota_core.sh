@@ -165,5 +165,69 @@ DATA_BASE="$old_data_base"
 DISK_WARNING_THRESHOLD="$old_threshold"
 unset -f mountpoint df
 
+# Ubuntu 26.04: 本地化 repquota 标题、tmpfs 警告与 ext4 内置配额。
+priv_quota() { return 1; }
+priv_repquota() {
+    case "${1:-}:${2:-}" in
+    -u:/mnt/data06)
+        cat <<'EOF'
+*** user 配额的报告清单 基于设备 /dev/sdf
+块超额时限：7天；节点超额时限：7天
+                        Block limits                File limits
+用户    已用 软限额 硬限额 超额时限 已用 软限额 硬限额 超额时限
+----------------------------------------------------------------------
+alice     --     42      0      2048          2   0 0
+root      --     20      0         0          2   0 0
+EOF
+        return 0 ;;
+    -g:/mnt/data06)
+        printf 'Group -- used soft hard\nroot -- 20 0 0\n'
+        return 0 ;;
+    esac
+    return 1
+}
+findmnt() {
+    [[ " $* " == *" /mnt/data06 "* ]] && {
+        if [[ " $* " == *" SOURCE,FSTYPE,OPTIONS "* ]]; then
+            printf '/dev/sdf ext4 rw,usrquota,grpquota\n'
+        else
+            printf '/dev/sdf\n'
+        fi
+        return 0
+    }
+    return 1
+}
+test_start "配额：中文 repquota 报告正常解析并保留硬限额"
+quota_out="$(get_user_quota_info alice /mnt/data06 2>/dev/null || true)"
+assert_equals "43008:2097152" "$quota_out" "应从中文报告读取已用 42 KiB 与硬限额 2048 KiB"
+
+test_start "配额：只识别真正的数据行，不把本地化标题当成用户名"
+quota_users="$(collect_quota_users /mnt/data06 2>/dev/null)"
+if [[ "$quota_users" == *alice* ]] && [[ "$quota_users" == *root* ]] &&
+   [[ "$quota_users" != *"用户"* ]]; then
+    test_pass
+else
+    test_fail "未正确过滤配额数据行: $quota_users"
+fi
+
+test_start "配额健康检查：只读报告，不调用 quotaon 或修改挂载"
+health="$(quota_mount_health /mnt/data06 2>/dev/null)"
+if [[ "$health" == *"filesystem=ext4"* ]] &&
+   [[ "$health" == *"user_report=readable"* ]] &&
+   [[ "$health" == *"group_report=readable"* ]]; then
+    test_pass
+else
+    test_fail "健康报告错误: $health"
+fi
+
+test_start "配额健康检查：报告失败不能误报已启用"
+if ! quota_mount_health /mnt/data07 >/dev/null 2>&1; then
+    test_pass
+else
+    test_fail "未挂载的文件系统应返回非零"
+fi
+unset -f priv_quota priv_repquota findmnt
+
+
 cleanup_test_env
 test_suite_end
