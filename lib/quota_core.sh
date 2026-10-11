@@ -133,10 +133,8 @@ get_user_quota_info() {
     # 回退到 repquota：兼容 Ubuntu 26.04 本地化表头及 ext4 内置 quota。
     # 只接受严格的数字列，不把解析失败的文本转换成 0。
     if [[ ! "$used_kb" =~ ^[0-9]+$ || ! "$limit_kb" =~ ^[0-9]+$ ]]; then
-        if ! repquota_output=$(priv_repquota -u "$mp" 2>/dev/null); then
-            msg_err "无法读取挂载点 $mp 的配额报告"
-            return 1
-        fi
+        local repquota_rc=0
+        repquota_output=$(priv_repquota -u "$mp" 2>/dev/null) || repquota_rc=$?
         quota_line=$(printf '%s\n' "$repquota_output" | awk -v user="$username" '
             $1 == user && $2 ~ /^[+-][+-]$/ &&
             $3 ~ /^[0-9]+$/ && $4 ~ /^[0-9]+$/ && $5 ~ /^[0-9]+$/ {
@@ -144,9 +142,14 @@ get_user_quota_info() {
             }
         ')
         if [[ -n "$quota_line" ]]; then
+            # 部分 quota-tools 版本会因无关 tmpfs 挂载警告返回非零，
+            # 但目标用户的数值报告仍是可用的。
             read -r used_kb limit_kb <<<"$quota_line"
+        elif ((repquota_rc != 0)); then
+            msg_err "无法读取挂载点 $mp 的配额报告"
+            return 1
         else
-            # 合法的空记录代表此用户尚未使用该文件系统。
+            # 成功读取报告但无该用户条目，代表尚未使用该文件系统。
             used_kb=0
             limit_kb=0
         fi
