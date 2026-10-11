@@ -180,10 +180,12 @@ alice     --     42      0      2048          2   0 0
 root      --     20      0         0          2   0 0
 EOF
         [[ "${RL_TEST_QUOTA_WARN:-0}" == 1 ]] && return 2
-        return 0 ;;
+        return 0
+        ;;
     -g:/mnt/data06)
         printf 'Group -- used soft hard\nroot -- 20 0 0\n'
-        return 0 ;;
+        return 0
+        ;;
     esac
     return 1
 }
@@ -214,7 +216,7 @@ assert_equals "43008:2097152" "$quota_warn_out" "目标用户完整数据不能�
 test_start "配额：只识别真正的数据行，不把本地化标题当成用户名"
 quota_users="$(collect_quota_users /mnt/data06 2>/dev/null)"
 if [[ "$quota_users" == *alice* ]] && [[ "$quota_users" == *root* ]] &&
-   [[ "$quota_users" != *"用户"* ]]; then
+    [[ "$quota_users" != *"用户"* ]]; then
     test_pass
 else
     test_fail "未正确过滤配额数据行: $quota_users"
@@ -223,8 +225,8 @@ fi
 test_start "配额健康检查：只读报告，不调用 quotaon 或修改挂载"
 health="$(quota_mount_health /mnt/data06 2>/dev/null)"
 if [[ "$health" == *"filesystem=ext4"* ]] &&
-   [[ "$health" == *"user_report=readable"* ]] &&
-   [[ "$health" == *"group_report=readable"* ]]; then
+    [[ "$health" == *"user_report=readable"* ]] &&
+    [[ "$health" == *"group_report=readable"* ]]; then
     test_pass
 else
     test_fail "健康报告错误: $health"
@@ -237,7 +239,6 @@ else
     test_fail "未挂载的文件系统应返回非零"
 fi
 unset -f priv_quota priv_repquota findmnt
-
 
 cleanup_test_env
 test_suite_end
