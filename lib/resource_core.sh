@@ -151,6 +151,7 @@ set_user_ulimit() {
         [[ -f "$limits_file" && ! -L "$limits_file" ]] || return 1
         # 清理同一资源的现行四列记录及旧版生成的错误三列记录。
         existing_config=$(awk -v user="$username" -v item="$resource" '
+            /^# user-manager: PAM limits for / { next }
             $1 == user && (($2 == "soft" || $2 == "hard") && $3 == item ||
                            $3 == item && ($2 ~ /^[0-9]+$/ || $2 == "unlimited")) { next }
             { print }
