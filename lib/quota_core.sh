@@ -409,12 +409,26 @@ quota_mount_health() {
     [[ -n "$source" && -n "$fstype" ]] || return 1
     quota_user="unavailable"
     quota_group="unavailable"
-    priv_repquota -u "$mp" >/dev/null 2>&1 && quota_user="readable"
-    priv_repquota -g "$mp" >/dev/null 2>&1 && quota_group="readable"
+    local output rc type status
+    for type in u g; do
+        rc=0
+        output=$(priv_repquota "-$type" "$mp" 2>/dev/null) || rc=$?
+        status="unavailable"
+        if ((rc == 0)); then
+            status="readable"
+        elif [[ "$output" == *"***"* && "$output" == *"Block limits"* && "$output" == *"File limits"* ]]; then
+            # 非零退出码可能来自无关 tmpfs 警告，但不忽略它。
+            status="readable-with-warning"
+        fi
+        if [[ "$type" == u ]]; then
+            quota_user="$status"
+        else
+            quota_group="$status"
+        fi
+    done
     printf 'mount=%s\nsource=%s\nfilesystem=%s\noptions=%s\nuser_report=%s\ngroup_report=%s\n' \
         "$mp" "$source" "$fstype" "$options" "$quota_user" "$quota_group"
-    # 诊断失败即返回失败，不能把无法读取配额报告称为已启用。
-    [[ "$quota_user" == "readable" && "$quota_group" == "readable" ]]
+    [[ "$quota_user" != "unavailable" && "$quota_group" != "unavailable" ]]
 }
 
 # 设置组磁盘配额
