@@ -257,8 +257,7 @@ test_rename_disabled_preserves_lock() {
     priv_ufw() { return 1; }
     record_user_event() { :; }
     rename_user_account >/dev/null 2>&1 || return 1
-    [[ -d "$TEST_TMPDIR/newuser" ]] && return 1 # 目标 home 是 rename_newuser 的父级拼接路径。
-    [[ -d "$TEST_TMPDIR/newuser" || -d "$TEST_TMPDIR/rename_old" ]] && return 1
+    [[ -d "$TEST_TMPDIR/newuser" && ! -d "$TEST_TMPDIR/rename_old" ]] || return 1
     grep -q "^newuser" test_password_failure_rolls_back_account
 run_contract "删除前备份失败禁止删除及关联清理" test_delete_stops_after_backup_failure
 run_contract "恢复前保护备份失败禁止覆盖恢复" test_restore_stops_when_protection_fails
