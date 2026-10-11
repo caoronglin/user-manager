@@ -1067,6 +1067,35 @@ _um_get_disabled_record() {
     grep -F -- "${username}"$'\t' "$DISABLED_USERS_FILE" | tail -n 1
 }
 
+# 原子迁移暂停/禁用记录；兼容现行 Tab 和早期逗号分隔格式。
+# 在账户改名后调用，失败时应保持新账户锁定，禁止假报完整成功。
+_um_rename_disabled_record() {
+    local old="${1:-}" new="${2:-}" tmp rc
+    [[ -n "$old" && -n "$new" && "$old" != "$new" ]] || return 1
+    [[ -f "$DISABLED_USERS_FILE" ]] || return 0
+    tmp=$(mktemp) || return 1
+    if ! awk -v old="$old" -v new="$new" '
+        {
+            if (index($0, new "\t") == 1 || index($0, new ",") == 1) {
+                conflict = 1
+            }
+            if (index($0, old "\t") == 1 || index($0, old ",") == 1) {
+                print new substr($0, length(old) + 1)
+            } else {
+                print
+            }
+        }
+        END { if (conflict) exit 1 }
+    ' "$DISABLED_USERS_FILE" >"$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    _um_write_disabled_records "$tmp"
+    rc=$?
+    rm -f "$tmp"
+    return "$rc"
+}
+
 _um_remove_disabled_record() {
     local username="$1"
     [[ -f "$DISABLED_USERS_FILE" ]] || return 0
