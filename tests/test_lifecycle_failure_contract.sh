@@ -33,7 +33,10 @@ test_password_failure_rolls_back_account() {
     msg_warn() { :; }
     validate_path_safety() { return 0; }
     priv_useradd() { printf 'useradd\n' >>"$logfile"; }
-    priv_chpasswd() { cat >/dev/null; return 9; }
+    priv_chpasswd() {
+        cat >/dev/null
+        return 9
+    }
     priv_userdel() { printf 'userdel:%s\n' "$*" >>"$logfile"; }
     if create_user lifetest 'NonSecretPassword' "$TEST_TMPDIR/lifetest-home" false >/dev/null 2>&1; then
         return 1
@@ -54,7 +57,10 @@ test_delete_stops_after_backup_failure() {
     confirm_action() { return 0; }
     acquire_lock() { return 0; }
     release_lock() { printf 'unlock\n' >>"$logfile"; }
-    manual_backup_user() { printf 'backup_failed\n' >>"$logfile"; return 28; }
+    manual_backup_user() {
+        printf 'backup_failed\n' >>"$logfile"
+        return 28
+    }
     delete_user_all_rules() { printf 'cleanup\n' >>"$logfile"; }
     remove_dns_restrictions() { printf 'dns\n' >>"$logfile"; }
     delete_user() { printf 'DELETE\n' >>"$logfile"; }
@@ -82,7 +88,10 @@ test_restore_stops_when_protection_fails() {
     get_user_home() { printf '%s/home\n' "$TEST_TMPDIR"; }
     verify_before_restore() { return 0; }
     priv_mkdir() { command mkdir "$@"; }
-    priv_rsync() { printf '%s\n' "$*" >>"$logfile"; return 28; }
+    priv_rsync() {
+        printf '%s\n' "$*" >>"$logfile"
+        return 28
+    }
     if restore_user_backup lifetest full_1 >/dev/null 2>&1; then
         return 1
     fi
@@ -105,7 +114,10 @@ test_restore_refuses_unverified_backup() {
     get_user_home() { printf '%s/home\n' "$TEST_TMPDIR"; }
     verify_before_restore() { return 1; }
     priv_mkdir() { command mkdir "$@"; }
-    priv_rsync() { printf 'rsync\n' >>"$logfile"; return 0; }
+    priv_rsync() {
+        printf 'rsync\n' >>"$logfile"
+        return 0
+    }
     if restore_user_backup lifetest full_1 >/dev/null 2>&1; then
         return 1
     fi
@@ -132,7 +144,10 @@ test_bulk_backup_returns_failure() {
     build_rsync_exclude_args() { return 0; }
     write_privileged_text_file() { cat >"$1"; }
     priv_tee() { [[ "${1:-}" == '-a' ]] && cat >>"$2"; }
-    priv_rsync() { printf 'failed\n' >>"$log"; return 28; }
+    priv_rsync() {
+        printf 'failed\n' >>"$log"
+        return 28
+    }
     record_user_event() { return 0; }
     if backup_all_users >/dev/null 2>&1; then
         return 1
@@ -194,7 +209,10 @@ test_provisioning_does_not_report_success_without_quota() {
     priv_chown() { return 0; }
     priv_chmod() { return 0; }
     priv_usermod() { return 0; }
-    set_user_quota() { printf 'quota_failed\n' >>"$logfile"; return 2; }
+    set_user_quota() {
+        printf 'quota_failed\n' >>"$logfile"
+        return 2
+    }
     _send_password_notification() { printf 'NOTIFIED\n' >>"$logfile"; }
     record_user_event() { printf 'EVENT\n' >>"$logfile"; }
     df() { printf 'Filesystem 1B-blocks Used Available Use%% Mounted on\nmock 4096 1 4095 1%% /mnt/data06\n'; }
