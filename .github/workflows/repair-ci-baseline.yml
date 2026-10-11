@@ -1,0 +1,72 @@
+name: Repair pinned CI baseline
+
+on:
+  push:
+    branches: [fix/ci-baseline-repair]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-baseline-repair
+  cancel-in-progress: false
+
+jobs:
+  fix-and-verify:
+    name: Regenerate lock and format Rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Regenerate npm lock for patched dependency
+        working-directory: web/frontend
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit
+          npm ci
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Apply and verify Rust formatting
+        working-directory: web/backend
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+
+      - name: Verify diff scope
+        run: |
+          set -euo pipefail
+          git diff --check
+          git status --short
+          git diff --name-only | while IFS= read -r file; do
+            case "$file" in
+              web/frontend/package-lock.json|web/backend/*.rs|web/backend/src/*.rs|web/backend/src/**/*.rs|web/backend/tests/*.rs) ;;
+              *) echo "::error::Unexpected modified file: $file"; exit 1 ;;
+            esac
+          done
+
+      - name: Commit generated changes to dedicated branch
+        run: |
+          set -euo pipefail
+          git add web/frontend/package-lock.json web/backend
+          if git diff --cached --quiet; then
+            echo "Nothing to update"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "style(rust): apply rustfmt; fix(lock): update patched source-map-js"
+          git push origin "HEAD:fix/ci-baseline-repair"
