@@ -171,8 +171,8 @@ rename_user_account() {
         local new_script="/usr/local/bin/backup_user_${new_username}.sh"
         if [[ -f "$old_script" ]]; then
             if ! priv_sed -i "s/${old_username}/${new_username}/g" "$old_script" ||
-               ! priv_mv "$old_script" "$new_script" ||
-               ! (read_root_crontab | sed "s|${old_script}|${new_script}|g" | install_root_crontab); then
+                ! priv_mv "$old_script" "$new_script" ||
+                ! (read_root_crontab | sed "s|${old_script}|${new_script}|g" | install_root_crontab); then
                 migration_failed=1
                 msg_err "备份计划迁移不完整，需要核对 crontab"
             else
