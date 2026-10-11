@@ -146,7 +146,7 @@ collect_quota() {
             home="$(get_user_home "$user" 2>/dev/null || true)"
             mp="$(get_user_mountpoint "$home" 2>/dev/null || true)"
             if qi="$(get_user_quota_info "$user" "$mp" 2>/dev/null)" &&
-               [[ "$qi" =~ ^[0-9]+:[0-9]+$ ]]; then
+                [[ "$qi" =~ ^[0-9]+:[0-9]+$ ]]; then
                 used="${qi%%:*}"
                 limit="${qi##*:}"
             else
