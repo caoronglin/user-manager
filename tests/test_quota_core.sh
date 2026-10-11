@@ -179,6 +179,7 @@ priv_repquota() {
 alice     --     42      0      2048          2   0 0
 root      --     20      0         0          2   0 0
 EOF
+        [[ "${RL_TEST_QUOTA_WARN:-0}" == 1 ]] && return 2
         return 0 ;;
     -g:/mnt/data06)
         printf 'Group -- used soft hard\nroot -- 20 0 0\n'
@@ -203,6 +204,12 @@ mountpoint() {
 test_start "配额：中文 repquota 报告正常解析并保留硬限额"
 quota_out="$(get_user_quota_info alice /mnt/data06 2>/dev/null || true)"
 assert_equals "43008:2097152" "$quota_out" "应从中文报告读取已用 42 KiB 与硬限额 2048 KiB"
+
+test_start "配额：tmpfs 警告导致工具非零但目标报告完整时仍能读取"
+RL_TEST_QUOTA_WARN=1
+quota_warn_out="$(get_user_quota_info alice /mnt/data06 2>/dev/null || true)"
+unset RL_TEST_QUOTA_WARN
+assert_equals "43008:2097152" "$quota_warn_out" "目标用户完整数据不能因无关 tmpfs 警告丢失"
 
 test_start "配额：只识别真正的数据行，不把本地化标题当成用户名"
 quota_users="$(collect_quota_users /mnt/data06 2>/dev/null)"
