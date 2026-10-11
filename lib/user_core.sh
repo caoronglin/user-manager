@@ -611,7 +611,14 @@ create_user() {
     fi
 
     priv_useradd -d "$home" -s /bin/bash -m "$username" || return 1
-    echo "$username:$password" | priv_chpasswd || return 1
+    if ! printf '%s:%s\n' "$username" "$password" | priv_chpasswd; then
+        # 撤销刚创建的账号，但保留主目录，避免删除预先存在的科研数据。
+        msg_err "密码初始化失败，尝试回滚新账户: $username"
+        if ! priv_userdel "$username"; then
+            msg_warn "用户删除回滚失败，需人工检查账户状态: $username"
+        fi
+        return 1
+    fi
 
     # SMB 账号同步（失败仅警告，不影响用户创建）
     if ! _smb_sync_password "$username" "$password"; then
@@ -740,6 +747,14 @@ ensure_user_group() {
 add_user_to_group() {
     local username="${1:-}" group_name="${2:-}"
     require_user "$username" || return 1
+    # 学生普通组配置不允许通过附加组获得管理员或宿主机高权限。
+    # 如需系统管理权限，必须使用独立的管理员授权流程，而不是创建用户时自动赋予。
+    case "$group_name" in
+    root | sudo | wheel | admin | adm | docker | lxd | disk | shadow | systemd-journal | libvirt)
+        msg_err "禁止在普通用户组配置中加入高权限组: $group_name"
+        return 1
+        ;;
+    esac
     ensure_user_group "$group_name" || return 1
     priv_usermod -aG "$group_name" "$username" || return 1
     record_user_event "$username" "group_add" "$group_name" 2>/dev/null || true
