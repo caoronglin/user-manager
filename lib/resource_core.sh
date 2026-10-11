@@ -133,7 +133,7 @@ set_user_ulimit() {
         return 1
     fi
     if ! rl_resource_ulimit_valid "$resource" "$soft_limit" ||
-       ! rl_resource_ulimit_valid "$resource" "$hard_limit"; then
+        ! rl_resource_ulimit_valid "$resource" "$hard_limit"; then
         msg_err "资源类型或限额无效"
         return 1
     fi
@@ -205,7 +205,7 @@ remove_user_ulimit() {
         msg_ok "已移除用户 $username 的所有 ulimit 配置"
     fi
 }
- 
+
 # 显示用户的所有 ulimit 设置
 show_user_ulimits() {
     local username="$1"
