@@ -24,7 +24,7 @@
 | --- | --- |
 | `scripts/rl-user-list.sh` | 列出所有托管用户 |
 | `scripts/rl-user-create.sh` | 创建新用户 |
-| `scripts/rl-user-quota.sh` | 磁盘配额设置/查询 |
+| `scripts/rl-user-quota.sh` | 磁盘配额设置/查询、只读 `--health [挂载点]` 诊断 |
 | `scripts/rl-user-resource.sh` | cgroup v2 资源限制 |
 | `scripts/rl-mail-test.sh` | 测试邮件发送 |
 | `scripts/rl-backup-run.sh` | 触发用户备份 |
@@ -183,4 +183,5 @@ bash tests/test_security_hardening.sh
 - SSH 主机与 GPU 只读探测：[`docs/REMOTE_HOSTS.md`](docs/REMOTE_HOSTS.md)
 - WeCom 原生事件投递与隐私边界：[`docs/wecom-native-events.md`](docs/wecom-native-events.md)
 - Web 控制台（`umweb`）说明：[`web/README.md`](web/README.md)
+- [`docs/UBUNTU26_QUOTA_RESOURCE.md`](docs/UBUNTU26_QUOTA_RESOURCE.md)：Ubuntu 26.04 ext4/tmpfs 配额兼容、PAM limits 与验证流程。
 - PR 模板与提交流程：[`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)
