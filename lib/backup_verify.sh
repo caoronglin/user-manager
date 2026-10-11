@@ -18,40 +18,35 @@ readonly CHECKSUM_DIR="${BACKUP_ROOT}/.checksums"
 # 生成备份校验文件
 # 参数: $1=备份路径
 generate_backup_checksum() {
-    local backup_path="$1"
-
-    if [[ -z "$backup_path" ]] || [[ ! -d "$backup_path" ]]; then
-        return 1
-    fi
-
-    # 从备份路径推导用户名和备份ID
-    local backup_id username
+    local backup_path="${1:-}" backup_id username checksum_dir checksum_file temp_file file_count
+    [[ -n "$backup_path" && -d "$backup_path" ]] || return 1
     backup_id=$(basename "$backup_path")
     username=$(basename "$(dirname "$backup_path")")
-
-    # 校验文件存入独立目录，避免恢复时包含校验数据
-    local checksum_dir="$CHECKSUM_DIR/$username"
-    mkdir -p "$checksum_dir" 2>/dev/null
-
-    local checksum_file="${checksum_dir}/${backup_id}${CHECKSUM_SUFFIX}"
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    checksum_dir="$CHECKSUM_DIR/$username"
+    mkdir -p "$checksum_dir" || return 1
+    checksum_file="${checksum_dir}/${backup_id}${CHECKSUM_SUFFIX}"
+    temp_file=$(mktemp "${checksum_dir}/.checksum.XXXXXXXX") || return 1
 
     msg_step "正在生成校验文件..."
-
-    {
-        echo "# Backup Checksum File"
-        echo "# Generated: $timestamp"
-        echo "# Path: $backup_path"
-        echo ""
-        cd "$backup_path" && find . -type f ! -name "*${CHECKSUM_SUFFIX}" -exec sha256sum {} \; 2>/dev/null
-    } >"$checksum_file"
-
-    local file_count
-    file_count=$(grep -c '^[a-f0-9]' "$checksum_file" 2>/dev/null || echo "0")
-
+    if ! (
+        cd "$backup_path" || exit 1
+        find . -type f ! -name "*${CHECKSUM_SUFFIX}" -exec sha256sum {} +
+    ) >"$temp_file"; then
+        rm -f "$temp_file"
+        msg_err "生成校验文件失败"
+        return 1
+    fi
+    file_count=$(grep -Ec '^[[:xdigit:]]{64} [ *]' "$temp_file" || true)
+    if ((file_count == 0)); then
+        rm -f "$temp_file"
+        msg_err "备份中没有可校验的常规文件"
+        return 1
+    fi
+    if ! mv -f -- "$temp_file" "$checksum_file"; then
+        rm -f "$temp_file"
+        return 1
+    fi
     msg_ok "校验文件已生成: $checksum_file ($file_count 个文件)"
-    return 0
 }
 
 # ============================================================
@@ -61,69 +56,32 @@ generate_backup_checksum() {
 # 验证备份完整性
 # 参数: $1=备份路径
 verify_backup_integrity() {
-    local backup_path="$1"
-
-    if [[ -z "$backup_path" ]] || [[ ! -d "$backup_path" ]]; then
+    local backup_path="${1:-}" backup_id username checksum_file file_count
+    [[ -n "$backup_path" && -d "$backup_path" ]] || {
         msg_err "备份路径不存在: $backup_path"
         return 1
-    fi
-
-    local backup_id username checksum_file
+    }
     backup_id=$(basename "$backup_path")
     username=$(basename "$(dirname "$backup_path")")
     checksum_file="$CHECKSUM_DIR/$username/${backup_id}${CHECKSUM_SUFFIX}"
-
-    if [[ ! -f "$checksum_file" ]]; then
-        msg_warn "校验文件不存在: $checksum_file"
-        return 0
-    fi
-
+    [[ -f "$checksum_file" && ! -L "$checksum_file" ]] || {
+        msg_err "缺少完整校验文件: $checksum_file"
+        return 1
+    }
+    file_count=$(grep -Ec '^[[:xdigit:]]{64} [ *]' "$checksum_file" || true)
+    ((file_count > 0)) || {
+        msg_err "校验文件没有有效记录"
+        return 1
+    }
     msg_step "正在验证备份完整性..."
-
-    local total=0 passed=0 failed=0 missing=0
-
-    cd "$backup_path" || return 1
-
-    while IFS= read -r line; do
-        # 跳过注释和空行
-        [[ "$line" =~ ^# ]] && continue
-        [[ -z "$line" ]] && continue
-
-        local expected_hash file_path
-        expected_hash=$(echo "$line" | awk '{print $1}')
-        file_path=$(echo "$line" | awk '{print $2}')
-
-        ((total += 1))
-
-        if [[ ! -f "$file_path" ]]; then
-            ((missing += 1))
-            continue
-        fi
-
-        local actual_hash
-        actual_hash=$(sha256sum "$file_path" 2>/dev/null | awk '{print $1}')
-
-        if [[ "$expected_hash" == "$actual_hash" ]]; then
-            ((passed += 1))
-        else
-            ((failed += 1))
-            msg_warn "校验失败: $file_path"
-        fi
-    done <"$checksum_file"
-
-    echo ""
-    draw_info_card "验证文件总数:" "$total"
-    draw_info_card "通过:" "${C_BGREEN}$passed${C_RESET}"
-    draw_info_card "失败:" "${C_BRED}$failed${C_RESET}"
-    draw_info_card "缺失:" "${C_RESET}$missing${C_RESET}"
-
-    if ((failed > 0 || missing > 0)); then
-        msg_err "备份验证失败"
+    if ! (
+        cd "$backup_path" || exit 1
+        sha256sum -c --status "$checksum_file"
+    ); then
+        msg_err "备份完整性验证失败"
         return 1
     fi
-
-    msg_ok "备份完整性验证通过"
-    return 0
+    msg_ok "备份完整性验证通过 ($file_count 个文件)"
 }
 
 # ============================================================
@@ -200,9 +158,14 @@ verify_before_restore() {
         return $?
     fi
 
-    # 否则进行快速验证
+    # 历史备份无校验清单时，抽样计算哈希不能证明原数据完整。
+    # 默认拒绝破坏性恢复；仅管理员显式接受风险后允许兼容旧备份。
+    if [[ "${USER_MANAGER_ALLOW_UNVERIFIED_RESTORE:-0}" != "1" ]]; then
+        msg_err "缺少备份校验清单，默认禁止覆盖恢复；历史备份需人工核验"
+        return 1
+    fi
+    msg_warn "管理员显式允许未校验的历史备份恢复；抽样测试仅证明文件可读"
     quick_verify_backup "$backup_path" 20
-    return $?
 }
 
 # ============================================================

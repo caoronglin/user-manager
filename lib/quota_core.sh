@@ -75,6 +75,25 @@ get_managed_usernames() {
         done < <(collect_quota_users "$mp")
     done
 
+    # 配额数据只是账户属性，不能作为唯一发现机制。
+    # 将系统账户表中主目录位于受管挂载的数据用户加入候选，
+    # 避免 quota-tools 报错或新用户尚未分配配额时从 Web/备份中消失。
+    local entry userhome uid gid shell
+    while IFS=: read -r candidate _ uid gid _ userhome shell; do
+        [[ "$uid" =~ ^[0-9]+$ ]] || continue
+        ((uid >= 1000)) || continue
+        [[ "$candidate" == "root" || "$candidate" == "dell" ]] && continue
+        [[ "$candidate" =~ $USERNAME_PATTERN ]] || continue
+        for disk_num in "${ALL_DISKS[@]}"; do
+            idx=$(printf "%02d" "$disk_num")
+            mp="${DATA_BASE}/data${idx}"
+            if [[ "$userhome" == "$mp/"* ]]; then
+                users_seen["$candidate"]=1
+                break
+            fi
+        done
+    done < <(getent passwd 2>/dev/null)
+
     # 构建结果并更新缓存（按行输出，兼容 mapfile 调用方）
     local -a result_list=()
     for candidate in "${!users_seen[@]}"; do
@@ -148,10 +167,15 @@ get_user_quota_info() {
         elif ((repquota_rc != 0)); then
             msg_err "无法读取挂载点 $mp 的配额报告"
             return 1
-        else
-            # 成功读取报告但无该用户条目，代表尚未使用该文件系统。
+        elif [[ "$repquota_output" == *"***"* &&
+            "$repquota_output" == *"Block limits"* &&
+            "$repquota_output" == *"File limits"* ]]; then
+            # 确实成功收到目标挂载点的完整报告，但没有用户记录。
             used_kb=0
             limit_kb=0
+        else
+            msg_err "目标挂载点配额报告为空或格式异常: $mp"
+            return 1
         fi
     fi
 

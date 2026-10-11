@@ -307,11 +307,13 @@ restore_user_backup() {
     local pre_restore_backup
     pre_restore_backup="$BACKUP_ROOT/$username/pre_restore_$(date +%Y%m%d_%H%M%S)"
     # 目标备份不完整时拒绝恢复；需由调用入口加载 backup_verify.sh。
-    if declare -F verify_before_restore >/dev/null 2>&1; then
-        if ! verify_before_restore "$backup_dir"; then
-            msg_err "恢复已取消：备份点未通过完整性检查"
-            return 1
-        fi
+    if ! declare -F verify_before_restore >/dev/null 2>&1; then
+        msg_err "恢复已取消：备份校验模块未加载，禁止跳过安全检查"
+        return 1
+    fi
+    if ! verify_before_restore "$backup_dir"; then
+        msg_err "恢复已取消：备份点未通过完整性检查"
+        return 1
     fi
 
     msg_step "先备份当前数据到: $pre_restore_backup"
@@ -331,7 +333,10 @@ restore_user_backup() {
         local user_uid user_gid
         user_uid=$(id -u "$username")
         user_gid=$(id -g "$username")
-        priv_chown -R "${user_uid}:${user_gid}" "$user_home"
+        if ! priv_chown -R "${user_uid}:${user_gid}" "$user_home"; then
+            msg_err "文件已恢复，但所有权修复失败，请勿将此次恢复视为成功"
+            return 1
+        fi
 
         echo ""
         msg_ok "恢复完成"
@@ -1204,7 +1209,7 @@ PEOF
     rm -rf "$results_dir"
 
     record_user_event "system" "batch_backup_parallel" "并行备份: 成功${ok_count}, 失败${fail_count} (并行度: $parallel_jobs)"
-    return 0
+    ((fail_count == 0 && skip_count == 0))
 }
 
 # ============================================================

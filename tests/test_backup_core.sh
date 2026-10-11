@@ -30,13 +30,29 @@ test_suite_start "Backup Core - Exclude File Generation"
 test_start "generate_exclude_file: 生成包含系统缓存目录的排除文件"
 test_exclude="$TEST_TMPDIR/test_excludes.txt"
 if generate_exclude_file "$test_exclude" >/dev/null 2>&1 && [[ -f "$test_exclude" ]]; then
-    if grep -Fxq '.cache' "$test_exclude" 2>/dev/null && grep -Fxq '*.bam' "$test_exclude" 2>/dev/null; then
+    if grep -Fxq '.cache' "$test_exclude" 2>/dev/null && ! grep -Fxq '*.bam' "$test_exclude" 2>/dev/null; then
         test_pass
     else
         test_fail "排除文件缺少基础或生信关键模式"
     fi
 else
     test_fail "排除文件未生成"
+fi
+
+test_start "科研备份默认保留 BAM/FASTQ/VCF，显式选择才排除"
+default_args=()
+build_rsync_exclude_args default_args
+if [[ " ${default_args[*]} " != *'*.bam'* &&
+    " ${default_args[*]} " != *'*.fastq.gz'* ]]; then
+    opt_in_args=()
+    USER_MANAGER_BACKUP_EXCLUDE_BIO=1 build_rsync_exclude_args opt_in_args
+    if [[ " ${opt_in_args[*]} " == *'*.bam'* ]]; then
+        test_pass
+    else
+        test_fail "显式启用科研数据排除后未应用过滤规则"
+    fi
+else
+    test_fail "默认规则仍会排除关键科研数据"
 fi
 
 test_start "generate_exclude_file: 无路径参数时返回临时文件路径"

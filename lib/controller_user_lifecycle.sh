@@ -64,9 +64,25 @@ rename_user_account() {
         return 1
     fi
 
-    local old_home new_home
+    local old_home new_home original_lock_state was_disabled=false
+    id "$old_username" >/dev/null 2>&1 || {
+        msg_err "原用户不存在: $old_username"
+        return 1
+    }
     old_home=$(get_user_home "$old_username")
+    [[ -n "$old_home" && "$old_home" != "/" ]] || {
+        msg_err "旧主目录无效，拒绝改名"
+        return 1
+    }
     new_home="${old_home%/*}/$new_username"
+    if [[ -e "$new_home" || -L "$new_home" ]]; then
+        msg_err "新主目录已存在，拒绝覆盖: $new_home"
+        return 1
+    fi
+    original_lock_state=$(_um_user_lock_state "$old_username")
+    if is_user_disabled "$old_username"; then
+        was_disabled=true
+    fi
 
     echo ""
     draw_header "重命名确认"
@@ -85,23 +101,45 @@ rename_user_account() {
 
     msg_step "重命名用户 ${C_BOLD}$old_username${C_RESET} → ${C_BOLD}$new_username${C_RESET}"
 
-    # 锁定账户防止并发操作
-    priv_usermod -L "$old_username"
+    # 锁定账户防止并发操作；失败必须在变更身份前终止。
+    if ! priv_usermod -L "$old_username"; then
+        msg_err "无法暂时锁定用户，已取消重命名"
+        release_lock
+        return 1
+    fi
 
     if priv_usermod -l "$new_username" "$old_username"; then
         msg_ok "用户名已更改"
+        local migration_failed=0
+        if ! _um_rename_disabled_record "$old_username" "$new_username"; then
+            msg_err "停用记录迁移失败，新账户保持锁定，需要人工修复"
+            release_lock
+            return 1
+        fi
 
         # 1. 移动主目录
         if [[ -d "$old_home" ]]; then
-            priv_mv "$old_home" "$new_home"
-            priv_usermod -d "$new_home" "$new_username"
-            msg_ok "主目录已移动 → $new_home"
+            if priv_mv "$old_home" "$new_home"; then
+                if ! priv_usermod -d "$new_home" "$new_username"; then
+                    migration_failed=1
+                    msg_err "主目录已移动，但账户主目录配置失败"
+                else
+                    msg_ok "主目录已移动 → $new_home"
+                fi
+            else
+                migration_failed=1
+                msg_err "主目录移动失败"
+            fi
         fi
 
         # 2. 更新主组名
         if getent group "$old_username" &>/dev/null; then
-            priv_groupmod -n "$new_username" "$old_username" 2>/dev/null || true
-            msg_ok "主组已重命名"
+            if priv_groupmod -n "$new_username" "$old_username" 2>/dev/null; then
+                msg_ok "主组已重命名"
+            else
+                migration_failed=1
+                msg_err "主组重命名失败"
+            fi
         fi
 
         # 3. 同步 user_config.json（迁移配置条目）
@@ -119,6 +157,7 @@ rename_user_account() {
                     msg_ok "用户配置已迁移"
                 else
                     rm -f "$tmp_cfg"
+                    migration_failed=1
                     msg_warn "用户配置迁移失败，请手动检查"
                 fi
             else
@@ -131,11 +170,14 @@ rename_user_account() {
         local old_script="/usr/local/bin/backup_user_${old_username}.sh"
         local new_script="/usr/local/bin/backup_user_${new_username}.sh"
         if [[ -f "$old_script" ]]; then
-            priv_sed -i "s/${old_username}/${new_username}/g" "$old_script"
-            priv_mv "$old_script" "$new_script"
-            # 更新 crontab 中的引用
-            read_root_crontab | sed "s|${old_script}|${new_script}|g" | install_root_crontab 2>/dev/null || true
-            msg_ok "备份计划已迁移"
+            if ! priv_sed -i "s/${old_username}/${new_username}/g" "$old_script" ||
+                ! priv_mv "$old_script" "$new_script" ||
+                ! (read_root_crontab | sed "s|${old_script}|${new_script}|g" | install_root_crontab); then
+                migration_failed=1
+                msg_err "备份计划迁移不完整，需要核对 crontab"
+            else
+                msg_ok "备份计划已迁移"
+            fi
         fi
 
         # 5. 迁移 DNS 限制
@@ -155,29 +197,42 @@ rename_user_account() {
             local old_stats="$JOB_STATS_DIR/${old_username}.csv"
             local new_stats="$JOB_STATS_DIR/${new_username}.csv"
             if [[ -f "$old_stats" ]]; then
-                mv "$old_stats" "$new_stats"
-                msg_ok "作业统计已迁移"
+                if mv "$old_stats" "$new_stats"; then
+                    msg_ok "作业统计已迁移"
+                else
+                    migration_failed=1
+                    msg_err "作业统计文件迁移失败"
+                fi
             fi
         fi
 
-        # 8. 更新暂停用户记录
-        if [[ -f "$DISABLED_USERS_FILE" ]] && grep -q "^${old_username}," "$DISABLED_USERS_FILE" 2>/dev/null; then
-            sed -i "s/^${old_username},/${new_username},/" "$DISABLED_USERS_FILE"
-            msg_ok "暂停记录已更新"
+        # 8. 停用记录已在用户名变更后立即迁移，避免到期恢复引用旧用户名。
+        # 9. 只有原本可登录且所有同步步骤成功才恢复解锁。
+        if ((migration_failed > 0)); then
+            msg_err "重命名部分完成：新账户保持锁定，请修复上述关联资源后再解锁"
+            record_user_event "$new_username" "rename_partial" "从 $old_username 重命名，待修复"
+            release_lock
+            return 1
         fi
-
-        # 9. 更新操作日志（追加重命名映射记录）
-        priv_usermod -U "$new_username"
+        if [[ "$original_lock_state" != "locked" && "$was_disabled" != true ]]; then
+            if ! priv_usermod -U "$new_username"; then
+                msg_err "无法恢复原登录状态，新账户保持锁定"
+                release_lock
+                return 1
+            fi
+        fi
         record_user_event "$new_username" "rename" "从 $old_username 重命名"
 
         echo ""
         draw_header "重命名完成"
         draw_info_card "新用户名:" "$new_username" "$C_BGREEN"
         draw_info_card "主目录:" "$new_home"
-        msg_ok "所有关联资源已同步更新"
+        msg_ok "用户重命名与关联状态迁移成功"
     else
         msg_err "重命名失败"
-        priv_usermod -U "$old_username"
+        if [[ "$original_lock_state" != "locked" && "$was_disabled" != true ]]; then
+            priv_usermod -U "$old_username" || msg_warn "无法恢复原登录状态，请人工检查"
+        fi
     fi
 
     release_lock

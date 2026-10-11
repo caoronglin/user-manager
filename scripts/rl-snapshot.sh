@@ -145,11 +145,15 @@ collect_quota() {
             [[ -n "$user" ]] || continue
             home="$(get_user_home "$user" 2>/dev/null || true)"
             mp="$(get_user_mountpoint "$home" 2>/dev/null || true)"
-            qi="$(get_user_quota_info "$user" "$mp" 2>/dev/null || printf '0:0')"
-            used="${qi%%:*}"
-            limit="${qi##*:}"
-            [[ "$used" =~ ^[0-9]+$ ]] || used=0
-            [[ "$limit" =~ ^[0-9]+$ ]] || limit=0
+            if qi="$(get_user_quota_info "$user" "$mp" 2>/dev/null)" &&
+                [[ "$qi" =~ ^[0-9]+:[0-9]+$ ]]; then
+                used="${qi%%:*}"
+                limit="${qi##*:}"
+            else
+                # 缺失配额报告 != 0 使用量/无限额。
+                used="unknown"
+                limit="unknown"
+            fi
             printf '%s\t%s\t%s\t%s\n' "$user" "$mp" "$used" "$limit"
         done < <(get_managed_usernames 2>/dev/null)
     } | jq -R -s '
@@ -157,11 +161,12 @@ collect_quota() {
         | {users: ($rows | map({
               username: .[0],
               mountpoint: .[1],
-              used_bytes: (.[2] | tonumber),
-              limit_bytes: (.[3] | tonumber),
-              has_quota: ((.[3] | tonumber) > 0),
-              used_gb: (((.[2] | tonumber) / 1073741824 * 100 | round) / 100),
-              limit_gb: (((.[3] | tonumber) / 1073741824 * 100 | round) / 100)
+              used_bytes: (.[2] | tonumber?),
+              limit_bytes: (.[3] | tonumber?),
+              quota_status: (if (.[2] | tonumber?) == null or (.[3] | tonumber?) == null then "unknown" else "readable" end),
+              has_quota: (if (.[3] | tonumber?) == null then null else ((.[3] | tonumber) > 0) end),
+              used_gb: (if (.[2] | tonumber?) == null then null else (((.[2] | tonumber) / 1073741824 * 100 | round) / 100) end),
+              limit_gb: (if (.[3] | tonumber?) == null then null else (((.[3] | tonumber) / 1073741824 * 100 | round) / 100) end)
             })),
            count: ($rows | length)}
     '

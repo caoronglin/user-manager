@@ -125,7 +125,11 @@ EOF
 get_all_exclude_patterns() {
     {
         get_base_exclude_patterns
-        get_bio_exclude_patterns
+        # 科研原始数据及结果属于关键数据，默认不能从备份中静默排除。
+        # 显式选择该风险策略时才允许过滤 BAM/FASTQ/VCF 等文件。
+        if [[ "${USER_MANAGER_BACKUP_EXCLUDE_BIO:-0}" == "1" ]]; then
+            get_bio_exclude_patterns
+        fi
     } | sort -u
 }
 
@@ -153,10 +157,12 @@ build_rsync_exclude_args() {
         _excl_arr+=(--exclude="$pattern")
     done < <(get_base_exclude_patterns)
 
-    while IFS= read -r pattern; do
-        [[ -z "$pattern" ]] && continue
-        _excl_arr+=(--exclude="$pattern")
-    done < <(get_bio_exclude_patterns)
+    if [[ "${USER_MANAGER_BACKUP_EXCLUDE_BIO:-0}" == "1" ]]; then
+        while IFS= read -r pattern; do
+            [[ -z "$pattern" ]] && continue
+            _excl_arr+=(--exclude="$pattern")
+        done < <(get_bio_exclude_patterns)
+    fi
 }
 
 # ============================================================
@@ -187,8 +193,10 @@ generate_exclude_file() {
         echo "# === Base Excludes ==="
         get_base_exclude_patterns
         echo ""
-        echo "# === Bioinformatics Excludes ==="
-        get_bio_exclude_patterns
+        if [[ "${USER_MANAGER_BACKUP_EXCLUDE_BIO:-0}" == "1" ]]; then
+            echo "# === Bioinformatics Excludes (explicit opt-in) ==="
+            get_bio_exclude_patterns
+        fi
     } >"$output_file"
 
     if [[ ! -s "$output_file" ]]; then
@@ -212,13 +220,18 @@ get_exclude_preview() {
     local total base_count bio_count
 
     base_count=$(get_base_exclude_patterns | wc -l)
-    bio_count=$(get_bio_exclude_patterns | wc -l)
+    bio_count=0
+    if [[ "${USER_MANAGER_BACKUP_EXCLUDE_BIO:-0}" == "1" ]]; then
+        bio_count=$(get_bio_exclude_patterns | wc -l)
+    fi
     total=$((base_count + bio_count))
 
     echo "排除模式预览 (基础: $base_count 项, 生物信息: $bio_count 项, 共 $total 项):"
     echo ""
     get_base_exclude_patterns | head -n "$preview_lines" | sed 's/^/    /'
-    echo "    ... (更多生物信息排除模式)"
+    if ((bio_count > 0)); then
+        echo "    ... (已显式启用科研文件排除模式)"
+    fi
 }
 
 # ============================================================
