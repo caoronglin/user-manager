@@ -4,7 +4,7 @@
 //! - Web 用户管理（/api/web-users*）：仅操作 Web 身份库，**绝不触碰 Linux 账户**；
 //!   capability web_users.manage（web_admin）。
 //! - 登录两步流程：login 通过后若需 MFA → 返回 mfa_required + 挂起会话；
-//!   /api/auth/mfa/verify 用挂起会话 + TOTP code 完成登录（flip mfa_done）。
+//!   /api/auth/mfa/challenge 用挂起会话 + TOTP code 完成登录（flip mfa_done）。
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -32,6 +32,10 @@ async fn mfa_setup(
     let cipher =
         crate::crypto::encrypt(&state.master_key, &secret).ok_or_else(|| bad("encrypt failed"))?;
     let conn = state.db.lock().unwrap();
+    let user = crate::store::user::get_by_id(&conn, &auth.user_id).ok_or_else(unauth)?;
+    if user.mfa_enabled {
+        return Err(bad("MFA already enabled; disable it with a valid code first"));
+    }
     crate::store::user::set_mfa_secret(&conn, &auth.user_id, &cipher).map_err(|_| internal())?;
     drop(conn);
     let url =
@@ -96,14 +100,13 @@ async fn mfa_disable(
     let auth = authenticate(&state, &headers)?;
     let code = body.get("code").and_then(Value::as_str).unwrap_or("");
     let conn = state.db.lock().unwrap();
-    if let Some(cipher) = crate::store::user::get_mfa_secret(&conn, &auth.user_id) {
-        if let Some(secret) = crate::crypto::decrypt(&state.master_key, &cipher) {
-            let name = auth_user_name_locked(&conn, &auth.user_id);
-            if !mfa::verify_code(&secret, &name, code) {
-                drop(conn);
-                return Err(bad("invalid code"));
-            }
-        }
+    // Missing/corrupt secrets must fail closed, never bypass TOTP verification.
+    let cipher = crate::store::user::get_mfa_secret(&conn, &auth.user_id)
+        .ok_or_else(|| bad("MFA not set up"))?;
+    let secret = crate::crypto::decrypt(&state.master_key, &cipher).ok_or_else(internal)?;
+    let name = auth_user_name_locked(&conn, &auth.user_id);
+    if !mfa::verify_code(&secret, &name, code) {
+        return Err(bad("invalid code"));
     }
     crate::store::user::disable_mfa(&conn, &auth.user_id).map_err(|_| internal())?;
     drop(conn);

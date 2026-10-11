@@ -89,10 +89,14 @@ pub fn delete_user(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
 
 /// 保存加密的 TOTP secret（mfa_secret_cipher）；尚未启用。
 pub fn set_mfa_secret(conn: &Connection, id: &str, cipher: &str) -> Result<(), rusqlite::Error> {
-    conn.execute(
-        "UPDATE web_users SET mfa_secret_cipher = ?2, mfa_enabled = 0, updated_at = ?3 WHERE id = ?1",
+    // Atomic guard also protects against another process enabling MFA concurrently.
+    let updated = conn.execute(
+        "UPDATE web_users SET mfa_secret_cipher = ?2, updated_at = ?3 WHERE id = ?1 AND mfa_enabled = 0",
         params![id, cipher, now_unix()],
     )?;
+    if updated != 1 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
     Ok(())
 }
 
