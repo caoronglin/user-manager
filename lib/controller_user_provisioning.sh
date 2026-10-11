@@ -156,7 +156,11 @@ create_or_assign_user() {
     priv_chmod 700 "$home" 2>/dev/null
     priv_usermod -d "$home" "$username"
 
-    set_user_quota "$username" "$quota_bytes" "$mp"
+    if ! set_user_quota "$username" "$quota_bytes" "$mp"; then
+        msg_err "用户账户可能已创建或更新，但磁盘配额设置失败；禁止报告整个流程成功，请检查并补齐配置"
+        release_lock
+        return 1
+    fi
 
     # 结果卡片
     echo ""
