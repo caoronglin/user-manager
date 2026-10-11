@@ -43,7 +43,7 @@ test_start "科研备份默认保留 BAM/FASTQ/VCF，显式选择才排除"
 default_args=()
 build_rsync_exclude_args default_args
 if [[ " ${default_args[*]} " != *'*.bam'* &&
-      " ${default_args[*]} " != *'*.fastq.gz'* ]]; then
+    " ${default_args[*]} " != *'*.fastq.gz'* ]]; then
     opt_in_args=()
     USER_MANAGER_BACKUP_EXCLUDE_BIO=1 build_rsync_exclude_args opt_in_args
     if [[ " ${opt_in_args[*]} " == *'*.bam'* ]]; then
