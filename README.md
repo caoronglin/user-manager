@@ -25,7 +25,7 @@
 | `scripts/rl-user-list.sh` | 列出所有托管用户 |
 | `scripts/rl-user-create.sh` | 创建新用户 |
 | `scripts/rl-user-quota.sh` | 磁盘配额设置/查询、只读 `--health [挂载点]` 诊断 |
-| `scripts/rl-user-resource.sh` | cgroup v2 资源限制 |
+| `scripts/rl-user-resource.sh` | cgroup v2 资源限制；`--effective` 读取当前任务上限 |
 | `scripts/rl-mail-test.sh` | 测试邮件发送 |
 | `scripts/rl-backup-run.sh` | 触发用户备份 |
 | `scripts/rl-audit-query.sh` | 审计日志查询 |
